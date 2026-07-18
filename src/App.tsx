@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FlaskConical, Search, Sparkles, X } from 'lucide-react'
+import { Search, Sparkles, X } from 'lucide-react'
+import { LaboMark } from './LaboMark'
 import './App.css'
 import { ModelStudio } from './model/ModelStudio'
 import { TokenizerStudio } from './TokenizerStudio'
@@ -41,7 +42,7 @@ function App() {
   return <main className={`app-shell${runtimeClass}${nativeFullScreen ? ' native-fullscreen' : ''}`}>
     <header className="topbar">
       <div className="brand">
-        <span className="brand-mark"><FlaskConical size={17} /></span>
+        <span className="brand-mark"><LaboMark /></span>
         <strong>LABO AI</strong>
         <span className="alpha-pill">ALPHA</span>
       </div>

@@ -5,7 +5,8 @@
 .runtime-electron.runtime-darwin.native-fullscreen .topbar { padding-left: 12px; }
 .runtime-electron.runtime-darwin .topbar button, .runtime-electron.runtime-darwin .topbar nav { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 9px; width: 270px; color: var(--text); font-size: 14px; letter-spacing: -.2px; }
-.brand-mark { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid rgba(124,117,255,.45); border-radius: 7px; color: #a9a5ff; background: rgba(124,117,255,.12); }
+.brand-mark { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid rgba(110,231,183,.28); border-radius: 7px; color: #9ee8cf; background: linear-gradient(145deg,rgba(110,231,183,.1),rgba(125,211,252,.045) 48%,rgba(196,181,253,.09)); box-shadow: inset 0 0 12px rgba(110,231,183,.035); }
+.brand-mark svg { width: 19px; height: 19px; }
 .alpha-pill { font: 500 9px/1 'JetBrains Mono'; color: #9c98ff; border: 1px solid rgba(124,117,255,.28); border-radius: 4px; padding: 3px 5px; }
 .project-switcher { display: flex; align-items: center; gap: 8px; color: #c7cad1; font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,.018); }
 .project-dot, .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(69,196,134,.45); }
