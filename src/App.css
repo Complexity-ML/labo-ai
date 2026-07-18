@@ -345,8 +345,8 @@
 .ask-labo-key-status span { display: grid; gap: 3px; }
 .ask-labo-key-status strong { color: #b9d9c9; font-size: 9px; }
 .ask-labo-key-status small { color: #66776f; font: 8px/1.4 'JetBrains Mono'; }
-.ask-labo-key-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
-.ask-labo-key-actions button, .ask-labo-key-form > button { min-height: 28px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #343947; border-radius: 5px; background: #15171d; color: #a6acb7; font-size: 8px; }
+.ask-labo-key-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+.ask-labo-key-actions button, .ask-labo-key-actions a, .ask-labo-key-form > button, .ask-labo-sign-in { min-height: 28px; display: flex; flex: 1 1 90px; align-items: center; justify-content: center; gap: 5px; border: 1px solid #343947; border-radius: 5px; background: #15171d; color: #a6acb7; font-size: 8px; text-decoration: none; }
 .ask-labo-key-actions button:last-child { color: #d98787; border-color: rgba(239,100,100,.25); background: rgba(239,100,100,.045); }
 .ask-labo-key-actions button.confirm-delete { color: #fff; background: rgba(239,100,100,.22); border-color: rgba(239,100,100,.55); }
 .ask-labo-key-form { display: grid; gap: 7px; margin-top: 9px; }
@@ -356,6 +356,7 @@
 .ask-labo-key-form input { min-width: 0; border: 1px solid #343947; border-right: 0; border-radius: 5px 0 0 5px; padding: 8px; outline: 0; background: #090a0e; color: #e2e4ea; font: 9px 'JetBrains Mono'; }
 .ask-labo-key-form > div button { border: 1px solid #343947; border-radius: 0 5px 5px 0; background: #15171d; color: #858c98; }
 .ask-labo-key-form > button { color: #b9dfcc; border-color: rgba(57,200,135,.25); background: rgba(57,200,135,.07); }
+.ask-labo-key-form .ask-labo-sign-in { color: #b9dfcc; border-color: rgba(57,200,135,.25); background: rgba(57,200,135,.07); }
 .ask-labo-key-form > button:disabled, .ask-labo-key-actions button:disabled { opacity: .4; cursor: not-allowed; }
 .ask-labo-key-form > small { color: #b27b7b; font: 8px/1.45 'JetBrains Mono'; }
 .ask-labo-key-message { margin-top: 8px; color: #9ca3af; }

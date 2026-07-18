@@ -230,8 +230,12 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
         <div className="ask-labo-key-actions">
           <button disabled={credentialBusy} onClick={() => void testApiKey()} type="button">Test connection</button>
           {settings.source === 'secure-storage' && <button className={confirmDelete ? 'confirm-delete' : ''} disabled={credentialBusy} onClick={() => void deleteApiKey()} type="button"><Trash2 size={12} />{confirmDelete ? 'Confirm removal' : 'Remove key'}</button>}
+          {window.labo?.runtime === 'web' && <a href="/dashboard/settings" target="_top">Manage account</a>}
         </div>
-      </> : <form className="ask-labo-key-form" onSubmit={(event) => void saveApiKey(event)}>
+      </> : settings?.authRequired ? <div className="ask-labo-key-form">
+        <p>Everything except Ask LABO works without an account.</p>
+        <a className="ask-labo-sign-in" href="/auth/signin?callbackUrl=%2Flabo-ai%2Flive" target="_top"><ShieldCheck size={12} />Sign in to use the agent</a>
+      </div> : <form className="ask-labo-key-form" onSubmit={(event) => void saveApiKey(event)}>
         <p>No API key configured for this user.</p>
         <label htmlFor="openai-api-key">OpenAI API key</label>
         <div>

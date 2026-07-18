@@ -212,9 +212,10 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     setPromptTokenCount(undefined)
     const executionPlan = validation.valid ? executionLayers(graph) : graph.nodes.map((node) => [node.id])
     const player = new AtomicPlayer(executionPlan, async (atomId) => {
-      if (!window.labo?.runAtomic) throw new Error('Atomic PyTorch execution requires the LABO AI desktop app')
+      const runAtomic = window.labo?.runAtomic
+      if (!runAtomic) throw new Error('Atomic PyTorch execution requires the LABO AI desktop app')
       const runArchitectures = async (tokenIds?: number[]) => {
-        const traces = await Promise.all(graphArchitectures.map((architecture) => window.labo!.runAtomic({ kind: 'model', graph: architecture.graph, ...(tokenIds ? { tokenIds } : {}) })))
+        const traces = await Promise.all(graphArchitectures.map((architecture) => runAtomic({ kind: 'model', graph: architecture.graph, ...(tokenIds ? { tokenIds } : {}) })))
         const failed = traces.find((trace) => trace.status === 'failed')
         return {
           engine: 'pytorch' as const,
@@ -227,7 +228,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       }
       tracePromise ??= (acceptsTokenIds
         ? (async () => {
-            const tokenTrace = await window.labo!.runAtomic({ kind: 'tokenizer', pipeline: researchBpePreset, sample: sampleText })
+            const tokenTrace = await runAtomic({ kind: 'tokenizer', pipeline: researchBpePreset, sample: sampleText })
             if (tokenTrace.status === 'failed') throw new Error(tokenTrace.error ?? 'Tokenizer failed')
             if (!tokenTrace.tokenIds?.length) throw new Error('Tokenizer returned no Token IDs')
             setPromptTokenCount(tokenTrace.tokenIds.length)

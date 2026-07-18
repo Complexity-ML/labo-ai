@@ -25,8 +25,8 @@ interface LaboRuntimeTrace {
 interface Window {
   labo?: {
     platform: string
-    runtime: 'electron'
-    runAtomic(payload: { kind: 'model'; graph: unknown; tokenIds?: number[] } | { kind: 'tokenizer'; pipeline: unknown; sample?: string }): Promise<LaboRuntimeTrace>
+    runtime: 'electron' | 'web'
+    runAtomic?(payload: { kind: 'model'; graph: unknown; tokenIds?: number[] } | { kind: 'tokenizer'; pipeline: unknown; sample?: string }): Promise<LaboRuntimeTrace>
     askLabo?(payload: { request: string; context: Record<string, unknown> }): Promise<import('./core/agentic-graph').AgentGraphPlan>
     getOpenAISettings?(): Promise<OpenAISettingsStatus>
     saveOpenAIKey?(apiKey: string): Promise<OpenAISettingsStatus>
@@ -42,4 +42,6 @@ interface OpenAISettingsStatus {
   configured: boolean
   source: 'environment' | 'secure-storage' | 'none'
   encryptionAvailable: boolean
+  authRequired?: boolean
+  prefix?: string
 }
