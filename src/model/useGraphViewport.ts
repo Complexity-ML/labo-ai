@@ -19,12 +19,12 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
   const zoomBy = (delta: number) => setViewport((current) => zoomViewportAt(current, clampZoom(Number((current.zoom + delta).toFixed(2))), canvasCenter()))
   const resetZoom = () => setViewport((current) => zoomViewportAt(current, 1, canvasCenter()))
 
-  const fitGraph = () => {
+  const fitElements = (elements: HTMLElement[], maximumZoom = 1.4) => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const elements = [...canvas.querySelectorAll<HTMLElement>('[data-graph-node="true"]')]
     if (elements.length === 0) return setViewport(DEFAULT_VIEWPORT)
     const canvasRect = canvas.getBoundingClientRect()
+    if (canvasRect.width <= 0 || canvasRect.height <= 0) return
     const boxes = elements.map((element) => {
       const rect = element.getBoundingClientRect()
       const topLeft = screenToWorld({ x: rect.left - canvasRect.left, y: rect.top - canvasRect.top }, viewport)
@@ -37,8 +37,22 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
     const width = Math.max(1, right - left)
     const height = Math.max(1, bottom - top)
     const padding = 70
-    const zoom = clampZoom(Math.min((canvasRect.width - padding * 2) / width, (canvasRect.height - padding * 2) / height, 1.4))
+    const zoom = clampZoom(Math.min((canvasRect.width - padding * 2) / width, (canvasRect.height - padding * 2) / height, maximumZoom))
     setViewport({ x: (canvasRect.width - width * zoom) / 2 - left * zoom, y: (canvasRect.height - height * zoom) / 2 - top * zoom, zoom })
+  }
+
+  const fitGraph = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    fitElements([...canvas.querySelectorAll<HTMLElement>('[data-graph-node="true"]')])
+  }
+
+  const focusNodes = (nodeIds: ReadonlySet<string>) => {
+    const canvas = canvasRef.current
+    if (!canvas || nodeIds.size === 0) return
+    const elements = [...canvas.querySelectorAll<HTMLElement>('[data-graph-node="true"][data-node-id]')]
+      .filter((element) => nodeIds.has(element.dataset.nodeId ?? ''))
+    if (elements.length > 0) fitElements(elements, 1.05)
   }
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -102,5 +116,6 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
     zoomOut: () => zoomBy(-0.1),
     resetZoom,
     fitGraph,
+    focusNodes,
   }
 }

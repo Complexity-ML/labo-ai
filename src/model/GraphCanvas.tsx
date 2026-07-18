@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type Dispatch, type DragEvent, type PointerEvent, type SetStateAction } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type DragEvent, type PointerEvent, type SetStateAction } from 'react'
 import { Blocks, Cable, Minus, Pencil, Plus, Scan, Zap } from 'lucide-react'
 import type { AtomicPlayerSnapshot } from '../core/atomic-player'
 import { moveGroup, moveNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from '../core/ir'
@@ -70,7 +70,7 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
 
 function ArchitectureNodeCard({ editMode = false, graph, node, selected, highlighted = false, status, grouped = false, dragging = false, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; highlighted?: boolean; status: string; grouped?: boolean; dragging?: boolean; onEdit?(): void; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
   const editability = node.kind === 'custom-pytorch' ? 'CODE' : node.kind === 'input' ? 'LABEL' : 'SETTINGS'
-  return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} ${highlighted ? 'architecture-target' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
+  return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} ${highlighted ? 'architecture-target' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-node-id={node.id} data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
     <NodePorts graph={graph} node={node} onPointerDown={onPortPointerDown} />
     <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEdit?.() }} onPointerDown={(event) => {
       if (editMode || event.detail > 1) {
@@ -90,12 +90,28 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   const qkvNodeIds = new Set(qkvGroup?.nodeIds ?? [])
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const camera = useGraphViewport(canvasRef)
+  const focusNodesRef = useRef(camera.focusNodes)
+  focusNodesRef.current = camera.focusNodes
+  const previousGraphRef = useRef<{ id: string; nodeIds: Set<string> } | undefined>(undefined)
   const nodeDrag = useRef<{ pointerId: number; nodeId: string; offsetX: number; offsetY: number; original: { x: number; y: number }; position: { x: number; y: number } } | null>(null)
   const groupDrag = useRef<{ pointerId: number; groupId: string; offsetX: number; offsetY: number; original: { x: number; y: number }; position: { x: number; y: number } } | null>(null)
   const [dragPreview, setDragPreview] = useState<{ nodeId: string; position: { x: number; y: number } } | null>(null)
   const [groupPreview, setGroupPreview] = useState<{ groupId: string; position: { x: number; y: number } } | null>(null)
   const [acceptsLibraryDrop, setAcceptsLibraryDrop] = useState(false)
   const cables = useElasticCables(graph, setGraph, canvasRef, camera.viewport, `${selectedNodeId}:${dragPreview?.nodeId ?? ''}:${dragPreview?.position.x ?? ''}:${dragPreview?.position.y ?? ''}:${groupPreview?.groupId ?? ''}:${groupPreview?.position.x ?? ''}:${groupPreview?.position.y ?? ''}`)
+
+  useLayoutEffect(() => {
+    const nodeIds = new Set(graph.nodes.map((node) => node.id))
+    const previous = previousGraphRef.current
+    if (!previous || previous.id !== graph.id) {
+      const entries = new Set(graph.nodes.filter((node) => !graph.edges.some((edge) => edge.target === node.id)).map((node) => node.id))
+      focusNodesRef.current(entries.size > 0 ? entries : nodeIds)
+    } else {
+      const added = new Set([...nodeIds].filter((nodeId) => !previous.nodeIds.has(nodeId)))
+      if (added.size > 0) focusNodesRef.current(added)
+    }
+    previousGraphRef.current = { id: graph.id, nodeIds }
+  }, [graph.edges, graph.id, graph.nodes])
 
   const beginNodeDrag: NodeDragHandler = (event, node) => {
     if (event.button !== 0) return

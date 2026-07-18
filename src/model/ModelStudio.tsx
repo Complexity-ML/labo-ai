@@ -115,6 +115,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [databaseReady, setDatabaseReady] = useState(false)
   const [webAuthenticated, setWebAuthenticated] = useState(false)
   const webSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const webPendingSaveRef = useRef<{ workspace: unknown; customCards: CustomPyTorchCard[] } | undefined>(undefined)
+  const webAuthenticatedRef = useRef(false)
   const startupGraphRef = useRef(graph)
   const startupSelectionRef = useRef(selectedNodeId)
   const startupUserPresetsRef = useRef(userPresets)
@@ -124,6 +126,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   latestGraphRef.current = graph
   latestSelectionRef.current = selectedNodeId
   latestUserPresetsRef.current = userPresets
+  webAuthenticatedRef.current = webAuthenticated
   const graphArchitectures = useMemo(() => architectureComponents(graph, [...builtInModelPresets, ...userPresets]), [graph, userPresets])
   const selectedArchitecture = graphArchitectures.find((component) => component.id === selectedArchitectureId) ?? graphArchitectures[0]
   const selectedArchitectureNodeIds = useMemo(() => graphArchitectures.length > 1 && selectedArchitecture ? new Set(selectedArchitecture.nodeIds) : undefined, [graphArchitectures.length, selectedArchitecture])
@@ -180,21 +183,40 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       }
       void load().then((result) => {
         if (cancelled) return
+        webAuthenticatedRef.current = result.authenticated
         setWebAuthenticated(result.authenticated)
         const serverWorkspace = parseModelWorkspace(result.workspace)
+        const untouchedSinceStartup = latestGraphRef.current === startupGraphRef.current
+          && latestSelectionRef.current === startupSelectionRef.current
+          && latestUserPresetsRef.current === startupUserPresetsRef.current
         if (result.authenticated && serverWorkspace.updatedAt > 0) {
-          const storedPreset = serverWorkspace.userPresets.find((preset) => preset.id === serverWorkspace.activePresetId)
-            ?? builtInModelPresets.find((preset) => preset.id === serverWorkspace.activePresetId)
-            ?? complexityDeepPreset
-          const storedDraft = serverWorkspace.drafts[storedPreset.id]
-          const storedGraph = cloneArchitectureGraph(storedDraft?.graph ?? storedPreset)
-          presetDraftsRef.current = new Map(Object.entries(serverWorkspace.drafts))
-          setUserPresets(serverWorkspace.userPresets.map(cloneArchitectureGraph))
-          setGraph(storedGraph)
-          setSelectedNodeId(storedDraft?.selectedNodeId ?? storedGraph.nodes[0]?.id ?? '')
+          if (untouchedSinceStartup) {
+            const storedPreset = serverWorkspace.userPresets.find((preset) => preset.id === serverWorkspace.activePresetId)
+              ?? builtInModelPresets.find((preset) => preset.id === serverWorkspace.activePresetId)
+              ?? complexityDeepPreset
+            const storedDraft = serverWorkspace.drafts[storedPreset.id]
+            const storedGraph = cloneArchitectureGraph(storedDraft?.graph ?? storedPreset)
+            presetDraftsRef.current = new Map(Object.entries(serverWorkspace.drafts))
+            setUserPresets(serverWorkspace.userPresets.map(cloneArchitectureGraph))
+            setGraph(storedGraph)
+            setSelectedNodeId(storedDraft?.selectedNodeId ?? storedGraph.nodes[0]?.id ?? '')
+          } else {
+            presetDraftsRef.current = new Map([...Object.entries(serverWorkspace.drafts), ...presetDraftsRef.current])
+            setUserPresets((current) => {
+              const merged = new Map(serverWorkspace.userPresets.map((preset) => [preset.id, cloneArchitectureGraph(preset)]))
+              for (const preset of current) merged.set(preset.id, preset)
+              return [...merged.values()]
+            })
+          }
         }
         if (result.authenticated && Array.isArray(result.customCards)) {
-          setCustomCards(result.customCards.filter(isCustomCard))
+          const storedCards = result.customCards.filter(isCustomCard)
+          setCustomCards((current) => {
+            if (untouchedSinceStartup) return storedCards
+            const merged = new Map(storedCards.map((card) => [card.id, card]))
+            for (const card of current) merged.set(card.id, card)
+            return [...merged.values()]
+          })
         }
         setDatabaseReady(true)
       }).catch(() => {
@@ -237,9 +259,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     if (databaseReady) {
       if (webRuntime) {
         if (webAuthenticated && window.labo?.saveWebWorkspace) {
+          const payload = { workspace, customCards }
+          webPendingSaveRef.current = payload
           if (webSaveTimerRef.current) clearTimeout(webSaveTimerRef.current)
           webSaveTimerRef.current = setTimeout(() => {
-            void window.labo?.saveWebWorkspace?.({ workspace, customCards })
+            void window.labo?.saveWebWorkspace?.(payload).then(() => {
+              if (webPendingSaveRef.current === payload) webPendingSaveRef.current = undefined
+            })
           }, 700)
         }
       } else saveModelWorkspace(workspace)
@@ -250,6 +276,12 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       if (webSaveTimerRef.current) clearTimeout(webSaveTimerRef.current)
     }
   }, [customCards, databaseReady, graph, selectedNodeId, userPresets, webAuthenticated, webRuntime])
+
+  useEffect(() => () => {
+    if (webSaveTimerRef.current) clearTimeout(webSaveTimerRef.current)
+    const pending = webPendingSaveRef.current
+    if (webRuntime && webAuthenticatedRef.current && pending && window.labo?.saveWebWorkspace) void window.labo.saveWebWorkspace(pending)
+  }, [webRuntime])
 
   useEffect(() => {
     if (databaseReady && !webRuntime) syncModelPresetDatabase(builtInModelPresets, userPresets)
@@ -628,6 +660,23 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
   const applyAgentGraph = (nextGraph: ArchitectureGraph, actions: AgentGraphAction[]) => {
     const addedNode = nextGraph.nodes.find((node) => !graph.nodes.some((current) => current.id === node.id))
+    const generatedCards = nextGraph.nodes.filter((node) => !graph.nodes.some((current) => current.id === node.id) && node.kind === 'custom-pytorch' && node.code && validCustomPyTorchModule(node.code))
+    if (generatedCards.length > 0) {
+      setCustomCards((current) => {
+        const next = [...current]
+        for (const node of generatedCards) {
+          const inputRole = (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden'
+          const outputRole = node.role
+          if (next.some((card) => card.label === node.label && card.code === node.code && (card.inputRole ?? 'hidden') === inputRole && (card.outputRole ?? 'hidden') === outputRole)) continue
+          const baseId = node.id.replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent-card'
+          let id = baseId
+          let sequence = 2
+          while (next.some((card) => card.id === id)) id = `${baseId}-${sequence++}`
+          next.push({ id, label: node.label, code: node.code!, inputRole, outputRole })
+        }
+        return next
+      })
+    }
     const run = actions.find((action): action is Extract<AgentGraphAction, { type: 'run' }> => action.type === 'run')
     if (run) pendingAgentRunRef.current = run.mode
     const preset = actions.find((action): action is Extract<AgentGraphAction, { type: 'save-preset' }> => action.type === 'save-preset')

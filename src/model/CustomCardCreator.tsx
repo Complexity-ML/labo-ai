@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { TensorRole } from '../core/ir'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
-import { customCardModule, customCardOperations, operationsByCategory, suggestedCardOperation, type CustomCardCategory, type CustomCardOperation, type CustomPyTorchCard } from './custom-card'
+import { composeCustomCard, customCardModule, customCardOperations, operationsByCategory, suggestedCardOperation, type CustomCardCategory, type CustomCardOperation, type CustomPyTorchCard } from './custom-card'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
 export type CustomCardDestination = 'library' | 'selected' | 'new-architecture'
@@ -38,13 +38,12 @@ export function CustomCardCreator({ onClose, onCreate, selectedTarget }: { onClo
   }
 
   const autoCompose = () => {
-    const next = suggestedCardOperation(category, need)
-    const inferredRole: TensorRole = /logit|vocab|classifier|language head/i.test(need) ? 'logits' : 'hidden'
-    setOperation(next)
-    setName(need.trim().split(/[.!?]/)[0]?.slice(0, 42) || customCardOperations.find((candidate) => candidate.id === next)?.label || 'Custom atom')
-    setInputRole(category === 'projection' ? 'hidden' : inferredRole)
-    setOutputRole(inferredRole)
-    setCode(customCardModule(next, inFeatures, outFeatures, probability))
+    const composed = composeCustomCard({ category, need, inFeatures, outFeatures, probability })
+    setOperation(composed.operation)
+    setName(composed.label)
+    setInputRole(composed.inputRole)
+    setOutputRole(composed.outputRole)
+    setCode(composed.code)
     setError('')
   }
 

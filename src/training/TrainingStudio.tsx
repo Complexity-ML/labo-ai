@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Blocks, Braces, Cpu, Play, Settings2 } from 'lucide-react'
+import { Blocks, Braces, Cpu, Play, Settings2, SplitSquareHorizontal } from 'lucide-react'
 import { compileOptimizer, createOptimizerConfig, optimizerRegistry, type OptimizerConfig, type OptimizerValue } from '../core/optimizer-ir'
 
 function formatValue(value: OptimizerValue): string {
@@ -10,6 +10,7 @@ function formatValue(value: OptimizerValue): string {
 
 export function TrainingStudio() {
   const [config, setConfig] = useState<OptimizerConfig>(() => createOptimizerConfig('adamw'))
+  const [view, setView] = useState<'graph' | 'pytorch' | 'split'>('split')
   const definition = optimizerRegistry[config.kind]
   const code = useMemo(() => ['import torch', '', compileOptimizer(config), ''].join('\n'), [config])
 
@@ -18,7 +19,11 @@ export function TrainingStudio() {
 
   return <>
     <section className="workspace-toolbar">
-      <div className="view-switcher"><button aria-pressed="true"><Blocks size={14} />Training graph</button><button aria-pressed="false"><Braces size={14} />PyTorch</button></div>
+      <div aria-label="Training editor view" className="view-switcher">
+        <button aria-pressed={view === 'graph'} onClick={() => setView('graph')}><Blocks size={14} />Training graph</button>
+        <button aria-pressed={view === 'pytorch'} onClick={() => setView('pytorch')}><Braces size={14} />PyTorch</button>
+        <button aria-pressed={view === 'split'} onClick={() => setView('split')}><SplitSquareHorizontal size={14} />Split</button>
+      </div>
       <strong className="workspace-name">Optimizer pipeline</strong>
       <div className="toolbar-meta"><span><span className="status-dot" /> Training IR synchronized</span></div>
     </section>
@@ -34,8 +39,8 @@ export function TrainingStudio() {
         </section>
       </aside>
 
-      <section className="editor-grid view-split">
-        <div className="canvas-panel">
+      <section className={`editor-grid view-${view === 'graph' ? 'blocks' : view}`}>
+        {view !== 'pytorch' && <div className="canvas-panel">
           <div className="panel-tab"><Blocks size={13} /> training.optimizer</div>
           <div className="training-canvas">
             <article className="optimizer-block selected">
@@ -54,11 +59,11 @@ export function TrainingStudio() {
               </div>
             </article>
           </div>
-        </div>
-        <div className="code-panel">
+        </div>}
+        {view !== 'graph' && <div className="code-panel">
           <div className="panel-tab"><Braces size={13} /> optimizer.py <span>GENERATED</span></div>
           <pre className="code-editor"><code>{code}</code></pre>
-        </div>
+        </div>}
       </section>
 
       <aside className="inspector">

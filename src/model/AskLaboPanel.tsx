@@ -207,8 +207,8 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
 
     <div className="ask-labo-intro">
       <strong>Atomic graph agent</strong>
-      <p>I inspect and search the card library, then use explicit tools to build, edit, arrange, run, save or export your graph.</p>
-      <small>Review mode queues every mutation until you approve the plan. Parallel mode keeps all existing work read-only.</small>
+      <p>I inspect and search the card library, then use explicit tools to build, compose missing cards, edit, arrange, run, save or export your graph.</p>
+      <small>Review mode queues every mutation until you approve the plan. Applied generated cards are saved to My cards. Parallel mode keeps all existing work read-only.</small>
     </div>
 
     <section className="ask-labo-mode" aria-label="Agent apply mode">
@@ -295,7 +295,7 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
       </section>}
 
       {preview.acceptedCreatedBlocks.length > 0 && <section>
-        <h3>{preview.acceptedCreatedBlocks.length} generated card{preview.acceptedCreatedBlocks.length === 1 ? '' : 's'} ready</h3>
+        <h3>{preview.acceptedCreatedBlocks.length} generated reusable card{preview.acceptedCreatedBlocks.length === 1 ? '' : 's'} ready</h3>
         <div className="ask-labo-created-blocks">
           {preview.acceptedCreatedBlocks.map((block) => {
             const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)

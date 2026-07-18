@@ -4,10 +4,12 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { blankStarterPreset } from './core/presets'
 
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  delete window.labo
 })
 
 describe('LABO AI workspace', () => {
@@ -92,6 +94,29 @@ describe('LABO AI workspace', () => {
     await new Promise((resolve) => setTimeout(resolve, 850))
 
     expect(saveWebWorkspace).not.toHaveBeenCalled()
+    delete window.labo
+  })
+
+  it('never lets a late web restore delete a card added from search', async () => {
+    let resolveWorkspace: ((value: { authenticated: boolean; workspace: unknown; customCards: unknown[] }) => void) | undefined
+    window.labo = {
+      platform: 'web', runtime: 'web',
+      loadWebWorkspace: () => new Promise((resolve) => { resolveWorkspace = resolve }),
+      saveWebWorkspace: async () => ({ saved: true, updatedAt: Date.now() }),
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search model cards' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Natural language card search' }), { target: { value: 'decode generated logits token' } })
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Search cards' })).getByRole('button', { name: /^Greedy token decoder/ }))
+    expect(screen.getByRole('button', { name: 'Select Greedy token decoder' })).toBeInTheDocument()
+
+    resolveWorkspace?.({
+      authenticated: true,
+      workspace: { activePresetId: blankStarterPreset.id, drafts: { [blankStarterPreset.id]: { graph: blankStarterPreset, selectedNodeId: '' } }, userPresets: [], updatedAt: 1 },
+      customCards: [],
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Select Greedy token decoder' })).toBeInTheDocument())
     delete window.labo
   })
 
@@ -541,6 +566,15 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use Muon' }))
     expect(screen.getByRole('spinbutton', { name: 'Muon momentum' })).toHaveValue(0.95)
     expect(screen.getByText(/torch\.optim\.Muon\(model\.parameters\(\)/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Split' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
+    expect(screen.queryByText('training.optimizer')).not.toBeInTheDocument()
+    expect(screen.getByText('optimizer.py')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Training graph' }))
+    expect(screen.getByText('training.optimizer')).toBeInTheDocument()
+    expect(screen.queryByText('optimizer.py')).not.toBeInTheDocument()
   })
 
   it('selects, edits, and adds freely manipulable model atoms', () => {
@@ -807,7 +841,7 @@ describe('LABO AI workspace', () => {
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Create the missing projection' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
-    expect(await screen.findByText('1 generated card ready')).toBeInTheDocument()
+    expect(await screen.findByText('1 generated reusable card ready')).toBeInTheDocument()
     expect(screen.getByText('nn.Linear(1024, 1024, bias=False)')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Select Agent projection' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit Agent projection' }))
@@ -816,6 +850,7 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save card' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
     expect(screen.getByRole('button', { name: 'Select Edited projection' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Edited projection' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
     fireEvent.click(screen.getByRole('button', { name: 'Select Edited projection' }))
     expect(screen.getByRole('textbox', { name: 'Model card PyTorch module' })).toHaveValue('nn.Linear(1024, 1024, bias=True)')

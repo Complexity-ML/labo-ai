@@ -58,12 +58,17 @@ const objectSchema = (properties: Record<string, unknown>, required = Object.key
 })
 const string = { type: 'string' }
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] }
+const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] }
+const tensorRoles = ['token-ids', 'hidden', 'query', 'key', 'value', 'attention', 'output', 'logits', 'labels', 'scalar', 'routing-logits', 'expert-indices', 'routing-weights'] as const
+const nullableTensorRole = { anyOf: [{ type: 'string', enum: tensorRoles }, { type: 'null' }] }
+const cardCategories = ['projection', 'normalization', 'activation', 'regularization', 'utility'] as const
 
 const tools = [
   { type: 'function', name: 'search_cards', description: 'Search native and user-created LABO cards by natural-language capability. Always search before declaring a card missing.', strict: true, parameters: objectSchema({ query: string, category: nullableString }) },
   { type: 'function', name: 'inspect_graph', description: 'Inspect the current virtual graph, including changes already queued during this agent turn.', strict: true, parameters: objectSchema({ node_ids: { type: 'array', items: string, maxItems: 24 } }) },
   { type: 'function', name: 'add_block', description: 'Queue one native atomic card from search results.', strict: true, parameters: objectSchema({ atom_id: string, node_id: string, reason: string }) },
   { type: 'function', name: 'add_saved_card', description: 'Queue one reusable user-created PyTorch card from availableCustomCards.', strict: true, parameters: objectSchema({ card_id: string, node_id: string, reason: string }) },
+  { type: 'function', name: 'compose_card', description: 'Use the same deterministic Auto-compose engine as Create card to build and queue a safe unary card from a capability. Prefer this after search_cards finds no suitable native or saved card.', strict: true, parameters: objectSchema({ node_id: string, label: nullableString, category: { type: 'string', enum: cardCategories }, need: string, in_features: nullableNumber, out_features: nullableNumber, probability: nullableNumber, input_role: nullableTensorRole, output_role: nullableTensorRole, reason: string }) },
   { type: 'function', name: 'create_card', description: 'Queue a new safe custom card when no existing card fits. PyTorch must be one safe nn.Module constructor with literal arguments.', strict: true, parameters: objectSchema({ node_id: string, label: string, pytorch_module: string, input_role: string, output_role: string, reason: string }) },
   { type: 'function', name: 'connect_blocks', description: 'Queue an elastic between two exact compatible ports.', strict: true, parameters: objectSchema({ source_id: string, source_port_id: string, target_id: string, target_port_id: string, reason: string }) },
   { type: 'function', name: 'edit_card', description: 'Queue edits to an existing card. settings_json is a JSON object of setting names to number, string, or boolean values. In parallel mode existing cards are read-only.', strict: true, parameters: objectSchema({ node_id: string, label: nullableString, settings_json: nullableString, pytorch_module: nullableString, reason: string }) },
@@ -96,6 +101,46 @@ function argsFor(call: FunctionCallItem): Record<string, unknown> {
 function safeModule(value: string): boolean {
   return /^nn\.(?:Linear|RMSNorm|LayerNorm|Dropout|Identity|ReLU6?|GELU|SiLU|Sigmoid|Tanh|Softplus|ELU|CELU|SELU|LeakyReLU|PReLU|Mish|Hardtanh)\([^;\n]*\)$/.test(value.trim())
     && !/[`[\]{}]|__|import|eval|exec|open|torch\.|os\.|subprocess/i.test(value)
+}
+
+type CardCategory = typeof cardCategories[number]
+
+function suggestedCardOperation(category: CardCategory, need: string): string {
+  const normalized = need.toLowerCase()
+  if (category === 'normalization') return normalized.includes('layer') ? 'layernorm' : 'rmsnorm'
+  if (category === 'activation') {
+    if (normalized.includes('silu') || normalized.includes('swiglu')) return 'silu'
+    if (normalized.includes('relu')) return 'relu'
+    if (normalized.includes('sigmoid')) return 'sigmoid'
+    if (normalized.includes('tanh')) return 'tanh'
+    if (normalized.includes('mish')) return 'mish'
+    return 'gelu'
+  }
+  if (category === 'regularization') return 'dropout'
+  if (category === 'utility') return 'identity'
+  return 'linear'
+}
+
+function autoComposedModule(operation: string, inFeatures: number, outFeatures: number, probability: number): string {
+  if (operation === 'linear') return `nn.Linear(${inFeatures}, ${outFeatures})`
+  if (operation === 'rmsnorm') return `nn.RMSNorm(${outFeatures})`
+  if (operation === 'layernorm') return `nn.LayerNorm(${outFeatures})`
+  if (operation === 'dropout') return `nn.Dropout(${probability})`
+  if (operation === 'gelu') return 'nn.GELU()'
+  if (operation === 'silu') return 'nn.SiLU()'
+  if (operation === 'relu') return 'nn.ReLU()'
+  if (operation === 'sigmoid') return 'nn.Sigmoid()'
+  if (operation === 'tanh') return 'nn.Tanh()'
+  if (operation === 'mish') return 'nn.Mish()'
+  return 'nn.Identity()'
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 65_536 ? value : fallback
+}
+
+function dropoutProbability(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.1
 }
 
 class AgentToolSession {
@@ -188,10 +233,25 @@ class AgentToolSession {
       if (!card) return this.reject(name, `Unknown saved card ${text('card_id')}`)
       return this.call('create_card', { node_id: text('node_id'), label: card.label, pytorch_module: card.code, input_role: card.inputRole ?? 'hidden', output_role: card.outputRole ?? 'hidden', reason: text('reason') })
     }
+    if (name === 'compose_card') {
+      const category = text('category') as CardCategory
+      const need = text('need')
+      if (!cardCategories.includes(category) || !need || need.length > 240) return this.reject(name, 'Auto-compose requires a supported category and a concise capability')
+      const operation = suggestedCardOperation(category, need)
+      const inferredRole = /logit|vocab|classifier|language head/i.test(need) ? 'logits' : 'hidden'
+      const inputRole = args.input_role === null ? category === 'projection' ? 'hidden' : inferredRole : text('input_role')
+      const outputRole = args.output_role === null ? inferredRole : text('output_role')
+      const label = args.label === null ? need.split(/[.!?]/)[0]?.slice(0, 42) || 'Custom atom' : text('label')
+      const pytorchModule = autoComposedModule(operation, positiveInteger(args.in_features, 768), positiveInteger(args.out_features, 768), dropoutProbability(args.probability))
+      const result = this.call('create_card', { node_id: text('node_id'), label, pytorch_module: pytorchModule, input_role: inputRole, output_role: outputRole, reason: text('reason') })
+      if (result.ok === false) return result
+      const trace = this.trace(name, 'accepted', `Auto-composed ${label} with ${operation}`)
+      return { ...trace, operation, label, pytorch_module: pytorchModule, input_role: inputRole, output_role: outputRole }
+    }
     if (name === 'create_card') {
       const nodeId = text('node_id'), label = text('label'), pytorchModule = text('pytorch_module'), inputRole = text('input_role'), outputRole = text('output_role'), reason = text('reason')
       if (!/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(nodeId) || this.node(nodeId)) return this.reject(name, `Invalid or duplicate node id ${nodeId}`)
-      if (!label || label.length > 80 || !safeModule(pytorchModule)) return this.reject(name, 'Custom card is outside the safe nn.Module contract')
+      if (!label || label.length > 80 || !safeModule(pytorchModule) || !tensorRoles.includes(inputRole as typeof tensorRoles[number]) || !tensorRoles.includes(outputRole as typeof tensorRoles[number])) return this.reject(name, 'Custom card is outside the safe nn.Module and typed-port contract')
       if (this.plan.createdBlocks.length >= 12 || this.plan.addedBlocks.length + this.plan.createdBlocks.length >= 24) return this.reject(name, 'Plan custom-card limit reached')
       this.plan.createdBlocks.push({ nodeId, label, pytorchModule, inputRole, outputRole, reason })
       this.nodes.push({ id: nodeId, label, inputs: [{ id: inputRole === 'hidden' ? 'hidden' : 'input', tensor: inputRole }], outputs: [{ id: 'output', tensor: outputRole }] })
@@ -318,6 +378,7 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
           instructions: [
             'You are LABO AI, a bounded neural graph agent. Use tools to inspect, search, and construct the requested plan.',
             'Never merely describe a mutation: call its exact tool. Search cards before creating one or reporting it missing.',
+            'When search_cards finds no suitable card, use compose_card for supported projection, normalization, activation, regularization or utility capabilities. Use raw create_card only when the deterministic composer cannot express the required safe unary nn.Module.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
             'Tensor ranks are part of port contracts. QKV projection emits rank-3 Q/K/V and every SDPA consumes rank-4 Q/K/V, so insert Attention head layout between them.',
             'hiddenSize, queryHeads, keyValueHeads and headDim are graph-wide dimensions. Never edit them on individual cards; use the current graph-wide values consistently.',
