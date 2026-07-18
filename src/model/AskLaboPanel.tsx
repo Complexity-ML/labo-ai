@@ -1,4 +1,4 @@
-import { AlertTriangle, Blocks, Cable, Check, Eye, EyeOff, FolderKanban, KeyRound, Send, Settings2, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Blocks, Cable, Check, Eye, EyeOff, FolderKanban, KeyRound, Lightbulb, MousePointer2, Send, Settings2, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, type AgentGraphMode, type AgentGraphPlan } from '../core/agentic-graph'
 import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
@@ -50,7 +50,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
   const [editingCard, setEditingCard] = useState<ArchitectureNode>()
   const [editorDraft, setEditorDraft] = useState<AgentCardOverride>()
   const [editorError, setEditorError] = useState('')
-  const [settingsSection, setSettingsSection] = useState<'workspaces' | 'agent'>('workspaces')
+  const [settingsSection, setSettingsSection] = useState<'workspaces' | 'agent' | 'tips'>('workspaces')
   const preview = useMemo(() => {
     if (!plan) return undefined
     const base = previewAgentGraphPlan(graph, plan, graphMode)
@@ -251,8 +251,35 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
       <nav aria-label="Settings sections" className="ask-labo-settings-tabs">
         <button aria-pressed={settingsSection === 'workspaces'} onClick={() => setSettingsSection('workspaces')} type="button"><FolderKanban size={13} />Workspaces</button>
         <button aria-pressed={settingsSection === 'agent'} onClick={() => setSettingsSection('agent')} type="button"><Sparkles size={13} />Agent</button>
+        <button aria-pressed={settingsSection === 'tips'} onClick={() => setSettingsSection('tips')} type="button"><Lightbulb size={13} />Tips</button>
       </nav>
-      {settingsSection === 'workspaces' ? <div className="ask-labo-workspace-settings">{workspaceSettings}</div> : <div className="ask-labo-settings-content">
+      {settingsSection === 'workspaces' ? <div className="ask-labo-workspace-settings">{workspaceSettings}</div> : settingsSection === 'tips' ? <div className="ask-labo-tips">
+        <article>
+          <span><MousePointer2 size={14} />Select & delete</span>
+          <strong>Delete several cards or a full graph</strong>
+          <p>Switch to <b>Edit cards</b>, then drag on empty canvas around the cards. Hold Shift, Cmd or Ctrl while clicking to adjust the selection, then choose <b>Delete selection</b>. Connected elastics are removed with the cards.</p>
+        </article>
+        <article>
+          <span><Settings2 size={14} />Edit a card</span>
+          <strong>Open card settings</strong>
+          <p>In <b>Edit cards</b>, click a card to open its settings. You can also right-click a card for the Edit and Delete actions.</p>
+        </article>
+        <article>
+          <span><Cable size={14} />Add & wire</span>
+          <strong>Compose manually</strong>
+          <p>Use <b>Add blocks</b>, click a card to place it automatically or drag it onto the canvas, then drag between compatible typed plugs.</p>
+        </article>
+        <article>
+          <span><FolderKanban size={14} />Save & compare</span>
+          <strong>Keep each architecture reusable</strong>
+          <p>Open <b>Settings → Workspaces</b> to name, save, reset or place complete presets side by side.</p>
+        </article>
+        <article>
+          <span><Sparkles size={14} />Ask LABO</span>
+          <strong>Build with natural language</strong>
+          <p>Describe the architecture in the footer prompt. Configure review, auto-apply and parallel mode under <b>Settings → Agent</b>.</p>
+        </article>
+      </div> : <div className="ask-labo-settings-content">
       <div className="ask-labo-intro">
         <strong>Atomic graph agent</strong>
         <p>LABO inspects the typed card library, composes missing reusable cards when possible, wires the graph and returns an explicit plan.</p>

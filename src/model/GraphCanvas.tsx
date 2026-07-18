@@ -6,7 +6,7 @@ import { modelAtomRegistry } from '../core/model-atoms'
 import { useElasticCables, type CablePath, type PortDirection } from './useElasticCables'
 import { useGraphViewport } from './useGraphViewport'
 import { screenToWorld } from './viewport'
-import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH, resolveCardDrop } from './card-layout'
+import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH } from './card-layout'
 import { orderedNodeInputPorts } from './port-layout'
 
 function describeNode(node: ArchitectureNode): string {
@@ -93,9 +93,9 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   const focusNodesRef = useRef(camera.focusNodes)
   focusNodesRef.current = camera.focusNodes
   const previousGraphRef = useRef<{ id: string; nodeIds: Set<string>; positions: Map<string, string> } | undefined>(undefined)
-  const suppressNextPositionFocusRef = useRef(false)
-  const nodeDrag = useRef<{ pointerId: number; nodeId: string; offsetX: number; offsetY: number; original: { x: number; y: number }; position: { x: number; y: number } } | null>(null)
-  const groupDrag = useRef<{ pointerId: number; groupId: string; offsetX: number; offsetY: number; original: { x: number; y: number }; position: { x: number; y: number } } | null>(null)
+  const manualNodePositionsRef = useRef(new Map<string, string>())
+  const nodeDrag = useRef<{ pointerId: number; nodeId: string; offsetX: number; offsetY: number; position: { x: number; y: number } } | null>(null)
+  const groupDrag = useRef<{ pointerId: number; groupId: string; offsetX: number; offsetY: number; position: { x: number; y: number } } | null>(null)
   const selectionDrag = useRef<{ pointerId: number; startX: number; startY: number; base: Set<string> } | null>(null)
   const [dragPreview, setDragPreview] = useState<{ nodeId: string; position: { x: number; y: number } } | null>(null)
   const [groupPreview, setGroupPreview] = useState<{ groupId: string; position: { x: number; y: number } } | null>(null)
@@ -116,11 +116,12 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       const added = new Set([...nodeIds].filter((nodeId) => !previous.nodeIds.has(nodeId)))
       if (added.size > 0) focusNodesRef.current(added)
       else {
-        const layoutChanged = graph.nodes.some((node) => previous.positions.get(node.id) !== positions.get(node.id))
-        if (layoutChanged && !suppressNextPositionFocusRef.current) focusNodesRef.current(nodeIds)
+        const movedNodeIds = graph.nodes.filter((node) => previous.positions.get(node.id) !== positions.get(node.id)).map((node) => node.id)
+        const manualMoveOnly = movedNodeIds.length > 0 && movedNodeIds.every((nodeId) => manualNodePositionsRef.current.get(nodeId) === positions.get(nodeId))
+        if (movedNodeIds.length > 0 && !manualMoveOnly) focusNodesRef.current(nodeIds)
+        for (const nodeId of movedNodeIds) manualNodePositionsRef.current.delete(nodeId)
       }
     }
-    suppressNextPositionFocusRef.current = false
     previousGraphRef.current = { id: graph.id, nodeIds, positions }
   }, [graph.edges, graph.id, graph.nodes])
 
@@ -237,7 +238,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     const bounds = canvas.getBoundingClientRect()
     const pointer = screenToWorld({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, camera.viewport)
     const position = { ...node.position }
-    nodeDrag.current = { pointerId: event.pointerId, nodeId: node.id, offsetX: pointer.x - position.x, offsetY: pointer.y - position.y, original: position, position }
+    nodeDrag.current = { pointerId: event.pointerId, nodeId: node.id, offsetX: pointer.x - position.x, offsetY: pointer.y - position.y, position }
     setDragPreview({ nodeId: node.id, position })
     setSelectedNodeId(node.id)
     canvas.setPointerCapture?.(event.pointerId)
@@ -268,9 +269,9 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     event.stopPropagation()
     const bounds = canvas.getBoundingClientRect()
     const pointer = screenToWorld({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, camera.viewport)
-    const original = { ...position }
-    groupDrag.current = { pointerId: event.pointerId, groupId, offsetX: pointer.x - original.x, offsetY: pointer.y - original.y, original, position: original }
-    setGroupPreview({ groupId, position: original })
+    const initial = { ...position }
+    groupDrag.current = { pointerId: event.pointerId, groupId, offsetX: pointer.x - initial.x, offsetY: pointer.y - initial.y, position: initial }
+    setGroupPreview({ groupId, position: initial })
     setSelectedNodeId(groupId)
     canvas.setPointerCapture?.(event.pointerId)
   }
@@ -316,41 +317,15 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     const movingGroup = groupDrag.current
     if (movingGroup?.pointerId === event.pointerId) {
       groupDrag.current = null
-      suppressNextPositionFocusRef.current = true
-      setGraph((current) => {
-        const group = current.groups?.find((candidate) => candidate.id === movingGroup.groupId)
-        const width = group?.expanded ? 390 : 340
-        const height = group?.expanded ? 130 : 92
-        const center = resolveCardDrop({
-          id: movingGroup.groupId,
-          original: { x: movingGroup.original.x + width / 2, y: movingGroup.original.y + height / 2 },
-          desired: { x: movingGroup.position.x + width / 2, y: movingGroup.position.y + height / 2 },
-          width,
-          height,
-        }, current.nodes
-          .filter((node) => !qkvNodeIds.has(node.id))
-          .map((node) => ({ id: node.id, position: node.position, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT })))
-        return moveGroup(current, movingGroup.groupId, { x: center.x - width / 2, y: center.y - height / 2 })
-      })
+      setGraph((current) => moveGroup(current, movingGroup.groupId, movingGroup.position))
       setGroupPreview(null)
       event.currentTarget.releasePointerCapture?.(event.pointerId)
       return
     }
     if (!drag || drag.pointerId !== event.pointerId) return camera.onPointerUp(event)
     nodeDrag.current = null
-    suppressNextPositionFocusRef.current = true
-    setGraph((current) => {
-      const position = resolveCardDrop({
-        id: drag.nodeId,
-        original: drag.original,
-        desired: drag.position,
-        width: MODEL_CARD_WIDTH,
-        height: MODEL_CARD_HEIGHT,
-      }, current.nodes
-        .filter((node) => node.id !== drag.nodeId && !qkvNodeIds.has(node.id))
-        .map((node) => ({ id: node.id, position: node.position, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT })))
-      return moveNode(current, drag.nodeId, position)
-    })
+    manualNodePositionsRef.current.set(drag.nodeId, `${drag.position.x}:${drag.position.y}`)
+    setGraph((current) => moveNode(current, drag.nodeId, drag.position))
     setDragPreview(null)
     event.currentTarget.releasePointerCapture?.(event.pointerId)
   }
@@ -410,7 +385,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   }
 
   return <div className="canvas-panel">
-    <div className="panel-tab"><Blocks size={13} /> Architecture.graph <span className="cable-help"><Cable size={11} />{cables.message}</span></div>
+    <div className="panel-tab"><Blocks size={13} /> Architecture.graph <span className="cable-help">{editMode ? <><MousePointer2 size={11} />Drag empty space to select · Shift adds</> : <><Cable size={11} />{cables.message}</>}</span></div>
     <div
       aria-label="Architecture graph canvas"
       className={`architecture-canvas ${editMode ? 'edit-mode' : ''} ${highlightedNodeIds?.size ? 'has-architecture-target' : ''} ${camera.isPanning ? 'is-panning' : ''} ${acceptsLibraryDrop ? 'accepts-library-drop' : ''}`}

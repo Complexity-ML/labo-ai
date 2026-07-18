@@ -113,6 +113,10 @@
     var(--labo-bg-deep);
 }
 
+.architecture-canvas.edit-mode { cursor: crosshair; }
+.architecture-canvas.edit-mode .architecture-node,
+.architecture-canvas.edit-mode .qkv-composite { cursor: pointer; }
+
 .canvas-grid {
   opacity: .42;
   background-image:

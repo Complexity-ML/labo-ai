@@ -97,6 +97,16 @@ describe('LABO AI workspace', () => {
     delete window.labo
   })
 
+  it('documents edit-mode lasso selection and full-graph deletion in Settings tips', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Tips' }))
+
+    const tip = screen.getByText('Delete several cards or a full graph').closest('article')
+    expect(tip).toHaveTextContent('Switch to Edit cards, then drag on empty canvas around the cards')
+    expect(tip).toHaveTextContent('Connected elastics are removed with the cards')
+  })
+
   it('never lets a late web restore delete a card added from search', async () => {
     let resolveWorkspace: ((value: { authenticated: boolean; workspace: unknown; customCards: unknown[] }) => void) | undefined
     window.labo = {
@@ -986,6 +996,25 @@ describe('LABO AI workspace', () => {
     expect(card).not.toHaveClass('dragging')
     expect(Number.parseFloat(card.style.left)).toBe(initialLeft + 200)
     expect(Number.parseFloat(card.style.top)).toBe(initialTop + 95)
+  })
+
+  it('keeps the viewport and exact card position under manual pointer placement', () => {
+    render(<App />)
+    const canvas = screen.getByLabelText('Architecture graph canvas')
+    const world = screen.getByTestId('graph-world')
+    const handle = screen.getByRole('button', { name: 'Select Attention RMSNorm' })
+    const card = handle.closest('.architecture-node') as HTMLElement
+    const initialLeft = Number.parseFloat(card.style.left)
+    const initialTop = Number.parseFloat(card.style.top)
+    const viewportBefore = world.style.transform
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 11, clientX: 120, clientY: 180 })
+    fireEvent.pointerMove(canvas, { pointerId: 11, clientX: 120, clientY: 270 })
+    fireEvent.pointerUp(canvas, { pointerId: 11, clientX: 120, clientY: 270 })
+
+    expect(Number.parseFloat(card.style.left)).toBe(initialLeft)
+    expect(Number.parseFloat(card.style.top)).toBe(initialTop + 90)
+    expect(world.style.transform).toBe(viewportBefore)
   })
 
   it('keeps elastic endpoints stable when selecting a fixed-size card', () => {

@@ -223,6 +223,42 @@
   .ask-labo-scope { border-right: 0; }
 }
 
+.ask-labo-tips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+
+  article {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--labo-line-soft);
+    border-radius: 9px;
+    background: rgb(6 10 11 / 38%);
+  }
+
+  article:first-child {
+    grid-column: 1 / -1;
+    border-color: rgb(112 224 173 / 24%);
+    background: rgb(112 224 173 / 5%);
+  }
+
+  span {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 9px;
+    color: #70e0ad;
+    font: 8px 'JetBrains Mono', monospace;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+  }
+
+  strong { display: block; color: #e4ece8; font-size: 12px; }
+  p { margin: 6px 0 0; color: #899591; font-size: 10px; line-height: 1.55; }
+  b { color: #c9d6d1; font-weight: 600; }
+}
+
 .ask-labo-intro {
   padding: 13px 14px 10px;
   background: transparent;
@@ -319,4 +355,6 @@
   .ask-labo-result > section { border-right: 0; }
   .ask-labo-workspace-settings { grid-template-columns: 1fr; }
   .ask-labo-workspace-settings > .workspace-management-column { border-right: 0; border-bottom: 1px solid var(--labo-line-soft); }
+  .ask-labo-tips { grid-template-columns: 1fr; }
+  .ask-labo-tips article:first-child { grid-column: auto; }
 }
