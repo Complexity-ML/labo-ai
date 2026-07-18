@@ -202,6 +202,16 @@ describe('agentic graph wiring', () => {
     expect(preview.graph.nodes.some((node) => node.id === 'shared')).toBe(true)
   })
 
+  it('rejects per-card edits of graph-wide model dimensions', () => {
+    const preview = previewAgentGraphPlan(tokenMoePreset, {
+      ...plan([]),
+      updatedBlocks: [{ nodeId: 'embedding', label: 'Embedding 256', settings: { hiddenSize: 256 }, pytorchModule: null, reason: 'Shrink one card' }],
+    })
+
+    expect(preview.rejectedMutations).toEqual([expect.objectContaining({ reason: expect.stringContaining('graph-wide dimensions') })])
+    expect(preview.graph.nodes.find((node) => node.id === 'embedding')?.attributes?.hiddenSize).not.toBe(256)
+  })
+
   it('repairs false missing Token IDs and logits-decoder claims with native cards', () => {
     const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
     const repaired = repairAgentGraphPlan(graph, {

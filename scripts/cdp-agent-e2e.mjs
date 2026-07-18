@@ -2,8 +2,9 @@ const endpoint = process.argv[2] || 'http://127.0.0.1:9334/json/list'
 const parallel = process.argv.slice(3).includes('--parallel')
 const demo = process.argv.slice(3).includes('--demo')
 const prepare = process.argv.slice(3).includes('--prepare')
-const prompt = process.argv.slice(3).filter((argument) => !['--parallel', '--demo', '--prepare'].includes(argument)).join(' ').trim()
-  || (parallel ? 'Add a small executable GPT-like language model as a separate parallel architecture.' : 'Build a small executable DeepSeek-like language model from the Blank Starter.')
+const playPrompt = process.argv.slice(3).find((argument) => argument.startsWith('--play-prompt='))?.slice('--play-prompt='.length) || 'What is a neural network?'
+const prompt = process.argv.slice(3).filter((argument) => !['--parallel', '--demo', '--prepare'].includes(argument) && !argument.startsWith('--play-prompt=')).join(' ').trim()
+  || (parallel ? 'Add a small executable GPT-like language model as a separate parallel architecture. Keep the existing graph-wide dimensions.' : 'Build a small executable DeepSeek-like language model from the Blank Starter. Keep the existing graph-wide dimensions and do not edit card settings.')
 
 const pages = await fetch(endpoint).then((response) => response.json())
 const page = pages.find((candidate) => candidate.type === 'page' && candidate.title === 'LABO AI')
@@ -65,6 +66,16 @@ if (prepare) {
   await waitFor(`document.querySelector('.reset-model-preset-button')?.textContent.includes('Confirm restore') === true`)
   await evaluate(`document.querySelector('.reset-model-preset-button')?.click()`)
   await waitFor(`document.querySelectorAll('.architecture-node').length === 0`)
+  await evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Ask LABO'))?.click()`)
+  await waitFor(`document.querySelector('#ask-labo-request') !== null`)
+  await evaluate(`(() => {
+    const textarea = document.querySelector('#ask-labo-request')
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    setter.call(textarea, '')
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    document.querySelector('button[aria-label="Close Ask LABO"]')?.click()
+  })()`)
+  await waitFor(`document.querySelector('.ask-labo-panel') === null`)
   await evaluate(`(() => {
     const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
     if (panel('Library')?.getAttribute('aria-pressed') !== 'true') panel('Library')?.click()
@@ -81,6 +92,13 @@ if (prepare) {
   socket.close()
   process.exit(0)
 }
+await evaluate(`(() => {
+  const input = document.querySelector('input[aria-label="Model generation prompt"]')
+  if (!input) return
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+  setter.call(input, ${JSON.stringify(playPrompt)})
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+})()`)
 await evaluate(`(() => {
   const exactButton = (text) => [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === text)
   exactButton(${JSON.stringify(parallel ? 'TR 300M' : 'Blank starter')})?.click()
@@ -156,6 +174,12 @@ let player = null
   }))()`)
 
   if (graph.status?.includes('Neural IR valid')) {
+    if (demo) {
+      await evaluate(`document.querySelector('.model-prompt-menu')?.setAttribute('open', '')`)
+      await wait(3000)
+      await evaluate(`document.querySelector('.model-prompt-menu')?.removeAttribute('open')`)
+      await wait(1000)
+    }
     await evaluate(`document.querySelector('button[aria-label="Play model atoms"]').click()`)
     await waitFor(`['completed', 'failed'].includes(document.querySelector('.player-status')?.textContent.trim())`, 90_000)
     player = await evaluate(`(() => ({
@@ -192,5 +216,5 @@ let player = null
 }
 
 const existingPreserved = graph ? beforeCards.every((card, index) => JSON.stringify(card) === JSON.stringify(graph.cards[index])) : null
-process.stdout.write(`${JSON.stringify({ prompt, parallel, existingPreserved, preview, graph, player }, null, 2)}\n`)
+process.stdout.write(`${JSON.stringify({ prompt, playPrompt, parallel, existingPreserved, preview, graph, player }, null, 2)}\n`)
 socket.close()

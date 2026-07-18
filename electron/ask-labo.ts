@@ -218,6 +218,9 @@ class AgentToolSession {
         try {
           const parsed = record(JSON.parse(text('settings_json')))
           if (!Object.values(parsed).every((value) => ['number', 'string', 'boolean'].includes(typeof value))) return this.reject(name, 'Card settings must contain only primitive values')
+          const graphWideSettings = ['hiddenSize', 'queryHeads', 'keyValueHeads', 'headDim']
+          const attemptedGraphWideSettings = graphWideSettings.filter((setting) => setting in parsed)
+          if (attemptedGraphWideSettings.length > 0) return this.reject(name, `${attemptedGraphWideSettings.join(', ')} are graph-wide dimensions and cannot be edited on one card`)
           settings = parsed as Record<string, number | string | boolean>
         } catch { return this.reject(name, 'settings_json is not valid JSON') }
       }
@@ -315,6 +318,7 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
             'Never merely describe a mutation: call its exact tool. Search cards before creating one or reporting it missing.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
             'Tensor ranks are part of port contracts. QKV projection emits rank-3 Q/K/V and every SDPA consumes rank-4 Q/K/V, so insert Attention head layout between them.',
+            'hiddenSize, queryHeads, keyValueHeads and headDim are graph-wide dimensions. Never edit them on individual cards; use the current graph-wide values consistently.',
             'A chatbot or QA assistant request normally means a compact GPT-like autoregressive graph. Build that minimal graph unless the user explicitly asks for a rule-based or non-neural dialogue engine.',
             payload.context.operationMode === 'parallel'
               ? 'Operation mode is parallel architecture. Treat every existing node and connection as read-only; the new architecture must have its own inputs.'

@@ -485,6 +485,12 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       rejectedMutations.push({ nodeId: update.nodeId, reason: 'PyTorch edit is invalid for this card' })
       continue
     }
+    const graphWideSettings = ['hiddenSize', 'queryHeads', 'keyValueHeads', 'headDim']
+    const attemptedGraphWideSettings = graphWideSettings.filter((setting) => setting in (update.settings ?? {}))
+    if (attemptedGraphWideSettings.length > 0) {
+      rejectedMutations.push({ nodeId: update.nodeId, reason: `${attemptedGraphWideSettings.join(', ')} are graph-wide dimensions and cannot be edited on one card` })
+      continue
+    }
     nextGraph = {
       ...nextGraph,
       nodes: nextGraph.nodes.map((candidate) => candidate.id === update.nodeId ? {
