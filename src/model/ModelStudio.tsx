@@ -39,6 +39,7 @@ import { CustomCardCreator, type CustomCardDestination, type CustomCardCreateRes
 import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
+import { previewModelAtom } from '../core/browser-atomic-preview'
 
 type ViewMode = 'blocks' | 'pytorch' | 'split'
 type InteractionMode = 'add' | 'edit'
@@ -81,6 +82,8 @@ function loadCustomCards(): CustomPyTorchCard[] {
 
 const graphInputDefinitions: Array<{ role: TensorRole; label: string }> = [
   { role: 'token-ids', label: 'Token IDs' },
+  { role: 'image', label: 'Image Tensor' },
+  { role: 'video', label: 'Video Tensor' },
   { role: 'hidden', label: 'Hidden State' },
   { role: 'labels', label: 'Training Labels' },
 ]
@@ -146,7 +149,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const blankGraph = graph.nodes.length === 0
   const pytorchMappingComplete = validation.valid && code.includes('class GeneratedModel(nn.Module):')
   const pytorchDraftAvailable = code.includes('class GeneratedModel(nn.Module):')
-  const runtimeAvailable = typeof window.labo?.runAtomic === 'function' && !blankGraph
+  const nativePyTorchRuntime = typeof window.labo?.runAtomic === 'function'
+  const runtimeAvailable = !blankGraph
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId)
   const selectedGroup = graph.groups?.find((group) => group.id === selectedNodeId)
   const editingNode = editingNodeId ? graph.nodes.find((node) => node.id === editingNodeId) : undefined
@@ -290,7 +294,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     const executionPlan = validation.valid ? executionLayers(graph) : graph.nodes.map((node) => [node.id])
     const player = new AtomicPlayer(executionPlan, async (atomId) => {
       const runAtomic = window.labo?.runAtomic
-      if (!runAtomic) throw new Error('Atomic PyTorch execution requires the LABO AI desktop app')
+      if (!runAtomic) return previewModelAtom(graph, atomId)
       const runArchitectures = async (tokenIds?: number[]) => {
         const traces = await Promise.all(graphArchitectures.map((architecture) => runAtomic({ kind: 'model', graph: architecture.graph, ...(tokenIds ? { tokenIds } : {}) })))
         const failed = traces.find((trace) => trace.status === 'failed')
@@ -349,7 +353,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const addModelAtom = (definition: ModelAtomDefinition, desiredPosition?: { x: number; y: number }, variant?: { label: string; attributes: Record<string, number | string | boolean> }) => {
     const sequence = graph.nodes.filter((node) => node.id.startsWith(`${definition.id}-`)).length + 1
     const outputTensor = definition.outputs[0]?.tensor
-    const role: TensorRole = outputTensor === 'query' || outputTensor === 'key' || outputTensor === 'value'
+    const role: TensorRole = outputTensor === 'query' || outputTensor === 'key' || outputTensor === 'value' || outputTensor === 'image' || outputTensor === 'video'
       ? outputTensor
       : outputTensor === 'logits' || outputTensor === 'scalar' ? 'output' : 'hidden'
     const id = `${definition.id}-${sequence}`
@@ -382,7 +386,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const addGraphInput = (role: TensorRole, desiredPosition?: { x: number; y: number }) => {
     const definition = graphInputDefinitions.find((candidate) => candidate.role === role)
     if (!definition) return
-    const baseId = role === 'token-ids' ? 'token-ids' : role === 'labels' ? 'labels' : 'hidden-state'
+    const baseId = role === 'token-ids' ? 'token-ids' : role === 'labels' ? 'labels' : role === 'image' ? 'image-tensor' : role === 'video' ? 'video-tensor' : 'hidden-state'
     let sequence = 1
     let id = baseId
     while (graph.nodes.some((node) => node.id === id)) id = `${baseId}-${++sequence}`
@@ -756,11 +760,11 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           <span>{stats.nodeCount} atoms</span>
           <div className="atomic-player-controls" aria-label="Model atomic player">
             <button aria-label="Auto-arrange graph" disabled={blankGraph} onClick={() => setGraph((current) => layoutArchitectureGraph(current))} title="Arrange execution levels and parallel branches"><span aria-hidden="true">XY</span></button>
-            <button aria-label="Play model atoms" disabled={!runtimeAvailable} onClick={() => void modelPlayerRef.current?.play()} title={runtimeAvailable ? undefined : 'Open LABO AI in Electron to execute PyTorch'}><Play size={13} /></button>
+            <button aria-label="Play model atoms" disabled={!runtimeAvailable} onClick={() => void modelPlayerRef.current?.play()} title={blankGraph ? 'Add a card before running the graph' : nativePyTorchRuntime ? 'Run local PyTorch' : 'Preview typed graph execution'}><Play size={13} /></button>
             <button aria-label="Pause model atoms" disabled={!runtimeAvailable} onClick={() => modelPlayerRef.current?.pause()}><Pause size={13} /></button>
-            <button aria-label="Step one model atom" disabled={!runtimeAvailable} onClick={() => void modelPlayerRef.current?.step()} title={runtimeAvailable ? undefined : 'Open LABO AI in Electron to execute PyTorch'}><StepForward size={13} /></button>
+            <button aria-label="Step one model atom" disabled={!runtimeAvailable} onClick={() => void modelPlayerRef.current?.step()} title={blankGraph ? 'Add a card before stepping through the graph' : nativePyTorchRuntime ? 'Step through local PyTorch' : 'Step through the typed graph preview'}><StepForward size={13} /></button>
             <button aria-label="Stop model atoms" disabled={!runtimeAvailable} onClick={() => modelPlayerRef.current?.stop()}><Square size={12} /></button>
-            <span className={`player-status status-${modelPlayerSnapshot.status}`}>{runtimeAvailable ? modelPlayerSnapshot.status : 'desktop only'}</span>
+            <span className={`player-status status-${modelPlayerSnapshot.status}`} title={nativePyTorchRuntime ? 'Local PyTorch runtime' : 'Browser graph preview'}>{blankGraph ? 'waiting' : nativePyTorchRuntime ? modelPlayerSnapshot.status : `preview · ${modelPlayerSnapshot.status}`}</span>
           </div>
           <button aria-pressed={libraryOpen} className="panel-visibility-button" onClick={() => setLibraryOpen((current) => !current)}><PanelLeft size={13} />Library</button>
           <button aria-pressed={inspectorOpen} className="panel-visibility-button" onClick={() => setInspectorOpen((current) => !current)}><Cpu size={13} />Inspector</button>
@@ -887,13 +891,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
             {!blankGraph && !validation.valid && <p className="graph-incomplete-hint" title={validation.errors.join('\n')}>Graph incomplete · {validation.errors.length} wiring issue{validation.errors.length === 1 ? '' : 's'}. Connect the open ports before running.</p>}
           </section>
           <section className="equivalence-card">
-            <div className="equivalence-title"><Play size={14} /> Atomic PyTorch execution</div>
+            <div className="equivalence-title"><Play size={14} /> {nativePyTorchRuntime ? 'Atomic PyTorch execution' : 'Atomic graph preview'}</div>
             <div className="check-row"><span>Player</span><b>{modelPlayerSnapshot.status}</b></div>
             <div className="check-row"><span>Current level</span><b>{modelPlayerSnapshot.currentAtomIds?.join(' + ') ?? '—'}</b></div>
             {selectedNode && <div className="check-row"><span>Selected result</span><b>{modelPlayerSnapshot.results.find((result) => result.atomId === selectedNode.id)?.status ?? 'pending'}</b></div>}
             {modelPlayerSnapshot.error && <p className="execution-error">{modelPlayerSnapshot.error}</p>}
             <div aria-label="Model generation output" className="model-runtime-output">
-              <div><span>Output</span><b>{modelOutput ? modelOutput.kind : blankGraph ? 'waiting for blocks' : 'pending'}</b></div>
+              <div><span>Output</span><b>{modelOutput ? modelOutput.kind : blankGraph ? 'waiting for blocks' : !nativePyTorchRuntime && modelPlayerSnapshot.status === 'completed' ? 'graph trace' : 'pending'}</b></div>
               {modelOutput && <div><span>Tensor</span><b>[{modelOutput.tensorShape.join(', ')}]</b></div>}
               {modelOutput?.predictedTokenId !== undefined && <div><span>Predicted Token ID</span><b>{modelOutput.predictedTokenId}</b></div>}
               {modelOutput?.topTokenIds && <div><span>Top 5</span><code>{modelOutput.topTokenIds.map((tokenId, index) => `${tokenId} (${(((modelOutput.topProbabilities?.[index]) ?? 0) * 100).toFixed(2)}%)`).join(' · ')}</code></div>}

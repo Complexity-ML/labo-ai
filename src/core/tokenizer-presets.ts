@@ -17,3 +17,46 @@ export const researchBpePreset = createTokenizerPipeline({
     { id: 'model-decoder', kind: 'token-ids', source: 'model', target: 'decode' },
   ],
 })
+
+export const o200kBasePreset = createTokenizerPipeline({
+  id: 'o200k-base',
+  name: 'o200k_base · OpenAI tiktoken',
+  steps: [
+    { id: 'o200k', atom: 'tiktoken-encoding', settings: { encoding: 'o200k_base', vocabSize: 200019 } },
+  ],
+  links: [],
+})
+
+export const imageVqPreset = createTokenizerPipeline({
+  id: 'image-vq',
+  name: 'Image VQ · tokenizer + embedding',
+  steps: [
+    { id: 'image-normalize', atom: 'image-normalize', settings: { mean: 0.5, standardDeviation: 0.5 } },
+    { id: 'image-encode', atom: 'image-vq-encode', settings: { inputChannels: 3, hiddenSize: 256, patchSize: 16, codebookSize: 1024 } },
+    { id: 'image-embedding', atom: 'image-codebook-embedding', settings: { codebookSize: 1024, hiddenSize: 256 } },
+    { id: 'image-decode', atom: 'image-vq-decode', settings: { hiddenSize: 256, outputChannels: 3, patchSize: 16 } },
+  ],
+  links: [
+    { id: 'image-normalized', kind: 'image', source: 'image-normalize', target: 'image-encode' },
+    { id: 'image-token-ids', kind: 'token-ids', source: 'image-encode', target: 'image-embedding' },
+    { id: 'image-latents', kind: 'hidden', source: 'image-embedding', target: 'image-decode' },
+  ],
+})
+
+export const videoVqPreset = createTokenizerPipeline({
+  id: 'video-vq',
+  name: 'Video VQ · tokenizer + embedding',
+  steps: [
+    { id: 'video-normalize', atom: 'video-normalize', settings: { mean: 0.5, standardDeviation: 0.5 } },
+    { id: 'video-encode', atom: 'video-vq-encode', settings: { inputChannels: 3, hiddenSize: 256, tubeletSize: 2, patchSize: 16, codebookSize: 1024 } },
+    { id: 'video-embedding', atom: 'video-codebook-embedding', settings: { codebookSize: 1024, hiddenSize: 256 } },
+    { id: 'video-decode', atom: 'video-vq-decode', settings: { hiddenSize: 256, outputChannels: 3, tubeletSize: 2, patchSize: 16 } },
+  ],
+  links: [
+    { id: 'video-normalized', kind: 'video', source: 'video-normalize', target: 'video-encode' },
+    { id: 'video-token-ids', kind: 'token-ids', source: 'video-encode', target: 'video-embedding' },
+    { id: 'video-latents', kind: 'hidden', source: 'video-embedding', target: 'video-decode' },
+  ],
+})
+
+export const builtInTokenizerPresets = [researchBpePreset, o200kBasePreset, imageVqPreset, videoVqPreset]

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addTokenizerStep, compileTokenizer, createTokenizerPipeline, removeTokenizerStep, tokenizerAtomDefinitions, updateTokenizerStepSettings, validateTokenizerPipeline } from './tokenizer-ir'
+import { o200kBasePreset } from './tokenizer-presets'
 
 const pipeline = createTokenizerPipeline({
   id: 'research-bpe',
@@ -20,29 +21,23 @@ const pipeline = createTokenizerPipeline({
 })
 
 describe('atomic Tokenizer IR', () => {
-  it('compiles one block composition to Python and Rust targets', () => {
+  it('compiles one block composition to Python', () => {
     expect(validateTokenizerPipeline(pipeline)).toEqual({ valid: true, errors: [] })
 
-    const python = compileTokenizer(pipeline, 'python')
-    const rust = compileTokenizer(pipeline, 'rust')
+    const python = compileTokenizer(pipeline)
 
     expect(python).toContain('normalizers.NFKC()')
     expect(python).toContain('pre_tokenizers.ByteLevel(add_prefix_space=False)')
     expect(python).toContain('vocab_size=32768')
-    expect(rust).toContain('unicode_normalizer(NFKC)')
-    expect(rust).toContain('vocab_size(32768)')
   })
 
-  it('recompiles both backends from tokenizer mutations', () => {
+  it('recompiles Python from tokenizer mutations', () => {
     const resized = updateTokenizerStepSettings(pipeline, 'train', { vocabSize: 4096 })
     const withoutNormalization = removeTokenizerStep(resized, 'normalize')
-    const python = compileTokenizer(withoutNormalization, 'python')
-    const rust = compileTokenizer(withoutNormalization, 'rust')
+    const python = compileTokenizer(withoutNormalization)
 
     expect(python).toContain('vocab_size=4096')
-    expect(rust).toContain('vocab_size(4096)')
     expect(python).not.toContain('tokenizer.normalizer')
-    expect(rust).not.toContain('with_normalizer')
     expect(withoutNormalization.links.every((link) => link.source !== 'normalize' && link.target !== 'normalize')).toBe(true)
     expect(pipeline.steps.find((step) => step.id === 'train')?.settings.vocabSize).toBe(32768)
   })
@@ -52,11 +47,29 @@ describe('atomic Tokenizer IR', () => {
     for (const step of pipeline.steps) empty = removeTokenizerStep(empty, step.id)
 
     expect(empty.steps).toEqual([])
-    expect(Object.keys(tokenizerAtomDefinitions)).toHaveLength(5)
+    expect(Object.keys(tokenizerAtomDefinitions)).toHaveLength(15)
     const rebuilt = addTokenizerStep(empty, 'bpe-model')
     expect(rebuilt.steps).toEqual([
       { id: 'bpe-model-1', atom: 'bpe-model', settings: { unkToken: '<unk>' } },
     ])
     expect(empty.steps).toEqual([])
+  })
+
+  it('compiles the real o200k_base preset without pretending to retrain its vocabulary', () => {
+    const python = compileTokenizer(o200kBasePreset)
+
+    expect(validateTokenizerPipeline(o200kBasePreset)).toEqual({ valid: true, errors: [] })
+    expect(o200kBasePreset.steps[0].settings.vocabSize).toBe(200019)
+    expect(python).toContain('tiktoken.get_encoding("o200k_base")')
+    expect(python).not.toContain('tokenizer.train')
+  })
+
+  it('lowers a user-created tokenizer card to Python', () => {
+    const custom = createTokenizerPipeline({
+      ...pipeline,
+      id: 'custom-tokenizer-card',
+      steps: [...pipeline.steps, { id: 'lowercase', atom: 'custom-tokenizer', settings: { label: 'Lowercase', category: 'Normalization', pythonCode: 'text = text.lower()' } }],
+    })
+    expect(compileTokenizer(custom)).toContain('text = text.lower()')
   })
 })

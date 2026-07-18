@@ -24,7 +24,6 @@ export function TrainingStudio() {
         <button aria-pressed={view === 'pytorch'} onClick={() => setView('pytorch')}><Braces size={14} />PyTorch</button>
         <button aria-pressed={view === 'split'} onClick={() => setView('split')}><SplitSquareHorizontal size={14} />Split</button>
       </div>
-      <strong className="workspace-name">Optimizer pipeline</strong>
       <div className="toolbar-meta"><span><span className="status-dot" /> Training IR synchronized</span></div>
     </section>
 

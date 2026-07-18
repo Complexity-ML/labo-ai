@@ -118,6 +118,14 @@ const agentVirtualAtomics: Record<string, AgentVirtualAtomic> = {
     atomId: 'hidden-state-input', label: 'Hidden State input', inputs: [], outputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Hidden State', role: 'hidden', position }),
   },
+  'image-tensor-input': {
+    atomId: 'image-tensor-input', label: 'Image Tensor input', inputs: [], outputs: [{ id: 'image', tensor: 'image', rank: 4 }],
+    createNode: (id, position) => ({ id, kind: 'input', label: 'Image Tensor', role: 'image', position }),
+  },
+  'video-tensor-input': {
+    atomId: 'video-tensor-input', label: 'Video Tensor input', inputs: [], outputs: [{ id: 'video', tensor: 'video', rank: 5 }],
+    createNode: (id, position) => ({ id, kind: 'input', label: 'Video Tensor', role: 'video', position }),
+  },
   'training-labels-input': {
     atomId: 'training-labels-input', label: 'Training Labels input', inputs: [], outputs: [{ id: 'labels', tensor: 'labels', rank: 2 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Training Labels', role: 'labels', position }),
@@ -150,7 +158,7 @@ function snapshotNode(graph: ArchitectureGraph, node: ArchitectureNode): AgentNo
       ? definition.inputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
       : node.kind === 'custom-pytorch' ? [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden' }] : uniquePorts(edgeInputs),
     outputs: node.kind === 'input'
-      ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : 'hidden', tensor: node.role, rank: node.role === 'token-ids' || node.role === 'labels' ? 2 : 3 }]
+      ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : node.role, tensor: node.role, rank: node.role === 'token-ids' || node.role === 'labels' ? 2 : node.role === 'image' ? 4 : node.role === 'video' ? 5 : 3 }]
       : definition
       ? definition.outputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
       : node.kind === 'custom-pytorch' ? [{ id: 'output', tensor: node.role }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
@@ -213,7 +221,7 @@ export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGra
 
 function roleForDefinition(definition: ModelAtomDefinition): TensorRole {
   const output = definition.outputs[0]?.tensor
-  if (output === 'query' || output === 'key' || output === 'value' || output === 'token-ids') return output
+  if (output === 'query' || output === 'key' || output === 'value' || output === 'token-ids' || output === 'image' || output === 'video') return output
   if (output === 'logits' || output === 'scalar') return 'output'
   return 'hidden'
 }
@@ -251,20 +259,20 @@ export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: Agent
   for (const block of [...plan.addedBlocks]) {
     const definition = modelAtomRegistry[block.atomId]
     for (const input of definition?.inputs ?? []) {
-      if (!['token-ids', 'labels'].includes(input.tensor) || hasIncoming(block.nodeId, input.id)) continue
-      const virtualAtomId = input.tensor === 'token-ids' ? 'token-ids-input' : 'training-labels-input'
+      if (!['token-ids', 'labels', 'image', 'video'].includes(input.tensor) || hasIncoming(block.nodeId, input.id)) continue
+      const virtualAtomId = input.tensor === 'token-ids' ? 'token-ids-input' : input.tensor === 'labels' ? 'training-labels-input' : input.tensor === 'image' ? 'image-tensor-input' : 'video-tensor-input'
       let source = plan.addedBlocks.find((candidate) => candidate.atomId === virtualAtomId)
       if (!source && capacity()) {
         source = {
           atomId: virtualAtomId,
-          nodeId: uniqueAgentNodeId(graph, plan, input.tensor === 'token-ids' ? 'agent-token-ids' : 'agent-training-labels'),
+          nodeId: uniqueAgentNodeId(graph, plan, input.tensor === 'token-ids' ? 'agent-token-ids' : input.tensor === 'labels' ? 'agent-training-labels' : input.tensor === 'image' ? 'agent-image' : 'agent-video'),
           reason: `LABO repaired the missing ${input.tensor} graph source locally.`,
         }
         plan.addedBlocks.push(source)
       }
       if (source) plan.connections.push({
         sourceId: source.nodeId,
-        sourcePortId: input.tensor === 'token-ids' ? 'tokenIds' : 'labels',
+        sourcePortId: input.tensor === 'token-ids' ? 'tokenIds' : input.tensor,
         targetId: block.nodeId,
         targetPortId: input.id,
         reason: `LABO connected the available ${input.tensor} source locally.`,

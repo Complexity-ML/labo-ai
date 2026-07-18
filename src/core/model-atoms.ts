@@ -1,4 +1,5 @@
 import { activationAtomRegistry } from './activation-atoms'
+import { mediaAtomRegistry } from './media-atoms'
 
 export type ModelAtomCategory =
   | 'embedding'
@@ -15,7 +16,7 @@ export type ModelAtomCategory =
 
 export interface AtomPort {
   id: string
-  tensor: 'token-ids' | 'hidden' | 'query' | 'key' | 'value' | 'attention' | 'logits' | 'labels' | 'scalar' | 'routing-logits' | 'expert-indices' | 'routing-weights'
+  tensor: 'token-ids' | 'image' | 'video' | 'hidden' | 'query' | 'key' | 'value' | 'attention' | 'logits' | 'labels' | 'scalar' | 'routing-logits' | 'expert-indices' | 'routing-weights'
   rank?: number
 }
 
@@ -82,41 +83,6 @@ function denseMlpAtom(id: string, label: string, activation: string, residual = 
 const ropeHelper = 'def _labo_apply_rope(x, base):\n    sequence, dim = x.shape[-2], x.shape[-1]\n    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, device=x.device, dtype=torch.float32) / dim))\n    angles = torch.outer(torch.arange(sequence, device=x.device, dtype=torch.float32), inv_freq)\n    cos = torch.repeat_interleave(angles.cos(), 2, dim=-1).to(dtype=x.dtype)\n    sin = torch.repeat_interleave(angles.sin(), 2, dim=-1).to(dtype=x.dtype)\n    rotated = torch.stack((-x[..., 1::2], x[..., ::2]), dim=-1).flatten(-2)\n    return x * cos + rotated * sin'
 
 const additionalAtomRegistry: Record<string, ModelAtomDefinition> = {
-  'vision-patch-projection': {
-    id: 'vision-patch-projection', label: 'Vision patch projection', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput],
-    settings: [{ id: 'bias', type: 'boolean', default: true }], lowerings: moduleLowering('nn.Linear({{hiddenSize}}, {{hiddenSize}}, bias={{bias}})'),
-  },
-  'conditioning-projection': {
-    id: 'conditioning-projection', label: 'Text conditioning projection', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput],
-    settings: [{ id: 'bias', type: 'boolean', default: false }], lowerings: moduleLowering('nn.Linear({{hiddenSize}}, {{hiddenSize}}, bias={{bias}})'),
-  },
-  'modality-type-embedding': {
-    id: 'modality-type-embedding', label: 'Modality type embedding', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput], settings: [{ id: 'initialScale', type: 'number', default: 0.02 }],
-    lowerings: lowering(['self.{{module}} = nn.Parameter(torch.randn(1, 1, {{hiddenSize}}) * {{initialScale}})'], ['{{out:output}} = {{in:hidden}} + self.{{module}}']),
-  },
-  'adaptive-conditioning': {
-    id: 'adaptive-conditioning', label: 'Adaptive multimodal conditioning', category: 'media',
-    inputs: [{ id: 'content', tensor: 'hidden', rank: 3 }, { id: 'conditioning', tensor: 'hidden', rank: 3 }], outputs: [hiddenOutput], settings: [{ id: 'bias', type: 'boolean', default: true }],
-    lowerings: lowering(['self.{{module}} = nn.Linear({{hiddenSize}} * 2, {{hiddenSize}}, bias={{bias}})'], ['{{out:output}} = self.{{module}}(torch.cat(({{in:content}}, {{in:conditioning}}), dim=-1))']),
-  },
-  'temporal-depthwise-convolution': {
-    id: 'temporal-depthwise-convolution', label: 'Temporal depthwise convolution', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput],
-    settings: [{ id: 'kernelSize', type: 'number', default: 3 }],
-    lowerings: lowering(['self.{{module}} = nn.Conv1d({{hiddenSize}}, {{hiddenSize}}, kernel_size={{kernelSize}}, padding={{kernelSize}} // 2, groups={{hiddenSize}})'], ['{{out:output}} = self.{{module}}({{in:hidden}}.transpose(1, 2)).transpose(1, 2)']),
-  },
-  'latent-denoiser': {
-    id: 'latent-denoiser', label: 'Residual latent denoiser', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput],
-    settings: [{ id: 'intermediateSize', type: 'number', default: 3072 }, { id: 'bias', type: 'boolean', default: true }],
-    lowerings: lowering(['self.{{module}}_up = nn.Linear({{hiddenSize}}, {{intermediateSize}}, bias={{bias}})', 'self.{{module}}_down = nn.Linear({{intermediateSize}}, {{hiddenSize}}, bias={{bias}})'], ['{{out:output}} = {{in:hidden}} + self.{{module}}_down(F.gelu(self.{{module}}_up({{in:hidden}})))']),
-  },
-  'image-latent-decoder': {
-    id: 'image-latent-decoder', label: 'Image latent decoder', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput],
-    settings: [{ id: 'bias', type: 'boolean', default: true }], lowerings: moduleLowering('nn.Linear({{hiddenSize}}, {{hiddenSize}}, bias={{bias}})'),
-  },
-  'video-latent-decoder': {
-    id: 'video-latent-decoder', label: 'Video frame decoder', category: 'media', inputs: [hiddenInput], outputs: [hiddenOutput],
-    settings: [{ id: 'bias', type: 'boolean', default: true }], lowerings: moduleLowering('nn.Linear({{hiddenSize}}, {{hiddenSize}}, bias={{bias}})'),
-  },
   'scale-norm': unaryHiddenAtom('scale-norm', 'ScaleNorm', 'normalization', '{{in:hidden}} * ({{scale}} / {{in:hidden}}.norm(dim=-1, keepdim=True).clamp_min({{epsilon}}))', [
     { id: 'scale', type: 'number', default: 1 }, { id: 'epsilon', type: 'number', default: 1e-6 },
   ]),
@@ -270,6 +236,7 @@ const additionalAtomRegistry: Record<string, ModelAtomDefinition> = {
 
 export const modelAtomRegistry: Record<string, ModelAtomDefinition> = {
   ...activationAtomRegistry,
+  ...mediaAtomRegistry,
   ...additionalAtomRegistry,
   'token-embedding': {
     id: 'token-embedding', label: 'Token embedding', category: 'embedding',

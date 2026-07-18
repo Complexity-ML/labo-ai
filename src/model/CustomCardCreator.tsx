@@ -71,7 +71,7 @@ export function CustomCardCreator({ onClose, onCreate, selectedTarget }: { onClo
       })
       const card = plan.createdBlocks[0]
       if (!card || !validCustomPyTorchModule(card.pytorchModule)) throw new Error('The agent did not return a valid reusable card.')
-      const validRoles: TensorRole[] = ['token-ids', 'hidden', 'query', 'key', 'value', 'attention', 'output', 'logits', 'labels', 'scalar', 'routing-logits', 'expert-indices', 'routing-weights']
+      const validRoles: TensorRole[] = ['token-ids', 'image', 'video', 'hidden', 'query', 'key', 'value', 'attention', 'output', 'logits', 'labels', 'scalar', 'routing-logits', 'expert-indices', 'routing-weights']
       const nextInputRole = validRoles.includes(card.inputRole as TensorRole) ? card.inputRole as TensorRole : inputRole
       const nextOutputRole = validRoles.includes(card.outputRole as TensorRole) ? card.outputRole as TensorRole : outputRole
       const matchedOperation = customCardOperations.find((candidate) => card.pytorchModule.startsWith(`nn.${candidate.label === 'Linear' ? 'Linear' : candidate.label}`))?.id

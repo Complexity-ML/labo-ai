@@ -284,6 +284,25 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
         if atom == "attention-output-projection":
             require(inputs, "hidden")
             return {"output": nn.Linear(query_heads * head_dim, hidden_size, bias=bool(settings.get("bias", False)))(inputs["hidden"])}
+        if atom == "image-channel-normalization":
+            require(inputs, "image")
+            deviation = max(float(settings.get("standardDeviation", 0.5)), 1e-6)
+            return {"image": (inputs["image"] - float(settings.get("mean", 0.5))) / deviation}
+        if atom == "image-patch-embedding":
+            require(inputs, "image")
+            patch_size = int(settings.get("patchSize", 16))
+            patches = nn.Conv2d(int(settings.get("inputChannels", 3)), hidden_size, kernel_size=patch_size, stride=patch_size, bias=bool(settings.get("bias", True)))(inputs["image"])
+            return {"output": patches.flatten(2).transpose(1, 2)}
+        if atom == "video-channel-normalization":
+            require(inputs, "video")
+            deviation = max(float(settings.get("standardDeviation", 0.5)), 1e-6)
+            return {"video": (inputs["video"] - float(settings.get("mean", 0.5))) / deviation}
+        if atom == "video-tubelet-embedding":
+            require(inputs, "video")
+            tubelet_size = int(settings.get("tubeletSize", 2))
+            patch_size = int(settings.get("patchSize", 16))
+            tubelets = nn.Conv3d(int(settings.get("inputChannels", 3)), hidden_size, kernel_size=(tubelet_size, patch_size, patch_size), stride=(tubelet_size, patch_size, patch_size), bias=bool(settings.get("bias", True)))(inputs["video"])
+            return {"output": tubelets.flatten(2).transpose(1, 2)}
         if atom in {"vision-patch-projection", "conditioning-projection", "image-latent-decoder", "video-latent-decoder"}:
             require(inputs, "hidden")
             return {"output": nn.Linear(hidden_size, hidden_size, bias=bool(settings.get("bias", True)))(inputs["hidden"])}
@@ -564,7 +583,11 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
                 outgoing = [edge for edge in edges if edge["source"] == atom_id]
                 token_input = any(edge.get("sourcePort") == "tokenIds" or edge.get("targetPort") == "tokenIds" for edge in outgoing)
                 labels_input = node.get("role") == "labels" or any(edge.get("sourcePort") == "labels" or edge.get("targetPort") == "labels" for edge in outgoing)
-                if token_input:
+                if node.get("role") == "image":
+                    value = torch.randn(2, 3, 32, 64)
+                elif node.get("role") == "video":
+                    value = torch.randn(2, 3, 4, 32, 32)
+                elif token_input:
                     value = token_tensor if token_tensor is not None else torch.randint(0, 64, (2, 8))
                 elif labels_input:
                     batch, sequence = token_tensor.shape if token_tensor is not None else (2, 8)

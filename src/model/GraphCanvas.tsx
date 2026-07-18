@@ -35,13 +35,13 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
   if (node.kind === 'input') {
     const role = node.role === 'token-ids' || node.id.toLowerCase().includes('token') ? 'token-ids' : node.role
     const portId = role === 'token-ids' ? 'tokenIds' : role
-    const label = ({ 'token-ids': 'IDs', hidden: 'H', labels: 'Y', query: 'Q', key: 'K', value: 'V', attention: 'A', output: 'O', logits: 'L', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W' } as Record<TensorRole, string>)[role]
+    const label = ({ 'token-ids': 'IDs', image: 'IMG', video: 'VID', hidden: 'H', labels: 'Y', query: 'Q', key: 'K', value: 'V', attention: 'A', output: 'O', logits: 'L', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W' } as Record<TensorRole, string>)[role]
     return <Port direction="output" id={`${node.id}-${portId}-output`} label={label} nodeId={node.id} onPointerDown={onPointerDown} portId={portId} role={role} />
   }
   if (node.kind === 'semantic' && node.atomId) {
     const definition = modelAtomRegistry[node.atomId]
     if (!definition) return null
-    const label = (tensor: TensorRole) => ({ 'token-ids': 'IDs', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[tensor])
+    const label = (tensor: TensorRole) => ({ 'token-ids': 'IDs', image: 'IMG', video: 'VID', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[tensor])
     return <>
       {orderedNodeInputPorts(graph, node).map((port, index) => <Port direction="input" id={`${node.id}-${port.id}-input`} key={`in-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (definition.inputs.length + 1)) * 100}%` }} />)}
       {definition.outputs.map((port, index) => <Port direction="output" id={`${node.id}-${port.id}-output`} key={`out-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (definition.outputs.length + 1)) * 100}%` }} />)}
@@ -49,7 +49,7 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
   }
   if (node.kind === 'custom-pytorch') {
     const inputRole = (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden'
-    const label = (role: TensorRole) => ({ 'token-ids': 'IDs', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[role])
+    const label = (role: TensorRole) => ({ 'token-ids': 'IDs', image: 'IMG', video: 'VID', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[role])
     return <>
       <Port direction="input" id={`${node.id}-input-input`} label={label(inputRole)} nodeId={node.id} onPointerDown={onPointerDown} portId="input" role={inputRole} />
       <Port direction="output" id={`${node.id}-output-output`} label={label(node.role)} nodeId={node.id} onPointerDown={onPointerDown} portId="output" role={node.role} />

@@ -59,7 +59,7 @@ const objectSchema = (properties: Record<string, unknown>, required = Object.key
 const string = { type: 'string' }
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] }
 const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] }
-const tensorRoles = ['token-ids', 'hidden', 'query', 'key', 'value', 'attention', 'output', 'logits', 'labels', 'scalar', 'routing-logits', 'expert-indices', 'routing-weights'] as const
+const tensorRoles = ['token-ids', 'image', 'video', 'hidden', 'query', 'key', 'value', 'attention', 'output', 'logits', 'labels', 'scalar', 'routing-logits', 'expert-indices', 'routing-weights'] as const
 const nullableTensorRole = { anyOf: [{ type: 'string', enum: tensorRoles }, { type: 'null' }] }
 const cardCategories = ['projection', 'normalization', 'activation', 'regularization', 'utility'] as const
 

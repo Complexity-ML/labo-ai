@@ -50,13 +50,16 @@ describe('LABO AI workspace', () => {
     delete window.labo
   })
 
-  it('disables native PyTorch execution in a browser renderer', () => {
+  it('offers a typed graph preview in a browser renderer', async () => {
     delete window.labo
     render(<App />)
 
-    expect(screen.getByRole('button', { name: 'Play model atoms' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Step one model atom' })).toBeDisabled()
-    expect(screen.getByText('desktop only')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play model atoms' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Step one model atom' })).toBeEnabled()
+    expect(screen.getByText('preview · idle')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step one model atom' }))
+    await waitFor(() => expect(screen.getByText('preview · paused')).toBeInTheDocument())
   })
 
   it('keeps an authenticated web workspace on the user-scoped server without browser storage', async () => {
@@ -186,17 +189,26 @@ describe('LABO AI workspace', () => {
   it('offers executable vision, image-editing, and video starters with their own card family', () => {
     render(<App />)
 
+    fireEvent.click(screen.getByText('Graph inputs'))
+    expect(screen.getByRole('button', { name: 'Add Image Tensor' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Video Tensor' })).toBeInTheDocument()
     fireEvent.click(screen.getByText('Specialized variants'))
     fireEvent.click(screen.getByText('Image, video & multimodal'))
+    expect(screen.getByRole('button', { name: 'Add Image VQ tokenizer' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Image codebook embedding' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Video VQ tokenizer' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Video token decoder' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Vision patch projection' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Adaptive multimodal conditioning' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Temporal depthwise convolution' })).toBeInTheDocument()
 
     fireEvent.click(document.querySelector('.preset-menu > summary')!)
     for (const preset of ['Vision', 'Image edit', 'Video']) expect(screen.getByRole('button', { name: preset })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Image tokenizer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Video tokenizer' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Image edit' }))
     expect(screen.getByRole('button', { name: 'Select Adaptive text-image conditioning' })).toBeInTheDocument()
-    expect(screen.getByText('16 atoms')).toBeInTheDocument()
+    expect(screen.getByText('17 atoms')).toBeInTheDocument()
   })
 
   it('switches to a focused TR Basic module graph without changing the full TR 300M preset', () => {
@@ -274,7 +286,6 @@ describe('LABO AI workspace', () => {
 
     expect(screen.getByRole('button', { name: 'Select Token IDs' })).toBeInTheDocument()
     expect(document.querySelector('[data-port-id="token-ids-tokenIds-output"]')).toHaveAttribute('data-port-role', 'token-ids')
-    expect(screen.getByText('Research BPE')).toBeInTheDocument()
     expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
     expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('return token_ids')
   })
@@ -1159,17 +1170,16 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' })).toHaveValue(0.00001)
   })
 
-  it('opens the atomic Tokenizer Studio and compiles its IR to Python or Rust', () => {
+  it('opens the atomic Tokenizer Studio and compiles its IR to Python', () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Tokenizer Studio' }))
 
-    expect(screen.getByText('Research BPE')).toBeInTheDocument()
+    expect(screen.getByLabelText('Tokenizer preset')).toHaveTextContent('Research BPE')
     expect(screen.getAllByText('Unicode normalization').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('Byte-level pre-tokenizer').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('BPE trainer').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByRole('button', { name: 'Python' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Rust' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rust' })).not.toBeInTheDocument()
     expect(screen.getByText(/vocab_size=32768/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Select BPE trainer' }))
@@ -1184,8 +1194,13 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('button', { name: 'Step one atom' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stop atomic pipeline' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rust' }))
-    expect(screen.getByText(/vocab_size\(4096\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'o200k_base · OpenAI tiktoken' }))
+    expect(screen.getByText(/tiktoken\.get_encoding\("o200k_base"\)/)).toBeInTheDocument()
+    expect(screen.getByText('200,019')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /New reusable card/ }))
+    expect(screen.getByRole('dialog', { name: 'Tokenizer card builder' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Python lowering' })).toBeInTheDocument()
+    expect(screen.queryByText(/Rust lowering/)).not.toBeInTheDocument()
   })
 
   it('can delete every tokenizer step and add a real atom from the permanent library', () => {
@@ -1202,5 +1217,24 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add BPE model' }))
     expect(screen.getByRole('button', { name: 'Select BPE model' })).toBeInTheDocument()
     expect(screen.getByText(/^1 atoms/)).toBeInTheDocument()
+  })
+
+  it('edits and deletes a user tokenizer card from the library context menu', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Tokenizer Studio' }))
+    fireEvent.click(screen.getByRole('button', { name: /New reusable card/ }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lowercase QA text' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create and add card' }))
+
+    const libraryCard = screen.getByRole('button', { name: 'Add Lowercase QA text' })
+    fireEvent.contextMenu(libraryCard)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit card' }))
+    expect(screen.getByRole('dialog', { name: 'Tokenizer card builder' })).toHaveTextContent('Edit reusable tokenizer card')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.contextMenu(libraryCard)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete card' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm delete' }))
+    expect(screen.queryByRole('button', { name: 'Add Lowercase QA text' })).not.toBeInTheDocument()
   })
 })

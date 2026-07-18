@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Blocks, Braces, Check, Code2, Cpu, PackageCheck, Pause, Play, Square, StepForward, Trash2 } from 'lucide-react'
+import { Blocks, Check, Code2, Cpu, PackageCheck, Pause, Pencil, Play, Plus, Square, StepForward, Trash2 } from 'lucide-react'
 import { AtomicPlayer, type AtomicPlayerSnapshot, type AtomExecutionResult } from './core/atomic-player'
 import {
   addTokenizerStep,
@@ -9,11 +9,13 @@ import {
   tokenizerAtomMetadata,
   updateTokenizerStepSettings,
   type TokenizerStep,
-  type TokenizerTarget,
 } from './core/tokenizer-ir'
-import { researchBpePreset } from './core/tokenizer-presets'
+import { builtInTokenizerPresets, researchBpePreset } from './core/tokenizer-presets'
+import { TokenizerCardCreator } from './tokenizer/TokenizerCardCreator'
+import { loadTokenizerCards, saveTokenizerCards, type CustomTokenizerCard } from './tokenizer/custom-tokenizer-card'
 
 type TokenizerView = 'blocks' | 'split'
+
 
 function formatSetting(value: string | number | boolean | string[]): string {
   return Array.isArray(value) ? value.join(', ') : String(value)
@@ -36,23 +38,36 @@ async function executeTokenizerIrAtom(step: TokenizerStep): Promise<{ summary: s
     if (!Number.isInteger(vocabSize) || vocabSize <= 0) throw new Error('BPE trainer requires a positive integer vocabSize')
     return { summary: `BPE trainer contract: ${vocabSize} entries` }
   }
+  if (step.atom === 'tiktoken-encoding') {
+    return { summary: `${String(step.settings.encoding)} pretrained contract: ${Number(step.settings.vocabSize).toLocaleString('en-US')} tokens` }
+  }
+  if (step.atom.includes('image')) return { summary: `${tokenizerAtomMetadata[step.atom].label} contract ready for [B, C, H, W] images` }
+  if (step.atom.includes('video')) return { summary: `${tokenizerAtomMetadata[step.atom].label} contract ready for [B, C, T, H, W] videos` }
+  if (step.atom === 'custom-tokenizer') {
+    return { summary: `Custom tokenizer card ready: ${String(step.settings.label)}` }
+  }
   return { summary: `Byte-level round-trip: ${new TextDecoder().decode(new TextEncoder().encode('LABO AI'))}` }
 }
 
 export function TokenizerStudio() {
   const [pipeline, setPipeline] = useState(researchBpePreset)
   const [view, setView] = useState<TokenizerView>('split')
-  const [target, setTarget] = useState<TokenizerTarget>('python')
   const [selectedId, setSelectedId] = useState(pipeline.steps[0]?.id ?? '')
+  const [customCards, setCustomCards] = useState<CustomTokenizerCard[]>([])
+  const [customCardsReady, setCustomCardsReady] = useState(false)
+  const [cardCreatorOpen, setCardCreatorOpen] = useState(false)
+  const [editingCard, setEditingCard] = useState<CustomTokenizerCard>()
+  const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number; confirmDelete?: boolean }>()
+  const presetMenuRef = useRef<HTMLDetailsElement>(null)
   const [playerSnapshot, setPlayerSnapshot] = useState<AtomicPlayerSnapshot>({
     status: 'idle', currentAtomId: pipeline.steps[0]?.id,
     results: pipeline.steps.map((step) => ({ atomId: step.id, status: 'pending' })),
   })
   const playerRef = useRef<AtomicPlayer | null>(null)
-  const code = useMemo(() => compileTokenizer(pipeline, target), [pipeline, target])
+  const code = useMemo(() => compileTokenizer(pipeline), [pipeline])
   const selected = pipeline.steps.find((step) => step.id === selectedId) ?? pipeline.steps[0]
-  const trainer = pipeline.steps.find((step) => step.atom === 'bpe-trainer')
-  const vocabSize = Number(trainer?.settings.vocabSize ?? 0)
+  const vocabularyStep = pipeline.steps.find((step) => step.atom === 'bpe-trainer' || step.atom === 'tiktoken-encoding' || step.atom === 'image-vq-encode' || step.atom === 'video-vq-encode' || step.atom === 'image-codebook-embedding' || step.atom === 'video-codebook-embedding')
+  const vocabSize = Number(vocabularyStep?.settings.vocabSize ?? vocabularyStep?.settings.codebookSize ?? 0)
 
   useEffect(() => {
     const player = new AtomicPlayer(
@@ -62,6 +77,31 @@ export function TokenizerStudio() {
     playerRef.current = player
     return player.subscribe(setPlayerSnapshot)
   }, [pipeline])
+
+  useEffect(() => {
+    void loadTokenizerCards().then((cards) => {
+      setCustomCards(cards)
+      setCustomCardsReady(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (customCardsReady) void saveTokenizerCards(customCards)
+  }, [customCards, customCardsReady])
+
+  useEffect(() => {
+    if (!cardMenu) return
+    const dismiss = (event: PointerEvent) => {
+      if (!(event.target as HTMLElement | null)?.closest('.tokenizer-library-context-menu')) setCardMenu(undefined)
+    }
+    const dismissOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setCardMenu(undefined) }
+    window.addEventListener('pointerdown', dismiss)
+    window.addEventListener('keydown', dismissOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', dismiss)
+      window.removeEventListener('keydown', dismissOnEscape)
+    }
+  }, [cardMenu])
 
   const deleteSelected = () => {
     if (!selected) return
@@ -76,6 +116,17 @@ export function TokenizerStudio() {
     setSelectedId(next.steps.at(-1)!.id)
   }
 
+  const addCustomTokenizerCard = (card: CustomTokenizerCard) => {
+    const sequence = pipeline.steps.filter((step) => step.id.startsWith(`${card.id}-`)).length + 1
+    const step: TokenizerStep = {
+      id: `${card.id}-${sequence}`,
+      atom: 'custom-tokenizer',
+      settings: { label: card.label, category: card.category, pythonCode: card.pythonCode },
+    }
+    setPipeline((current) => ({ ...current, steps: [...current.steps, step] }))
+    setSelectedId(step.id)
+  }
+
   return (
     <>
       <section className="workspace-toolbar">
@@ -83,11 +134,15 @@ export function TokenizerStudio() {
           <button aria-pressed={view === 'blocks'} onClick={() => setView('blocks')}><Blocks size={14} />Blocks</button>
           <button aria-pressed={view === 'split'} onClick={() => setView('split')}><Code2 size={14} />Split</button>
         </div>
-        <strong className="workspace-name">{pipeline.name}</strong>
-        <div className="target-switcher" aria-label="Code target">
-          <button aria-pressed={target === 'python'} onClick={() => setTarget('python')}><Braces size={13} />Python</button>
-          <button aria-pressed={target === 'rust'} onClick={() => setTarget('rust')}><Braces size={13} />Rust</button>
-        </div>
+        <details className="preset-menu tokenizer-preset-menu" ref={presetMenuRef}>
+          <summary aria-label="Tokenizer preset">{pipeline.name}</summary>
+          <div>{builtInTokenizerPresets.map((preset) => <button aria-pressed={pipeline.id === preset.id} key={preset.id} onClick={() => {
+            const next = structuredClone(preset)
+            setPipeline(next)
+            setSelectedId(next.steps[0]?.id ?? '')
+            presetMenuRef.current?.removeAttribute('open')
+          }} type="button">{preset.name}</button>)}</div>
+        </details>
         <div className="atomic-player-controls" aria-label="Atomic pipeline player">
           <button aria-label="Play atomic pipeline" onClick={() => void playerRef.current?.play()}><Play size={13} /></button>
           <button aria-label="Pause atomic pipeline" onClick={() => playerRef.current?.pause()}><Pause size={13} /></button>
@@ -100,7 +155,7 @@ export function TokenizerStudio() {
       <div className="workspace-grid tokenizer-workspace">
         <aside className="block-library">
           <div className="panel-heading"><Blocks size={14} /><span>TOKENIZER ATOMS</span></div>
-          {Object.entries(tokenizerAtomDefinitions).map(([atom, metadata]) => {
+          {Object.entries(tokenizerAtomDefinitions).filter(([atom]) => atom !== 'custom-tokenizer').map(([atom, metadata]) => {
             return (
               <button aria-label={`Add ${metadata.label}`} className="library-block tokenizer-library-block" key={atom} onClick={() => addAtom(atom as TokenizerStep['atom'])}>
                 <span className="block-glyph glyph-transforms" />
@@ -108,6 +163,17 @@ export function TokenizerStudio() {
               </button>
             )
           })}
+          <button className="library-block tokenizer-library-block" onClick={() => setCardCreatorOpen(true)} type="button">
+            <Plus size={14} />
+            <span><strong>New reusable card</strong><small>Custom Python lowering</small></span>
+          </button>
+          {customCards.map((card) => <button aria-label={`Add ${card.label}`} className="library-block tokenizer-library-block" key={card.id} onClick={() => addCustomTokenizerCard(card)} onContextMenu={(event) => {
+            event.preventDefault()
+            setCardMenu({ cardId: card.id, x: event.clientX, y: event.clientY })
+          }} title="Right-click to edit or delete" type="button">
+            <span className="block-glyph glyph-transforms" />
+            <span><strong>{card.label}</strong><small>{card.category} · My cards</small></span>
+          </button>)}
         </aside>
 
         <section className={`editor-grid tokenizer-editor view-${view}`}>
@@ -115,7 +181,9 @@ export function TokenizerStudio() {
             <div className="panel-tab"><Blocks size={13} /> tokenizer.pipeline</div>
             <div className="tokenizer-canvas">
               {pipeline.steps.map((step, index) => {
-                const metadata = tokenizerAtomMetadata[step.atom]
+                const metadata = step.atom === 'custom-tokenizer'
+                  ? { label: String(step.settings.label), category: String(step.settings.category) }
+                  : tokenizerAtomMetadata[step.atom]
                 return (
                   <button
                     aria-label={`Select ${metadata.label}`}
@@ -135,7 +203,7 @@ export function TokenizerStudio() {
 
           {view === 'split' && (
             <div className="code-panel">
-              <div className="panel-tab"><Code2 size={13} /> tokenizer.{target === 'python' ? 'py' : 'rs'} <span>GENERATED</span></div>
+              <div className="panel-tab"><Code2 size={13} /> tokenizer.py <span>GENERATED</span></div>
               <pre className="code-editor"><code>{code}</code></pre>
             </div>
           )}
@@ -155,7 +223,6 @@ export function TokenizerStudio() {
             <div className="check-row"><span>Steps</span><b>{pipeline.steps.length}</b></div>
             <div className="check-row"><span>Typed links</span><b>{pipeline.links.length}</b></div>
             <div className="check-row"><span>Python lowering</span><b className="passed">READY</b></div>
-            <div className="check-row"><span>Rust lowering</span><b className="passed">READY</b></div>
           </section>
         </aside>
       </div>
@@ -164,9 +231,37 @@ export function TokenizerStudio() {
         <span><span className="status-dot" /> Tokenizer IR valid</span>
         <span>{pipeline.steps.length} atoms · {pipeline.links.length} typed links</span>
         <span className="status-spacer" />
-        <span>{target} backend</span>
+        <span>Python backend</span>
         <span>LABO Runtime · local</span>
       </footer>
+      {cardMenu && (() => {
+        const card = customCards.find((candidate) => candidate.id === cardMenu.cardId)
+        if (!card) return null
+        return <div className="card-context-menu tokenizer-library-context-menu" role="menu" style={{ left: cardMenu.x, top: cardMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+          <div><span>MY TOKENIZER CARD</span><strong>{card.label}</strong></div>
+          <button onClick={() => { setEditingCard(card); setCardMenu(undefined) }} role="menuitem" type="button"><Pencil size={13} />Edit card</button>
+          <button className={cardMenu.confirmDelete ? 'confirm-delete' : ''} onClick={() => {
+            if (!cardMenu.confirmDelete) return setCardMenu((current) => current ? { ...current, confirmDelete: true } : current)
+            setCustomCards((current) => current.filter((candidate) => candidate.id !== card.id))
+            setCardMenu(undefined)
+          }} role="menuitem" type="button"><Trash2 size={13} />{cardMenu.confirmDelete ? 'Confirm delete' : 'Delete card'}</button>
+        </div>
+      })()}
+      {(cardCreatorOpen || editingCard) && <TokenizerCardCreator
+        initialCard={editingCard}
+        onCancel={() => { setCardCreatorOpen(false); setEditingCard(undefined) }}
+        onCreate={(card) => {
+          if (editingCard) {
+            setCustomCards((current) => current.map((candidate) => candidate.id === editingCard.id ? card : candidate))
+            setPipeline((current) => ({ ...current, steps: current.steps.map((step) => step.id.startsWith(`${editingCard.id}-`) ? { ...step, settings: { label: card.label, category: card.category, pythonCode: card.pythonCode } } : step) }))
+            setEditingCard(undefined)
+            return
+          }
+          setCustomCards((current) => [...current.filter((candidate) => candidate.id !== card.id), card])
+          setCardCreatorOpen(false)
+          addCustomTokenizerCard(card)
+        }}
+      />}
     </>
   )
 }
@@ -182,7 +277,9 @@ function TokenizerAtomInspector({
   onDelete(): void
   onSettingChange(key: string, value: string | number | boolean | string[]): void
 }) {
-  const metadata = tokenizerAtomMetadata[step.atom]
+  const metadata = step.atom === 'custom-tokenizer'
+    ? { label: String(step.settings.label), category: String(step.settings.category) }
+    : tokenizerAtomMetadata[step.atom]
   return (
     <>
       <section className="inspector-section">
@@ -195,7 +292,7 @@ function TokenizerAtomInspector({
       <section className="inspector-section">
         <div className="section-title">Atomic settings</div>
         <div className="atomic-settings">
-          {Object.entries(step.settings).map(([key, value]) => (
+          {Object.entries(step.settings).filter(([key]) => !['label', 'category', 'pythonCode'].includes(key)).map(([key, value]) => (
             <label key={key}>
               <span>{key}</span>
               {typeof value === 'number' ? (
