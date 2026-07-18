@@ -8,6 +8,7 @@ const openAISettingsChannel = 'labo:openai-settings'
 const saveOpenAIKeyChannel = 'labo:openai-key-save'
 const deleteOpenAIKeyChannel = 'labo:openai-key-delete'
 const testOpenAIKeyChannel = 'labo:openai-key-test'
+const exportFileChannel = 'labo:export-file'
 
 contextBridge.exposeInMainWorld('labo', {
   platform: process.platform,
@@ -18,4 +19,5 @@ contextBridge.exposeInMainWorld('labo', {
   saveOpenAIKey: (apiKey: string) => ipcRenderer.invoke(saveOpenAIKeyChannel, { apiKey }),
   deleteOpenAIKey: () => ipcRenderer.invoke(deleteOpenAIKeyChannel),
   testOpenAIKey: () => ipcRenderer.invoke(testOpenAIKeyChannel),
+  exportFile: (payload: { filename: string; content: string; kind: 'svg' | 'python' }) => ipcRenderer.invoke(exportFileChannel, payload),
 })

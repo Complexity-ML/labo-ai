@@ -8,7 +8,7 @@ export interface CustomPyTorchCard {
   outputRole?: TensorRole
 }
 
-export type CustomCardOperation = 'linear' | 'rmsnorm' | 'layernorm' | 'dropout' | 'gelu' | 'silu' | 'relu' | 'identity'
+export type CustomCardOperation = 'linear' | 'rmsnorm' | 'layernorm' | 'dropout' | 'gelu' | 'silu' | 'relu' | 'sigmoid' | 'tanh' | 'mish' | 'identity'
 export type CustomCardCategory = 'projection' | 'normalization' | 'activation' | 'regularization' | 'utility'
 
 export const customCardOperations: Array<{ id: CustomCardOperation; label: string }> = [
@@ -19,8 +19,19 @@ export const customCardOperations: Array<{ id: CustomCardOperation; label: strin
   { id: 'gelu', label: 'GELU' },
   { id: 'silu', label: 'SiLU' },
   { id: 'relu', label: 'ReLU' },
+  { id: 'sigmoid', label: 'Sigmoid' },
+  { id: 'tanh', label: 'Tanh' },
+  { id: 'mish', label: 'Mish' },
   { id: 'identity', label: 'Identity' },
 ]
+
+export const operationsByCategory: Record<CustomCardCategory, CustomCardOperation[]> = {
+  projection: ['linear'],
+  normalization: ['rmsnorm', 'layernorm'],
+  activation: ['gelu', 'silu', 'relu', 'sigmoid', 'tanh', 'mish'],
+  regularization: ['dropout'],
+  utility: ['identity'],
+}
 
 export function customCardModule(operation: CustomCardOperation, inFeatures: number, outFeatures: number, probability: number): string {
   if (operation === 'linear') return `nn.Linear(${inFeatures}, ${outFeatures})`
@@ -30,6 +41,9 @@ export function customCardModule(operation: CustomCardOperation, inFeatures: num
   if (operation === 'gelu') return 'nn.GELU()'
   if (operation === 'silu') return 'nn.SiLU()'
   if (operation === 'relu') return 'nn.ReLU()'
+  if (operation === 'sigmoid') return 'nn.Sigmoid()'
+  if (operation === 'tanh') return 'nn.Tanh()'
+  if (operation === 'mish') return 'nn.Mish()'
   return 'nn.Identity()'
 }
 
@@ -39,6 +53,9 @@ export function suggestedCardOperation(category: CustomCardCategory, need: strin
   if (category === 'activation') {
     if (normalized.includes('silu') || normalized.includes('swiglu')) return 'silu'
     if (normalized.includes('relu')) return 'relu'
+    if (normalized.includes('sigmoid')) return 'sigmoid'
+    if (normalized.includes('tanh')) return 'tanh'
+    if (normalized.includes('mish')) return 'mish'
     return 'gelu'
   }
   if (category === 'regularization') return 'dropout'

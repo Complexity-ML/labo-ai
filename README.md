@@ -6,11 +6,13 @@ LABO AI is a desktop laboratory for composing neural architectures from executab
 
 - More than 100 typed, executable model cards grouped by useful families.
 - Blank, GPT-like, learned-MoE, token-routing, and TR 300M starters.
-- Drag-and-drop graph composition with typed elastic cables and collision-aware card placement.
+- Drag-and-drop graph composition with typed elastic cables and deterministic topology-aware XY placement that preserves parallel lanes and minimizes crossings.
 - Two-way graph/PyTorch synchronization for supported semantic atoms.
 - Dedicated modal card builder with category-aware auto-composition, visual input/operation/output blocks, typed plugs, and a safe generated `nn.Module` preview.
 - Separate add and edit modes; existing cards open in a central editor and user-created library cards can be deleted.
 - Natural-language card search across native atomics and graph inputs.
+- Contextual card construction palettes whose operations and typed plugs follow the selected category.
+- Vector SVG diagram and generated PyTorch export through the desktop save dialog.
 - Atomic PyTorch player with run, rerun, reset, and step-by-step execution.
 - Tokenizer and training studios.
 - Ask LABO planner that can add available blocks, connect compatible ports, or report missing capabilities.

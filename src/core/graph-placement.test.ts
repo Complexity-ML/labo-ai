@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { findOpenGraphPosition, layoutArchitectureGraph, layoutParallelArchitecture } from './graph-placement'
-import { blankStarterPreset, trBasicPreset } from './presets'
+import { blankStarterPreset, complexityDeepPreset, gptLikeStarterPreset, tokenMoePreset, trBasicPreset } from './presets'
 
 describe('graph card placement', () => {
   it('starts an empty graph on the placement grid', () => {
@@ -112,5 +112,100 @@ describe('graph card placement', () => {
     expect(arranged.nodes.filter((node) => existing.some((candidate) => candidate.id === node.id)).map((node) => node.position)).toEqual(existing.map((node) => node.position))
     expect(arranged.nodes.find((node) => node.id === 'parallel-input')!.position.x).toBeGreaterThan(maxExistingX)
     expect(arranged.nodes.find((node) => node.id === 'parallel-left')!.position.y).toBe(arranged.nodes.find((node) => node.id === 'parallel-right')!.position.y)
+  })
+
+  it('is deterministic and does not inherit anarchic previous coordinates', () => {
+    const scrambled = {
+      ...trBasicPreset,
+      nodes: trBasicPreset.nodes.map((node, index) => ({ ...node, position: { x: 1800 - index * 117, y: (index % 3) * 900 } })),
+    }
+    const first = layoutArchitectureGraph(scrambled)
+    const second = layoutArchitectureGraph(first)
+
+    expect(second.nodes.map((node) => node.position)).toEqual(first.nodes.map((node) => node.position))
+  })
+
+  it('keeps a continuing branch in one X lane until its late merge', () => {
+    const graph = {
+      ...blankStarterPreset,
+      nodes: ['source', 'main-1', 'skip', 'main-2', 'main-3', 'merge'].map((id) => ({
+        id,
+        kind: 'semantic' as const,
+        atomId: id === 'merge' ? 'residual-add' : 'identity',
+        label: id,
+        role: 'hidden' as const,
+        position: { x: Math.random() * 1000, y: Math.random() * 1000 },
+      })),
+      edges: [
+        { id: 'source-main', source: 'source', target: 'main-1' },
+        { id: 'source-skip', source: 'source', target: 'skip' },
+        { id: 'main-1-2', source: 'main-1', target: 'main-2' },
+        { id: 'main-2-3', source: 'main-2', target: 'main-3' },
+        { id: 'main-merge', source: 'main-3', target: 'merge' },
+        { id: 'skip-merge', source: 'skip', target: 'merge' },
+      ],
+    }
+    const arranged = layoutArchitectureGraph(graph)
+    const x = (id: string) => arranged.nodes.find((node) => node.id === id)!.position.x
+
+    expect(x('main-2')).toBe(x('main-1'))
+    expect(x('main-3')).toBe(x('main-1'))
+    expect(x('skip')).not.toBe(x('main-1'))
+  })
+
+  it('orders connected branches consistently to avoid cable crossings', () => {
+    const graph = {
+      ...blankStarterPreset,
+      nodes: [
+        { id: 'source-left', kind: 'input' as const, label: 'Source left', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'source-right', kind: 'input' as const, label: 'Source right', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'target-right', kind: 'semantic' as const, atomId: 'identity', label: 'Target right', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'target-left', kind: 'semantic' as const, atomId: 'identity', label: 'Target left', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'merge', kind: 'semantic' as const, atomId: 'residual-add', label: 'Merge', role: 'hidden' as const, position: { x: 0, y: 0 } },
+      ],
+      edges: [
+        { id: 'left-left', source: 'source-left', target: 'target-left' },
+        { id: 'right-right', source: 'source-right', target: 'target-right' },
+        { id: 'left-merge', source: 'target-left', target: 'merge' },
+        { id: 'right-merge', source: 'target-right', target: 'merge' },
+      ],
+    }
+    const arranged = layoutArchitectureGraph(graph)
+    const x = (id: string) => arranged.nodes.find((node) => node.id === id)!.position.x
+
+    expect(Math.sign(x('source-left') - x('source-right'))).toBe(Math.sign(x('target-left') - x('target-right')))
+  })
+
+  it('packs disconnected architectures side by side instead of interleaving their ranks', () => {
+    const graph = {
+      ...blankStarterPreset,
+      nodes: ['a-1', 'a-2', 'b-1', 'b-2'].map((id) => ({ id, kind: 'semantic' as const, atomId: 'identity', label: id, role: 'hidden' as const, position: { x: 0, y: 0 } })),
+      edges: [
+        { id: 'a', source: 'a-1', target: 'a-2' },
+        { id: 'b', source: 'b-1', target: 'b-2' },
+      ],
+    }
+    const arranged = layoutArchitectureGraph(graph)
+    const node = (id: string) => arranged.nodes.find((candidate) => candidate.id === id)!
+
+    expect(node('a-1').position.y).toBe(node('b-1').position.y)
+    expect(node('a-2').position.y).toBe(node('b-2').position.y)
+    expect(node('a-1').position.x).toBeLessThan(node('b-1').position.x)
+  })
+
+  it('keeps every official preset collision-free with strictly descending execution ranks', () => {
+    for (const preset of [gptLikeStarterPreset, trBasicPreset, tokenMoePreset, complexityDeepPreset]) {
+      const arranged = layoutArchitectureGraph(preset)
+      for (const [index, left] of arranged.nodes.entries()) {
+        for (const right of arranged.nodes.slice(index + 1)) {
+          expect(Math.abs(left.position.x - right.position.x) >= 170 || Math.abs(left.position.y - right.position.y) >= 110, `${preset.id}: ${left.id} overlaps ${right.id}`).toBe(true)
+        }
+      }
+      for (const edge of arranged.edges) {
+        const source = arranged.nodes.find((node) => node.id === edge.source)!
+        const target = arranged.nodes.find((node) => node.id === edge.target)!
+        expect(target.position.y, `${preset.id}: ${edge.id} must flow downward`).toBeGreaterThan(source.position.y)
+      }
+    }
   })
 })

@@ -32,6 +32,7 @@ interface Window {
     saveOpenAIKey?(apiKey: string): Promise<OpenAISettingsStatus>
     deleteOpenAIKey?(): Promise<OpenAISettingsStatus>
     testOpenAIKey?(): Promise<{ ok: true }>
+    exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
   }
 }
 

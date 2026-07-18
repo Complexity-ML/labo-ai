@@ -34,6 +34,7 @@ import { AskLaboPanel } from './AskLaboPanel'
 import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH, resolveCardDrop } from './card-layout'
 import { CustomCardCreator } from './CustomCardCreator'
 import type { CustomPyTorchCard } from './custom-card'
+import { ExportMenu } from './ExportMenu'
 
 type ViewMode = 'blocks' | 'pytorch' | 'split'
 type InteractionMode = 'add' | 'edit'
@@ -502,6 +503,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           </div>
           <button aria-pressed={libraryOpen} className="panel-visibility-button" onClick={() => setLibraryOpen((current) => !current)}><PanelLeft size={13} />Library</button>
           <button aria-pressed={inspectorOpen} className="panel-visibility-button" onClick={() => setInspectorOpen((current) => !current)}><Cpu size={13} />Inspector</button>
+          <ExportMenu code={code} graph={graph} />
         </div>
       </section>
 

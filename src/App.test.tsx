@@ -178,6 +178,8 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
 
     expect(screen.getByRole('button', { name: 'Add Token IDs' })).toBeDisabled()
+    expect(screen.getAllByLabelText(/Editable card:/).length).toBeGreaterThan(10)
+    expect(screen.getAllByLabelText('Editable card: settings').length).toBeGreaterThan(5)
     fireEvent.click(screen.getByRole('button', { name: 'Select Tied token embedding' }))
     expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
     expect(screen.getByText(/No new Blockly card is added in this mode/)).toBeInTheDocument()
@@ -226,6 +228,35 @@ describe('LABO AI workspace', () => {
     expect((screen.getByRole('textbox', { name: 'Custom card name' }) as HTMLInputElement).value).toMatch(/^Use a SiLU activation/)
     expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU')
     expect(screen.queryByText('Create PyTorch card')).not.toBeInTheDocument()
+  })
+
+  it('changes the available card blocks and plugs with the selected category', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Create card' }))
+    const palette = screen.getByLabelText('Card operation palette')
+
+    expect(within(palette).getByRole('button', { name: 'Linear' })).toBeInTheDocument()
+    expect(within(palette).queryByRole('button', { name: 'Dropout' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'normalization' } })
+    expect(within(palette).getAllByRole('button').map((button) => button.textContent)).toEqual(['RMSNorm', 'LayerNorm'])
+    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.RMSNorm(768)')
+    expect(screen.getByRole('combobox', { name: 'Custom card output type' })).toBeDisabled()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'utility' } })
+    expect(within(palette).getAllByRole('button').map((button) => button.textContent)).toEqual(['Identity'])
+    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.Identity()')
+  })
+
+  it('exports the Blockly diagram or generated PyTorch through the desktop save bridge', async () => {
+    const exportFile = vi.fn(async (_payload: { filename: string; content: string; kind: 'svg' | 'python' }) => ({ saved: true }))
+    window.labo = { platform: 'darwin', runtime: 'electron', runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }), exportFile }
+    render(<App />)
+
+    fireEvent.click(screen.getByLabelText('Export architecture'))
+    fireEvent.click(screen.getByRole('button', { name: /Diagram SVG/ }))
+    await waitFor(() => expect(exportFile).toHaveBeenCalledOnce())
+    expect(exportFile.mock.calls[0]![0]).toMatchObject({ filename: 'tr-300m.svg', kind: 'svg' })
+    expect(exportFile.mock.calls[0]![0].content).toContain('<svg')
+    delete window.labo
   })
 
   it('exposes the supervised objective that consumes the Training Labels Y plug', () => {

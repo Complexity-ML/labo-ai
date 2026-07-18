@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties, type Dispatch, type DragEvent, type PointerEvent, type SetStateAction } from 'react'
-import { Blocks, Cable, Maximize2, Minus, Plus, Zap } from 'lucide-react'
+import { Blocks, Cable, Maximize2, Minus, Pencil, Plus, Zap } from 'lucide-react'
 import type { AtomicPlayerSnapshot } from '../core/atomic-player'
 import { moveGroup, moveNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
@@ -69,11 +69,13 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
 }
 
 function ArchitectureNodeCard({ editMode = false, graph, node, selected, status, grouped = false, dragging = false, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; status: string; grouped?: boolean; dragging?: boolean; onEdit?(): void; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
+  const editability = node.kind === 'custom-pytorch' ? 'CODE' : node.kind === 'input' ? 'LABEL' : 'SETTINGS'
   return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
     <NodePorts graph={graph} node={node} onPointerDown={onPortPointerDown} />
     <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={onEdit} onPointerDown={(event) => onDragPointerDown?.(event, node)}>
       <span className="node-type">{node.kind}</span><strong>{node.label}</strong><small>{describeNode(node)}</small>
     </button>
+    {editMode && <span aria-label={`Editable card: ${editability.toLowerCase()}`} className="card-editability-badge"><Pencil size={9} />{editability}</span>}
   </div>
 }
 
@@ -230,7 +232,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     <div className="panel-tab"><Blocks size={13} /> Architecture.graph <span className="cable-help"><Cable size={11} />{cables.message}</span></div>
     <div
       aria-label="Architecture graph canvas"
-      className={`architecture-canvas ${camera.isPanning ? 'is-panning' : ''} ${acceptsLibraryDrop ? 'accepts-library-drop' : ''}`}
+      className={`architecture-canvas ${editMode ? 'edit-mode' : ''} ${camera.isPanning ? 'is-panning' : ''} ${acceptsLibraryDrop ? 'accepts-library-drop' : ''}`}
 
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAcceptsLibraryDrop(false)
@@ -256,6 +258,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
         <Port className="port-third-2" direction="output" id="qkv-key-output" label="K" nodeId="k-proj" onPointerDown={cables.beginCable} role="key" />
         <Port className="port-third-3" direction="output" id="qkv-value-output" label="V" nodeId="v-proj" onPointerDown={cables.beginCable} role="value" />
         <button aria-label="Select QKV projection" className="qkv-select" onClick={() => setSelectedNodeId(qkvGroup.id)} onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><span className="node-type">COMPOSITE · GQA</span><strong>QKV projection</strong><small>Q{graph.config.queryHeads} · KV{graph.config.keyValueHeads} · head {graph.config.headDim}</small></button>
+        {editMode && <span className="card-editability-badge card-editability-expand">EXPAND TO EDIT</span>}
 
         <button aria-label="Expand QKV projections" className="group-transform-button" onClick={() => setQkvExpanded(true)}>Décomposer en Q / K / V</button>
       </div>}

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { TensorRole } from '../core/ir'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
-import { customCardModule, customCardOperations, suggestedCardOperation, type CustomCardCategory, type CustomCardOperation, type CustomPyTorchCard } from './custom-card'
+import { customCardModule, customCardOperations, operationsByCategory, suggestedCardOperation, type CustomCardCategory, type CustomCardOperation, type CustomPyTorchCard } from './custom-card'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
 
@@ -18,6 +18,16 @@ export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCr
   const [inputRole, setInputRole] = useState<TensorRole>('hidden')
   const [outputRole, setOutputRole] = useState<TensorRole>('hidden')
   const [error, setError] = useState('')
+  const availableOperations = customCardOperations.filter((candidate) => operationsByCategory[category].includes(candidate.id))
+
+  const changeCategory = (nextCategory: CustomCardCategory) => {
+    const nextOperation = suggestedCardOperation(nextCategory, need)
+    setCategory(nextCategory)
+    setOperation(nextOperation)
+    setCode(customCardModule(nextOperation, inFeatures, outFeatures, probability))
+    if (nextCategory !== 'projection') setOutputRole(inputRole)
+    setError('')
+  }
 
   const selectOperation = (next: CustomCardOperation) => {
     setOperation(next)
@@ -26,10 +36,11 @@ export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCr
 
   const autoCompose = () => {
     const next = suggestedCardOperation(category, need)
+    const inferredRole: TensorRole = /logit|vocab|classifier|language head/i.test(need) ? 'logits' : 'hidden'
     setOperation(next)
     setName(need.trim().split(/[.!?]/)[0]?.slice(0, 42) || customCardOperations.find((candidate) => candidate.id === next)?.label || 'Custom atom')
-    setInputRole('hidden')
-    setOutputRole(/logit|vocab|classifier|language head/i.test(need) ? 'logits' : 'hidden')
+    setInputRole(category === 'projection' ? 'hidden' : inferredRole)
+    setOutputRole(inferredRole)
     setCode(customCardModule(next, inFeatures, outFeatures, probability))
     setError('')
   }
@@ -47,19 +58,19 @@ export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCr
       <header><div><span>CARD BUILDER</span><strong>Compose a new atomic card</strong></div><button aria-label="Close card creator" onClick={onClose}><X size={14} /></button></header>
       <p className="create-card-hint">Build the card like a small Blockly program. Pick an operation, configure its plugs, then inspect or refine the generated PyTorch module.</p>
       <div className="card-auto-composer">
-        <label><span>Card category</span><select aria-label="Custom card category" onChange={(event) => setCategory(event.target.value as CustomCardCategory)} value={category}><option value="projection">Projection</option><option value="normalization">Normalization</option><option value="activation">Activation</option><option value="regularization">Regularization</option><option value="utility">Utility / pass-through</option></select></label>
+        <label><span>Card category</span><select aria-label="Custom card category" onChange={(event) => changeCategory(event.target.value as CustomCardCategory)} value={category}><option value="projection">Projection</option><option value="normalization">Normalization</option><option value="activation">Activation</option><option value="regularization">Regularization</option><option value="utility">Utility / pass-through</option></select></label>
         <label><span>What should this card do?</span><textarea aria-label="Custom card need" onChange={(event) => setNeed(event.target.value)} rows={2} value={need} /></label>
         <button onClick={autoCompose}>Auto-compose blocks</button>
       </div>
       <div className="card-constructor-palette" aria-label="Card operation palette">
-        {customCardOperations.map((candidate) => <button aria-pressed={operation === candidate.id} key={candidate.id} onClick={() => selectOperation(candidate.id)}>{candidate.label}</button>)}
+        {availableOperations.map((candidate) => <button aria-pressed={operation === candidate.id} key={candidate.id} onClick={() => selectOperation(candidate.id)}>{candidate.label}</button>)}
       </div>
       <div className="card-constructor-flow" aria-label="Card construction blocks">
-        <label className="constructor-block constructor-input"><span>INPUT PLUG</span><select aria-label="Custom card input type" onChange={(event) => setInputRole(event.target.value as TensorRole)} value={inputRole}><option value="hidden">Hidden H</option><option value="logits">Logits L</option><option value="attention">Attention A</option><option value="output">Generic O</option></select></label>
+        <label className="constructor-block constructor-input"><span>INPUT PLUG</span><select aria-label="Custom card input type" onChange={(event) => { const role = event.target.value as TensorRole; setInputRole(role); if (category !== 'projection') setOutputRole(role) }} value={inputRole}><option value="hidden">Hidden H</option><option value="logits">Logits L</option><option value="attention">Attention A</option>{category === 'utility' && <option value="output">Generic O</option>}</select></label>
         <span className="constructor-link" aria-hidden="true">→</span>
         <div className="constructor-block constructor-operation"><span>PYTORCH ATOM</span><strong>{customCardOperations.find((candidate) => candidate.id === operation)?.label}</strong></div>
         <span className="constructor-link" aria-hidden="true">→</span>
-        <label className="constructor-block constructor-output"><span>OUTPUT PLUG</span><select aria-label="Custom card output type" onChange={(event) => setOutputRole(event.target.value as TensorRole)} value={outputRole}><option value="hidden">Hidden H</option><option value="logits">Logits L</option><option value="attention">Attention A</option><option value="output">Generic O</option></select></label>
+        <label className="constructor-block constructor-output"><span>OUTPUT PLUG</span><select aria-label="Custom card output type" disabled={category !== 'projection'} onChange={(event) => setOutputRole(event.target.value as TensorRole)} value={outputRole}><option value="hidden">Hidden H</option><option value="logits">Logits L</option><option value="attention">Attention A</option><option value="output">Generic O</option></select></label>
       </div>
       <div className="card-constructor-settings">
         <label><span>Name</span><input aria-label="Custom card name" onChange={(event) => setName(event.target.value)} value={name} /></label>
