@@ -94,6 +94,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   focusNodesRef.current = camera.focusNodes
   const previousGraphRef = useRef<{ id: string; nodeIds: Set<string>; positions: Map<string, string> } | undefined>(undefined)
   const manualNodePositionsRef = useRef(new Map<string, string>())
+  const manualDropPositionRef = useRef<string | undefined>(undefined)
   const nodeDrag = useRef<{ pointerId: number; nodeId: string; offsetX: number; offsetY: number; position: { x: number; y: number } } | null>(null)
   const groupDrag = useRef<{ pointerId: number; groupId: string; offsetX: number; offsetY: number; position: { x: number; y: number } } | null>(null)
   const selectionDrag = useRef<{ pointerId: number; startX: number; startY: number; base: Set<string> } | null>(null)
@@ -114,7 +115,11 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       focusNodesRef.current(nodeIds)
     } else {
       const added = new Set([...nodeIds].filter((nodeId) => !previous.nodeIds.has(nodeId)))
-      if (added.size > 0) focusNodesRef.current(added)
+      if (added.size > 0) {
+        const manualDrop = added.size === 1 && positions.get([...added][0]) === manualDropPositionRef.current
+        if (!manualDrop) focusNodesRef.current(added)
+        manualDropPositionRef.current = undefined
+      }
       else {
         const movedNodeIds = graph.nodes.filter((node) => previous.positions.get(node.id) !== positions.get(node.id)).map((node) => node.id)
         const manualMoveOnly = movedNodeIds.length > 0 && movedNodeIds.every((nodeId) => manualNodePositionsRef.current.get(nodeId) === positions.get(nodeId))
@@ -379,6 +384,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     const bounds = event.currentTarget.getBoundingClientRect()
     const pointer = screenToWorld({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, camera.viewport)
     const position = { x: pointer.x - MODEL_CARD_WIDTH / 2, y: pointer.y - MODEL_CARD_HEIGHT / 2 }
+    manualDropPositionRef.current = `${position.x}:${position.y}`
     if (inputRole) onDropInput(inputRole, position)
     else if (customCardId) onDropCustom(customCardId, position)
     else onDropAtom(atomId, position)

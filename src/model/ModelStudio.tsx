@@ -35,7 +35,6 @@ import { GraphCanvas } from './GraphCanvas'
 import { PythonCodeEditor } from './PythonCodeEditor'
 import { AskLaboPanel } from './AskLaboPanel'
 import type { AgentGraphAction } from '../core/agentic-graph'
-import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH, resolveCardDrop } from './card-layout'
 import { CustomCardCreator, type CustomCardDestination, type CustomCardCreateResult } from './CustomCardCreator'
 import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
@@ -355,15 +354,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       : outputTensor === 'logits' || outputTensor === 'scalar' ? 'output' : 'hidden'
     const id = `${definition.id}-${sequence}`
     setGraph((current) => {
-      const position = desiredPosition
-        ? resolveCardDrop({
-            id,
-            original: desiredPosition,
-            desired: desiredPosition,
-            width: MODEL_CARD_WIDTH,
-            height: MODEL_CARD_HEIGHT,
-          }, current.nodes.map((node) => ({ id: node.id, position: node.position, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT })))
-        : findOpenGraphPosition(current)
+      const position = desiredPosition ?? findOpenGraphPosition(current)
       return addNode(current, {
         id,
         kind: 'semantic',
@@ -396,9 +387,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     let id = baseId
     while (graph.nodes.some((node) => node.id === id)) id = `${baseId}-${++sequence}`
     setGraph((current) => {
-      const position = desiredPosition
-        ? resolveCardDrop({ id, original: desiredPosition, desired: desiredPosition, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT }, current.nodes.map((node) => ({ id: node.id, position: node.position, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT })))
-        : findOpenGraphPosition(current)
+      const position = desiredPosition ?? findOpenGraphPosition(current)
       return addNode(current, { id, kind: 'input', label: definition.label, role, position })
     })
     setSelectedNodeId(id)
@@ -407,9 +396,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const addCustomCard = (card: CustomPyTorchCard, desiredPosition?: { x: number; y: number }) => {
     const id = `custom-${card.id}-${customCardSequenceRef.current++}`
     setGraph((current) => {
-      const position = desiredPosition
-        ? resolveCardDrop({ id, original: desiredPosition, desired: desiredPosition, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT }, current.nodes.map((node) => ({ id: node.id, position: node.position, width: MODEL_CARD_WIDTH, height: MODEL_CARD_HEIGHT })))
-        : findOpenGraphPosition(current)
+      const position = desiredPosition ?? findOpenGraphPosition(current)
       return addNode(current, { id, kind: 'custom-pytorch', label: card.label, role: card.outputRole ?? 'hidden', position, code: card.code, attributes: { inputRole: card.inputRole ?? 'hidden' } })
     })
     setSelectedNodeId(id)

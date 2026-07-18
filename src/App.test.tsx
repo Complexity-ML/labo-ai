@@ -683,6 +683,34 @@ describe('LABO AI workspace', () => {
     expect(screen.getByText('1 atoms')).toBeInTheDocument()
   })
 
+  it('keeps an exact manual library drop without snapping or moving the camera', () => {
+    render(<App />)
+    fireEvent.click(screen.getByText(/Activations/))
+    const target = screen.getByRole('button', { name: 'Select Attention RMSNorm' }).closest<HTMLElement>('.architecture-node')!
+    const targetPosition = { x: Number.parseFloat(target.style.left), y: Number.parseFloat(target.style.top) }
+    const canvas = screen.getByLabelText('Architecture graph canvas')
+    const world = screen.getByTestId('graph-world')
+    const viewportBefore = world.style.transform
+    const values = new Map<string, string>([['application/x-labo-model-atom', 'relu']])
+    const dataTransfer = {
+      dropEffect: 'copy', effectAllowed: 'copy',
+      getData: (type: string) => values.get(type) ?? '',
+      setData: (type: string, value: string) => values.set(type, value),
+      get types() { return [...values.keys()] },
+    }
+    const dropEvent = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperties(dropEvent, {
+      clientX: { value: targetPosition.x + 74 },
+      clientY: { value: targetPosition.y + 38 },
+      dataTransfer: { value: dataTransfer },
+    })
+    fireEvent(canvas, dropEvent)
+
+    const dropped = screen.getByRole('button', { name: 'Select ReLU' }).closest<HTMLElement>('.architecture-node')!
+    expect(dropped).toHaveStyle({ left: `${targetPosition.x}px`, top: `${targetPosition.y}px` })
+    expect(world.style.transform).toBe(viewportBefore)
+  })
+
   it('exposes distinct semantic ports for routing and expert merging', () => {
     render(<App />)
     expect(document.querySelector('[data-port-id="fixed-routes-expertIndices-output"]')).toHaveAttribute('data-port-key', 'expertIndices')
