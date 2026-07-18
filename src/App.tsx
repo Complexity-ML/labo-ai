@@ -6,6 +6,7 @@ import { ModelStudio } from './model/ModelStudio'
 import { TokenizerStudio } from './TokenizerStudio'
 import { TrainingStudio } from './training/TrainingStudio'
 import { searchModelCards } from './model/card-search'
+import './styles/desktop.scss'
 
 type Workspace = 'model' | 'training' | 'tokenizer'
 

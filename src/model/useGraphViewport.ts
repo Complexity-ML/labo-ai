@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject, type WheelEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject, type WheelEvent } from 'react'
 import { clampZoom, graphGridStyle, panViewport, screenToWorld, zoomViewportAt, type GraphViewport } from './viewport'
 
 const DEFAULT_VIEWPORT: GraphViewport = { x: 0, y: 0, zoom: 1 }
@@ -10,6 +10,22 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
   const [isPanning, setIsPanning] = useState(false)
   const panGesture = useRef<PanGesture | null>(null)
   const spacePressed = useRef(false)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || typeof ResizeObserver === 'undefined') return
+    let previous = canvas.getBoundingClientRect()
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return
+      const next = entry.contentRect
+      const deltaX = (next.width - previous.width) / 2
+      const deltaY = (next.height - previous.height) / 2
+      previous = next
+      if (deltaX || deltaY) setViewport((current) => ({ ...current, x: current.x + deltaX, y: current.y + deltaY }))
+    })
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [canvasRef])
 
   const canvasCenter = () => {
     const rect = canvasRef.current?.getBoundingClientRect()

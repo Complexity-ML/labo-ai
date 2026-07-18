@@ -521,6 +521,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     setInteractionMode('edit')
   }
 
+  const deleteGraphCard = (nodeId: string) => {
+    const next = removeNode(graph, nodeId)
+    setGraph(next)
+    setSelectedNodeId(next.nodes[0]?.id ?? '')
+    if (editingNodeId === nodeId) closeCardEditor()
+  }
+
   const deleteCustomCardDefinition = (cardId: string) => setCustomCards((current) => current.filter((card) => card.id !== cardId))
 
   useEffect(() => {
@@ -899,7 +906,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </aside>}
 
         <section className={`editor-grid view-${view}`}>
-          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} highlightedNodeIds={interactionMode === 'edit' ? selectedArchitectureNodeIds : undefined} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
+          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} highlightedNodeIds={interactionMode === 'edit' ? selectedArchitectureNodeIds : undefined} onDeleteNode={deleteGraphCard} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
             const card = customCards.find((candidate) => candidate.id === cardId)
             if (card) addCustomCard(card, position)
           }} onDropInput={(role, position) => addGraphInput(role, position)} playerSnapshot={modelPlayerSnapshot} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}
@@ -907,8 +914,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           {view !== 'blocks' && (
             <div className="code-panel">
               <div className="panel-tab"><Code2 size={13} /> generated_attention.py {graphArchitectures.length > 1 && <select aria-label="PyTorch architecture" onChange={(event) => { const architecture = graphArchitectures.find((candidate) => candidate.id === event.target.value); setSelectedArchitectureId(event.target.value); if (architecture?.nodeIds[0]) setSelectedNodeId(architecture.nodeIds[0]) }} value={selectedArchitecture?.id ?? ''}>{graphArchitectures.map((architecture) => <option key={architecture.id} value={architecture.id}>{architecture.label}</option>)}</select>}<span>LABO DIALECT</span><button aria-label="Apply PyTorch to blocks" onClick={applyPyTorch}>Apply to blocks</button></div>
-              <PythonCodeEditor onChange={setCodeDraft} value={codeDraft} />
-              {parseDiagnostics.length > 0 && <div className="code-diagnostics">{parseDiagnostics.map((diagnostic) => <p key={`${diagnostic.nodeId}-${diagnostic.code}`}>{diagnostic.message}</p>)}</div>}
+              {blankGraph ? <div className="code-empty-state">
+                <span><Code2 size={20} /></span>
+                <strong>PyTorch appears with your graph</strong>
+                <p>Add the first card to generate an inspectable module. Nothing invalid is emitted for an empty workspace.</p>
+                <code>graph → typed IR → PyTorch</code>
+              </div> : <PythonCodeEditor onChange={setCodeDraft} value={codeDraft} />}
+              {!blankGraph && parseDiagnostics.length > 0 && <div className="code-diagnostics">{parseDiagnostics.map((diagnostic) => <p key={`${diagnostic.nodeId}-${diagnostic.code}`}>{diagnostic.message}</p>)}</div>}
             </div>
           )}
         </section>

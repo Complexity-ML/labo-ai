@@ -1021,6 +1021,27 @@ describe('LABO AI workspace', () => {
     expect(screen.getByText(/Graph incomplete · \d+ wiring issues?/)).toBeInTheDocument()
   })
 
+  it('opens card edit and guarded delete actions from the graph context menu', () => {
+    render(<App />)
+
+    const card = screen.getByRole('button', { name: 'Select Attention RMSNorm' })
+    fireEvent.contextMenu(card.closest('[data-graph-node="true"]')!)
+    expect(screen.getByRole('menu')).toHaveTextContent('Attention RMSNorm')
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Blocks' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    fireEvent.contextMenu(card.closest('[data-graph-node="true"]')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit card' }))
+    expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close model card editor' }))
+
+    fireEvent.contextMenu(card.closest('[data-graph-node="true"]')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete card' }))
+    expect(screen.getByRole('menuitem', { name: 'Confirm delete' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm delete' }))
+    expect(screen.queryByRole('button', { name: 'Select Attention RMSNorm' })).not.toBeInTheDocument()
+  })
+
   it('applies supported PyTorch edits back to the same model atom', () => {
     render(<App />)
 
