@@ -68,11 +68,11 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
   </>
 }
 
-function ArchitectureNodeCard({ editMode = false, graph, node, selected, highlighted = false, status, grouped = false, dragging = false, onContextMenu, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; highlighted?: boolean; status: string; grouped?: boolean; dragging?: boolean; onContextMenu?(event: MouseEvent<HTMLDivElement>, node: ArchitectureNode): void; onEdit?(): void; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
+function ArchitectureNodeCard({ editMode = false, graph, node, selected, highlighted = false, status, grouped = false, dragging = false, onContextMenu, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; highlighted?: boolean; status: string; grouped?: boolean; dragging?: boolean; onContextMenu?(event: MouseEvent<HTMLDivElement>, node: ArchitectureNode): void; onEdit?(): void; onSelect(event: MouseEvent<HTMLButtonElement>): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
   const editability = node.kind === 'custom-pytorch' ? 'CODE' : node.kind === 'input' ? 'LABEL' : 'SETTINGS'
   return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} ${highlighted ? 'architecture-target' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-node-id={node.id} data-atom-id={node.atomId} onContextMenu={(event) => onContextMenu?.(event, node)} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
     <NodePorts graph={graph} node={node} onPointerDown={onPortPointerDown} />
-    <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEdit?.() }} onPointerDown={(event) => {
+    <button aria-label={`Select ${node.label}`} className="node-select" onClick={onSelect} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEdit?.() }} onPointerDown={(event) => {
       if (editMode || event.detail > 1) {
         event.stopPropagation()
         return
@@ -85,7 +85,7 @@ function ArchitectureNodeCard({ editMode = false, graph, node, selected, highlig
   </div>
 }
 
-export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeIds, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onDeleteNode, onEditNode }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; highlightedNodeIds?: ReadonlySet<string>; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onDeleteNode?(nodeId: string): void; onEditNode?(nodeId: string): void }) {
+export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeIds, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onDeleteNode, onDeleteNodes, onEditNode }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; highlightedNodeIds?: ReadonlySet<string>; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onDeleteNode?(nodeId: string): void; onDeleteNodes?(nodeIds: string[]): void; onEditNode?(nodeId: string): void }) {
   const qkvGroup = graph.groups?.find((group) => group.kind === 'qkv-projection')
   const qkvNodeIds = new Set(qkvGroup?.nodeIds ?? [])
   const canvasRef = useRef<HTMLDivElement | null>(null)
@@ -96,10 +96,14 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   const suppressNextPositionFocusRef = useRef(false)
   const nodeDrag = useRef<{ pointerId: number; nodeId: string; offsetX: number; offsetY: number; original: { x: number; y: number }; position: { x: number; y: number } } | null>(null)
   const groupDrag = useRef<{ pointerId: number; groupId: string; offsetX: number; offsetY: number; original: { x: number; y: number }; position: { x: number; y: number } } | null>(null)
+  const selectionDrag = useRef<{ pointerId: number; startX: number; startY: number; base: Set<string> } | null>(null)
   const [dragPreview, setDragPreview] = useState<{ nodeId: string; position: { x: number; y: number } } | null>(null)
   const [groupPreview, setGroupPreview] = useState<{ groupId: string; position: { x: number; y: number } } | null>(null)
   const [acceptsLibraryDrop, setAcceptsLibraryDrop] = useState(false)
   const [cardMenu, setCardMenu] = useState<{ nodeId: string; label: string; x: number; y: number; confirmDelete?: boolean }>()
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set())
+  const [selectionBox, setSelectionBox] = useState<{ left: number; top: number; width: number; height: number }>()
+  const [confirmSelectionDelete, setConfirmSelectionDelete] = useState(false)
   const cables = useElasticCables(graph, setGraph, canvasRef, camera.viewport, `${selectedNodeId}:${dragPreview?.nodeId ?? ''}:${dragPreview?.position.x ?? ''}:${dragPreview?.position.y ?? ''}:${groupPreview?.groupId ?? ''}:${groupPreview?.position.x ?? ''}:${groupPreview?.position.y ?? ''}`)
 
   useLayoutEffect(() => {
@@ -128,6 +132,101 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     document.addEventListener('pointerdown', closeMenu)
     return () => document.removeEventListener('pointerdown', closeMenu)
   }, [cardMenu])
+
+  useEffect(() => {
+    if (!editMode) {
+      setSelectedNodeIds(new Set())
+      setSelectionBox(undefined)
+      setConfirmSelectionDelete(false)
+      return
+    }
+    const available = new Set(graph.nodes.map((node) => node.id))
+    setSelectedNodeIds((current) => new Set([...current].filter((nodeId) => available.has(nodeId))))
+  }, [editMode, graph.nodes])
+
+  const selectNode = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
+    event.stopPropagation()
+    if (!editMode) {
+      setSelectedNodeId(nodeId)
+      return
+    }
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+    if (!additive) {
+      setSelectedNodeIds(new Set())
+      setSelectedNodeId(nodeId)
+      setConfirmSelectionDelete(false)
+      onEditNode?.(nodeId)
+      return
+    }
+    setSelectedNodeIds((current) => {
+      const next = new Set(current)
+      if (next.has(nodeId)) next.delete(nodeId)
+      else next.add(nodeId)
+      return next
+    })
+    setSelectedNodeId(nodeId)
+    setConfirmSelectionDelete(false)
+  }
+
+  const selectQkvGroup = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!editMode || !qkvGroup) {
+      setSelectedNodeId(qkvGroup?.id ?? '')
+      return
+    }
+    event.stopPropagation()
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+    setSelectedNodeIds((current) => {
+      const next = additive ? new Set(current) : new Set<string>()
+      const allSelected = qkvGroup.nodeIds.every((nodeId) => next.has(nodeId))
+      for (const nodeId of qkvGroup.nodeIds) {
+        if (additive && allSelected) next.delete(nodeId)
+        else next.add(nodeId)
+      }
+      return next
+    })
+    setSelectedNodeId(qkvGroup.nodeIds[0] ?? qkvGroup.id)
+    setConfirmSelectionDelete(false)
+  }
+
+  const nodesInsideSelection = (box: { left: number; top: number; width: number; height: number }) => {
+    const start = screenToWorld({ x: box.left, y: box.top }, camera.viewport)
+    const end = screenToWorld({ x: box.left + box.width, y: box.top + box.height }, camera.viewport)
+    const left = Math.min(start.x, end.x)
+    const right = Math.max(start.x, end.x)
+    const top = Math.min(start.y, end.y)
+    const bottom = Math.max(start.y, end.y)
+    const intersects = (x: number, y: number, width: number, height: number) => x < right && x + width > left && y < bottom && y + height > top
+    const matched = new Set<string>()
+    const shift = qkvGroup ? (qkvGroup.expanded ? 140 : 55) : 0
+    for (const node of graph.nodes) {
+      if (qkvNodeIds.has(node.id)) continue
+      const y = node.position.y >= 300 ? node.position.y + shift : node.position.y
+      if (intersects(node.position.x, y, MODEL_CARD_WIDTH, MODEL_CARD_HEIGHT)) matched.add(node.id)
+    }
+    if (qkvGroup && intersects(qkvGroup.position.x, qkvGroup.position.y, qkvGroup.expanded ? 390 : 340, qkvGroup.expanded ? 130 : 92)) {
+      for (const nodeId of qkvGroup.nodeIds) matched.add(nodeId)
+    }
+    return matched
+  }
+
+  const beginCanvasSelection = (event: PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement
+    const interactive = target.closest('button,input,select,textarea,[data-graph-node],.card-context-menu,.graph-selection-toolbar,.graph-viewport-controls')
+    if (!editMode || event.button !== 0 || interactive) {
+      camera.onPointerDown(event)
+      return
+    }
+    event.preventDefault()
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = event.clientX - bounds.left
+    const y = event.clientY - bounds.top
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+    selectionDrag.current = { pointerId: event.pointerId, startX: x, startY: y, base: additive ? new Set(selectedNodeIds) : new Set() }
+    if (!additive) setSelectedNodeIds(new Set())
+    setConfirmSelectionDelete(false)
+    setSelectionBox({ left: x, top: y, width: 0, height: 0 })
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
 
   const beginNodeDrag: NodeDragHandler = (event, node) => {
     if (event.button !== 0) return
@@ -177,6 +276,19 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   }
 
   const movePointer = (event: PointerEvent<HTMLDivElement>) => {
+    const selecting = selectionDrag.current
+    if (selecting?.pointerId === event.pointerId) {
+      event.preventDefault()
+      const bounds = event.currentTarget.getBoundingClientRect()
+      const x = event.clientX - bounds.left
+      const y = event.clientY - bounds.top
+      const box = { left: Math.min(selecting.startX, x), top: Math.min(selecting.startY, y), width: Math.abs(x - selecting.startX), height: Math.abs(y - selecting.startY) }
+      setSelectionBox(box)
+      const next = new Set(selecting.base)
+      for (const nodeId of nodesInsideSelection(box)) next.add(nodeId)
+      setSelectedNodeIds(next)
+      return
+    }
     const drag = nodeDrag.current
     const movingGroup = groupDrag.current
     if ((!drag || drag.pointerId !== event.pointerId) && (!movingGroup || movingGroup.pointerId !== event.pointerId)) return camera.onPointerMove(event)
@@ -194,6 +306,12 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   }
 
   const endPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (selectionDrag.current?.pointerId === event.pointerId) {
+      selectionDrag.current = null
+      setSelectionBox(undefined)
+      event.currentTarget.releasePointerCapture?.(event.pointerId)
+      return
+    }
     const drag = nodeDrag.current
     const movingGroup = groupDrag.current
     if (movingGroup?.pointerId === event.pointerId) {
@@ -238,6 +356,12 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   }
 
   const cancelPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (selectionDrag.current?.pointerId === event.pointerId) {
+      selectionDrag.current = null
+      setSelectionBox(undefined)
+      event.currentTarget.releasePointerCapture?.(event.pointerId)
+      return
+    }
     if (nodeDrag.current?.pointerId === event.pointerId) {
       nodeDrag.current = null
       setDragPreview(null)
@@ -297,14 +421,18 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       onDragOver={dragLibraryAtomOver}
       onDrop={dropLibraryAtom}
       onKeyDown={(event) => {
-        if (event.key === 'Escape') setCardMenu(undefined)
+        if (event.key === 'Escape') {
+          setCardMenu(undefined)
+          setSelectedNodeIds(new Set())
+          setConfirmSelectionDelete(false)
+        }
         camera.onKeyDown(event)
       }}
       onKeyUp={camera.onKeyUp}
       onPointerCancel={cancelPointer}
       onPointerDown={(event) => {
         if (!(event.target as HTMLElement).closest('.card-context-menu')) setCardMenu(undefined)
-        camera.onPointerDown(event)
+        beginCanvasSelection(event)
       }}
       onPointerMove={movePointer}
       onPointerUp={endPointer}
@@ -313,6 +441,20 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       tabIndex={0}
     >
       <div className="canvas-grid" style={camera.gridStyle} />
+      {selectionBox && <div aria-hidden="true" className="graph-selection-box" style={selectionBox} />}
+      {editMode && selectedNodeIds.size > 0 && <div aria-label="Selected graph cards" className="graph-selection-toolbar">
+        <strong>{selectedNodeIds.size} card{selectedNodeIds.size === 1 ? '' : 's'} selected</strong>
+        <button onClick={() => { setSelectedNodeIds(new Set()); setConfirmSelectionDelete(false) }} type="button">Clear</button>
+        <button className={confirmSelectionDelete ? 'confirm-delete' : ''} onClick={() => {
+          if (!confirmSelectionDelete) {
+            setConfirmSelectionDelete(true)
+            return
+          }
+          onDeleteNodes?.([...selectedNodeIds])
+          setSelectedNodeIds(new Set())
+          setConfirmSelectionDelete(false)
+        }} type="button"><Trash2 size={12} />{confirmSelectionDelete ? `Confirm delete ${selectedNodeIds.size}` : 'Delete selection'}</button>
+      </div>}
       {graph.nodes.length === 0 && <div className="graph-empty-state" aria-hidden="true">
         <span className="graph-empty-mark"><Sparkles size={19} /></span>
         <div><strong>Start with an atomic idea</strong><p>Drag a card from the library, or ask LABO to compose the first architecture.</p></div>
@@ -325,17 +467,17 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
         <Port className="port-third-1" direction="output" id="qkv-query-output" label="Q" nodeId="q-proj" onPointerDown={cables.beginCable} role="query" />
         <Port className="port-third-2" direction="output" id="qkv-key-output" label="K" nodeId="k-proj" onPointerDown={cables.beginCable} role="key" />
         <Port className="port-third-3" direction="output" id="qkv-value-output" label="V" nodeId="v-proj" onPointerDown={cables.beginCable} role="value" />
-        <button aria-label="Select QKV projection" className="qkv-select" onClick={() => setSelectedNodeId(qkvGroup.id)} onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><span className="node-type">COMPOSITE · GQA</span><strong>QKV projection</strong><small>Q{graph.config.queryHeads} · KV{graph.config.keyValueHeads} · head {graph.config.headDim}</small></button>
+        <button aria-label="Select QKV projection" className="qkv-select" onClick={selectQkvGroup} onPointerDown={(event) => { if (editMode) event.stopPropagation(); else beginGroupDrag(event, qkvGroup.id, qkvGroup.position) }}><span className="node-type">COMPOSITE · GQA</span><strong>QKV projection</strong><small>Q{graph.config.queryHeads} · KV{graph.config.keyValueHeads} · head {graph.config.headDim}</small></button>
         {editMode && <span className="card-editability-badge card-editability-expand">EXPAND TO EDIT</span>}
 
         <button aria-label="Expand QKV projections" className="group-transform-button" onClick={() => setQkvExpanded(true)}>Décomposer en Q / K / V</button>
       </div>}
-      {qkvGroup?.expanded && <section className={`qkv-expanded-group ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} aria-label="QKV projection group" data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}><div className="qkv-group-header" onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><div><span className="node-type">COMPOSITE · EXPANDED</span><strong>QKV projections</strong></div><button aria-label="Collapse QKV projections" onClick={() => setQkvExpanded(false)}>Regrouper en QKV</button></div><div className="qkv-child-grid">{graph.nodes.filter((node) => qkvNodeIds.has(node.id)).map((node) => <ArchitectureNodeCard editMode={editMode} graph={graph} grouped highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={node} onContextMenu={openCardMenu} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />)}</div></section>}
+      {qkvGroup?.expanded && <section className={`qkv-expanded-group ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} aria-label="QKV projection group" data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}><div className="qkv-group-header" onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><div><span className="node-type">COMPOSITE · EXPANDED</span><strong>QKV projections</strong></div><button aria-label="Collapse QKV projections" onClick={() => setQkvExpanded(false)}>Regrouper en QKV</button></div><div className="qkv-child-grid">{graph.nodes.filter((node) => qkvNodeIds.has(node.id)).map((node) => <ArchitectureNodeCard editMode={editMode} graph={graph} grouped highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={node} onContextMenu={openCardMenu} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={(event) => selectNode(event, node.id)} selected={selectedNodeIds.has(node.id) || selectedNodeId === node.id} status={status(node.id)} />)}</div></section>}
       {graph.nodes.filter((node) => !qkvNodeIds.has(node.id)).map((node) => {
         const shift = qkvGroup ? (qkvGroup.expanded ? 140 : 55) : 0
         const previewPosition = dragPreview?.nodeId === node.id ? dragPreview.position : node.position
         const displayed = previewPosition.y >= 300 ? { ...node, position: { ...previewPosition, y: previewPosition.y + shift } } : { ...node, position: previewPosition }
-        return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} editMode={editMode} graph={graph} highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={displayed} onContextMenu={openCardMenu} onDragPointerDown={beginNodeDrag} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />
+        return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} editMode={editMode} graph={graph} highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={displayed} onContextMenu={openCardMenu} onDragPointerDown={beginNodeDrag} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={(event) => selectNode(event, node.id)} selected={selectedNodeIds.has(node.id) || selectedNodeId === node.id} status={status(node.id)} />
       })}
       </div>
       {cardMenu && <div className="card-context-menu" role="menu" style={{ left: cardMenu.x, top: cardMenu.y }} onPointerDown={(event) => event.stopPropagation()}>

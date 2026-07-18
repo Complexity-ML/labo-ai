@@ -226,6 +226,59 @@
   }
 }
 
+.graph-selection-box {
+  position: absolute;
+  z-index: 64;
+  pointer-events: none;
+  border: 1px solid rgb(112 224 173 / 82%);
+  border-radius: 4px;
+  background: rgb(112 224 173 / 8%);
+  box-shadow: inset 0 0 0 1px rgb(112 224 173 / 7%), 0 0 24px rgb(112 224 173 / 8%);
+}
+
+.graph-selection-toolbar {
+  position: absolute;
+  z-index: 76;
+  top: 14px;
+  left: 50%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid rgb(112 224 173 / 22%);
+  border-radius: 11px;
+  background: rgb(12 17 18 / 94%);
+  box-shadow: 0 16px 44px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 4%);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+
+  strong {
+    padding: 0 8px;
+    color: #dce8e3;
+    font: 9px 'JetBrains Mono', ui-monospace, monospace;
+    white-space: nowrap;
+  }
+
+  button {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 7px;
+    padding: 0 9px;
+    color: #9eaaa5;
+    background: transparent;
+    font-size: 9px;
+
+    &:hover { color: #edf4f1; background: rgb(255 255 255 / 5%); }
+    &:last-child { color: #d79393; }
+    &:last-child:hover,
+    &.confirm-delete { color: #ffd1d1; background: rgb(239 100 100 / 14%); }
+  }
+}
+
 .code-panel,
 .python-editor-shell,
 .code-editor { background: #080b0c; }
@@ -236,6 +289,8 @@
   font-size: 12px;
   line-height: 1.7;
 }
+
+.view-pytorch .code-editor { padding-bottom: 54px; }
 
 .pytorch-textarea { background: transparent; }
 

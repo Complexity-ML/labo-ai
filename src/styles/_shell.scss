@@ -9,6 +9,8 @@
     var(--labo-bg-deep);
 }
 
+.app-shell.workspace-model { --labo-status-height: 60px; }
+
 .topbar {
   padding-inline: 18px;
   border-color: var(--labo-line);
@@ -187,6 +189,12 @@
   color: #68736f;
   background: rgb(8 11 12 / 96%);
   font-size: 9px;
+}
+
+.model-statusbar {
+  position: relative;
+  align-items: center;
+  padding-bottom: 0;
 }
 
 @media (max-width: 1560px) {

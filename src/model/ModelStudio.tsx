@@ -101,7 +101,6 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [view, setView] = useState<ViewMode>('split')
   const [selectedArchitectureId, setSelectedArchitectureId] = useState('')
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('add')
-  const [confirmArchitectureDelete, setConfirmArchitectureDelete] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [modelPlayerSnapshot, setModelPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', currentAtomId: initialGraph.nodes[0]?.id, results: initialGraph.nodes.map((node) => ({ atomId: node.id, status: 'pending' })) })
@@ -129,12 +128,11 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   webAuthenticatedRef.current = webAuthenticated
   const graphArchitectures = useMemo(() => architectureComponents(graph, [...builtInModelPresets, ...userPresets]), [graph, userPresets])
   const selectedArchitecture = graphArchitectures.find((component) => component.id === selectedArchitectureId) ?? graphArchitectures[0]
-  const selectedArchitectureNodeIds = useMemo(() => graphArchitectures.length > 1 && selectedArchitecture ? new Set(selectedArchitecture.nodeIds) : undefined, [graphArchitectures.length, selectedArchitecture])
   const codeGraph = selectedArchitecture?.graph ?? graph
   const code = useMemo(() => compileToPyTorch(codeGraph), [codeGraph])
   const [codeDraft, setCodeDraft] = useState(code)
   const [parseDiagnostics, setParseDiagnostics] = useState<PyTorchDialectDiagnostic[]>([])
-  const [sampleText, setSampleText] = useState('Bonjour LABO AI')
+  const [sampleText, setSampleText] = useState('Hello LABO AI')
   const [promptTokenCount, setPromptTokenCount] = useState<number>()
   const [modelOutput, setModelOutput] = useState<LaboRuntimeTrace['modelOutput']>()
   const [customCards, setCustomCards] = useState<CustomPyTorchCard[]>(() => webRuntime ? [] : loadCustomCards())
@@ -166,7 +164,6 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     if (containingArchitecture && containingArchitecture.id !== selectedArchitectureId) setSelectedArchitectureId(containingArchitecture.id)
   }, [graphArchitectures, selectedArchitectureId, selectedNodeId])
 
-  useEffect(() => setConfirmArchitectureDelete(false), [selectedArchitecture?.id])
   useEffect(() => setConfirmPresetReset(false), [graph.id])
 
   useEffect(() => {
@@ -528,6 +525,15 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     if (editingNodeId === nodeId) closeCardEditor()
   }
 
+  const deleteGraphCards = (nodeIds: string[]) => {
+    const removed = new Set(nodeIds)
+    let next = graph
+    for (const nodeId of removed) next = removeNode(next, nodeId)
+    setGraph(next)
+    setSelectedNodeId(next.nodes[0]?.id ?? '')
+    if (editingNodeId && removed.has(editingNodeId)) closeCardEditor()
+  }
+
   const deleteCustomCardDefinition = (cardId: string) => setCustomCards((current) => current.filter((card) => card.id !== cardId))
 
   useEffect(() => {
@@ -647,24 +653,6 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     setInteractionMode('edit')
   }
 
-  const deleteSelectedArchitecture = () => {
-    if (!selectedArchitecture) return
-    if (!confirmArchitectureDelete) {
-      setConfirmArchitectureDelete(true)
-      return
-    }
-    const removed = new Set(selectedArchitecture.nodeIds)
-    const next = {
-      ...graph,
-      nodes: graph.nodes.filter((node) => !removed.has(node.id)),
-      edges: graph.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
-      groups: graph.groups?.filter((group) => !group.nodeIds.some((nodeId) => removed.has(nodeId))),
-    }
-    setGraph(next)
-    setSelectedNodeId(next.nodes[0]?.id ?? '')
-    setConfirmArchitectureDelete(false)
-  }
-
   const applyAgentGraph = (nextGraph: ArchitectureGraph, actions: AgentGraphAction[]) => {
     const addedNode = nextGraph.nodes.find((node) => !graph.nodes.some((current) => current.id === node.id))
     const generatedCards = nextGraph.nodes.filter((node) => !graph.nodes.some((current) => current.id === node.id) && node.kind === 'custom-pytorch' && node.code && validCustomPyTorchModule(node.code))
@@ -772,12 +760,6 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
             <button aria-pressed={interactionMode === 'add'} onClick={() => setInteractionMode('add')}><Blocks size={13} />Add blocks</button>
             <button aria-pressed={interactionMode === 'edit'} onClick={() => setInteractionMode('edit')}><Pencil size={13} />Edit cards</button>
             <button aria-haspopup="dialog" onClick={openCardCreator} title="Build a reusable PyTorch card, then choose exactly where it goes"><Code2 size={13} />New reusable card</button>
-            {interactionMode === 'edit' && selectedArchitecture && <button
-              aria-label={confirmArchitectureDelete ? `Confirm clearing ${selectedArchitecture.label}` : `Clear architecture ${selectedArchitecture.label}`}
-              className={confirmArchitectureDelete ? 'confirm-delete architecture-clear-button' : 'architecture-clear-button'}
-              onClick={deleteSelectedArchitecture}
-              title={`Delete all ${selectedArchitecture.nodeIds.length} cards and elastics from ${selectedArchitecture.label}`}
-            ><Trash2 size={13} /><span>{confirmArchitectureDelete ? `Confirm ${selectedArchitecture.label}` : `Clear ${selectedArchitecture.label}`}</span><small>{selectedArchitecture.nodeIds.length} cards</small></button>}
           </div>
           <details className="preset-menu"><summary>{presetMenuLabels[graph.id] ?? graph.name}</summary><div aria-label="Model preset">{builtInModelPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{presetMenuLabels[preset.id] ?? preset.name}</button>)}{userPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{preset.name}</button>)}</div></details>
           <details className="model-prompt-menu"><summary>Prompt</summary><label className="model-prompt-control"><span>Generation prompt</span><input aria-label="Model generation prompt" onChange={(event) => { setSampleText(event.target.value); setPromptTokenCount(undefined); setModelOutput(undefined) }} value={sampleText} /><small>{acceptsTokenIds ? (promptTokenCount === undefined ? 'Research BPE' : `${promptTokenCount} Token IDs`) : 'Add a Token IDs input'}</small></label></details>
@@ -803,47 +785,26 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         {libraryOpen && <aside className={`block-library mode-${interactionMode}`}>
           <div className="panel-heading"><PanelLeft size={14} /><span>BLOCK LIBRARY</span></div>
           <section className="block-group">
-            <h3>Graph inputs</h3>
-            {graphInputDefinitions.map((definition) => <button
-              aria-label={`Add ${definition.label}`}
-              className="library-block"
-              disabled={interactionMode === 'edit'}
-              draggable={interactionMode === 'add'}
-              key={definition.role}
-              onClick={() => addGraphInput(definition.role)}
-              onDragEnd={(event) => event.currentTarget.blur()}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = 'copy'
-                event.dataTransfer.setData('application/x-labo-graph-input', definition.role)
-                event.dataTransfer.setData('text/plain', definition.label)
-              }}
-              title="Click to add automatically, or drag onto the graph"
-            >
-              <span className="block-glyph glyph-input" />
-              {definition.label}
-            </button>)}
-            <details className="library-family model-preset-family">
-              <summary>My workspaces <span>{userPresets.length}</span></summary>
-              <div className="model-preset-builder">
-                <div className="workspace-current-target"><span>CURRENT WORKSPACE</span><strong>{presetMenuLabels[graph.id] ?? graph.name}</strong><small>{graph.nodes.length} cards · edits auto-saved locally</small></div>
-                <label><span>Name for the saved copy</span><input aria-label="New model preset name" onChange={(event) => setPresetName(event.target.value)} value={presetName} /></label>
-                {presetError && <p role="alert">{presetError}</p>}
-                <button aria-label={`Save a named copy of ${presetMenuLabels[graph.id] ?? graph.name}`} onClick={createUserPreset}>Save a named copy</button>
-                <button onClick={createBlankWorkspace}>Create and open a blank workspace</button>
-                <button className={`reset-model-preset-button${confirmPresetReset ? ' confirm-reset' : ''}`} disabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} onClick={resetCurrentPreset}>{confirmPresetReset ? `Confirm restore ${presetMenuLabels[graph.id] ?? graph.name}` : `Restore ${presetMenuLabels[graph.id] ?? graph.name}`}</button>
-                <small>Opening another workspace preserves this draft. Restore discards only the current workspace edits and requires confirmation.</small>
-              </div>
-              <div className="preset-comparison-list">
-                <strong>COMPARE ON CURRENT CANVAS</strong>
-                <small>Add a complete architecture beside the current graph without switching workspace.</small>
-                {[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)].map((preset) => <button aria-label={`Add ${presetMenuLabels[preset.id] ?? preset.name} beside current graph`} key={`compare-${preset.id}`} onClick={() => addPresetForComparison(preset)}><strong>+ {presetMenuLabels[preset.id] ?? preset.name}</strong><span>{preset.nodes.length} cards</span></button>)}
-              </div>
-              {userPresets.length > 0 && <div className="user-preset-list">
-                {userPresets.map((preset) => <div key={preset.id}>
-                  <button aria-label={`Load preset ${preset.name}`} aria-pressed={graph.id === preset.id} onClick={() => loadPreset(preset, preset.nodes[0]?.id ?? '')}><strong>{preset.name}</strong><small>{preset.nodes.length} blocks</small></button>
-                  <button aria-label={`Delete preset ${preset.name}`} onClick={() => deleteUserPreset(preset)} title="Delete preset"><Trash2 size={12} /></button>
-                </div>)}
-              </div>}
+            <details className="library-family graph-input-family">
+              <summary>Graph inputs <span>{graphInputDefinitions.length}</span></summary>
+              {graphInputDefinitions.map((definition) => <button
+                aria-label={`Add ${definition.label}`}
+                className="library-block"
+                disabled={interactionMode === 'edit'}
+                draggable={interactionMode === 'add'}
+                key={definition.role}
+                onClick={() => addGraphInput(definition.role)}
+                onDragEnd={(event) => event.currentTarget.blur()}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'copy'
+                  event.dataTransfer.setData('application/x-labo-graph-input', definition.role)
+                  event.dataTransfer.setData('text/plain', definition.label)
+                }}
+                title="Click to add automatically, or drag onto the graph"
+              >
+                <span className="block-glyph glyph-input" />
+                {definition.label}
+              </button>)}
             </details>
             <details className="library-family custom-card-family">
               <summary>My cards <span>{customCards.length}</span></summary>
@@ -867,9 +828,11 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                 </button><button aria-label={`Delete custom card ${card.label}`} className="delete-custom-library-card" onClick={() => deleteCustomCardDefinition(card.id)} title="Delete card from library"><Trash2 size={12} /></button></div>)}
               </div>}
             </details>
-            <h3>Generic atomics</h3>
-            {genericAtoms.map(atomButton)}
-            <details className="library-family">
+            <details className="library-family generic-atomics-family">
+              <summary>Generic atomics <span>{genericAtoms.length}</span></summary>
+              {genericAtoms.map(atomButton)}
+            </details>
+            <details className="library-family specialized-variants-family">
               <summary>Specialized variants <span>{specializedFamilies.reduce((count, family) => count + family.atoms.length, 1)}</span></summary>
               <div className="library-subfamilies">
                 {specializedFamilies.map((family) => <details className="library-subfamily" key={family.label}>
@@ -890,7 +853,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
               <summary>Token-Routed MLP <span>{trBasicAtoms.length}</span></summary>
               {trBasicAtoms.map(atomButton)}
             </details>
-            <details className="library-family" open>
+            <details className="library-family">
               <summary>Learned Router Controls <span>{learnedRouterAtoms.length}</span></summary>
               {learnedRouterAtoms.map(atomButton)}
             </details>
@@ -906,7 +869,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </aside>}
 
         <section className={`editor-grid view-${view}`}>
-          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} highlightedNodeIds={interactionMode === 'edit' ? selectedArchitectureNodeIds : undefined} onDeleteNode={deleteGraphCard} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
+          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} onDeleteNode={deleteGraphCard} onDeleteNodes={deleteGraphCards} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
             const card = customCards.find((candidate) => candidate.id === cardId)
             if (card) addCustomCard(card, position)
           }} onDropInput={(role, position) => addGraphInput(role, position)} playerSnapshot={modelPlayerSnapshot} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}
@@ -952,13 +915,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </aside>
       </div>
 
-      {editingNode && cardEditDraft && <div className="model-card-modal-backdrop">
-        <section aria-label="Edit model card" aria-modal="true" className="model-card-modal" role="dialog">
+      {editingNode && cardEditDraft && <div className="model-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) closeCardEditor() }}>
+        <section aria-label="Edit model card" aria-modal="true" className={`model-card-modal ${editingNode.kind === 'custom-pytorch' ? 'code-card-modal' : ''}`} onPointerDown={(event) => event.stopPropagation()} role="dialog">
           <header><div><span>EDIT MODE</span><strong>{editingNode.label}</strong></div><button aria-label="Close model card editor" onClick={closeCardEditor}><X size={14} /></button></header>
           <p className="model-card-modal-hint">Edit this existing graph card. No new Blockly card is added in this mode.</p>
           <label><span>Name</span><input aria-label="Model card name" onChange={(event) => setCardEditDraft((current) => current ? { ...current, label: event.target.value } : current)} value={cardEditDraft.label} /></label>
           <label><span>Block ID</span><input aria-label="Model card ID" disabled value={editingNode.id} /></label>
-          {editingNode.kind === 'custom-pytorch' ? <label><span>PyTorch module</span><textarea aria-label="Model card PyTorch module" onChange={(event) => setCardEditDraft((current) => current ? { ...current, code: event.target.value } : current)} rows={5} spellCheck={false} value={cardEditDraft.code ?? ''} /></label> : <div className="model-card-modal-settings">
+          {editingNode.kind === 'custom-pytorch' ? <label className="model-card-code-field"><span>PyTorch module</span><textarea aria-label="Model card PyTorch module" onChange={(event) => setCardEditDraft((current) => current ? { ...current, code: event.target.value } : current)} rows={14} spellCheck={false} value={cardEditDraft.code ?? ''} /></label> : <div className="model-card-modal-settings">
             {modelAtomRegistry[editingNode.atomId ?? '']?.settings.map((setting) => {
               const value = cardEditDraft.attributes?.[setting.id] ?? setting.default
               return <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean'
@@ -976,9 +939,33 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
       {createCardOpen && <CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} />}
 
-      <AskLaboPanel customCards={customCards} graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} />
+      <footer className="statusbar model-statusbar">
+      <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<>
+        <div className="workspace-management-column">
+          <div className="model-preset-builder">
+            <div className="workspace-current-target"><span>CURRENT WORKSPACE</span><strong>{presetMenuLabels[graph.id] ?? graph.name}</strong><small>{graph.nodes.length} cards · edits auto-saved for this user</small></div>
+            <label><span>Name for the saved copy</span><input aria-label="New model preset name" onChange={(event) => setPresetName(event.target.value)} value={presetName} /></label>
+            {presetError && <p role="alert">{presetError}</p>}
+            <button aria-label={`Save a named copy of ${presetMenuLabels[graph.id] ?? graph.name}`} onClick={createUserPreset}>Save current graph as a workspace</button>
+            <button onClick={createBlankWorkspace}>Create and open a blank workspace</button>
+            <button className={`reset-model-preset-button${confirmPresetReset ? ' confirm-reset' : ''}`} disabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} onClick={resetCurrentPreset}>{confirmPresetReset ? `Confirm restore ${presetMenuLabels[graph.id] ?? graph.name}` : `Restore ${presetMenuLabels[graph.id] ?? graph.name}`}</button>
+            <small>Opening another workspace preserves this draft. Restore discards only the current workspace edits and requires confirmation.</small>
+          </div>
+          {userPresets.length > 0 && <div className="user-preset-list">
+            <strong>YOUR SAVED WORKSPACES</strong>
+            {userPresets.map((preset) => <div key={preset.id}>
+              <button aria-label={`Load preset ${preset.name}`} aria-pressed={graph.id === preset.id} onClick={() => loadPreset(preset, preset.nodes[0]?.id ?? '')}><strong>{preset.name}</strong><small>{preset.nodes.length} blocks</small></button>
+              <button aria-label={`Delete preset ${preset.name}`} onClick={() => deleteUserPreset(preset)} title="Delete workspace"><Trash2 size={12} /></button>
+            </div>)}
+          </div>}
+        </div>
+        <div className="preset-comparison-list">
+          <strong>ADD FOR COMPARISON</strong>
+          <small>Add a complete architecture beside the current graph without switching workspace.</small>
+          {[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)].map((preset) => <button aria-label={`Add ${presetMenuLabels[preset.id] ?? preset.name} beside current graph`} key={`compare-${preset.id}`} onClick={() => addPresetForComparison(preset)}><strong>+ {presetMenuLabels[preset.id] ?? preset.name}</strong><span>{preset.nodes.length} cards</span></button>)}
+        </div>
+      </>} />
 
-      <footer className="statusbar">
         <span><span className={`status-dot ${validation.valid || blankGraph ? '' : 'invalid'}`} /> Neural IR {blankGraph ? 'blank' : validation.valid ? 'valid' : 'invalid'}</span>
         <span>{stats.nodeCount} nodes · {stats.edgeCount} links</span>
         <span className="status-spacer" />

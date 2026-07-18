@@ -101,8 +101,8 @@ export function CustomCardCreator({ onClose, onCreate, selectedTarget }: { onClo
     if (!result.ok) setError(result.message ?? 'The selected destination is not compatible with this card.')
   }
 
-  return <div className="model-card-modal-backdrop">
-    <section aria-label="Create model card" aria-modal="true" className="create-card-modal" role="dialog">
+  return <div className="model-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <section aria-label="Create model card" aria-modal="true" className="create-card-modal" onPointerDown={(event) => event.stopPropagation()} role="dialog">
       <header><div><span>CARD BUILDER</span><strong>Compose a new atomic card</strong></div><button aria-label="Close card creator" onClick={onClose}><X size={14} /></button></header>
       <p className="create-card-hint">Describe the card. LABO composes it; open Advanced settings only when you need exact control.</p>
       <div className="card-prompt-composer">

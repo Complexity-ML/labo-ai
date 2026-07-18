@@ -156,6 +156,20 @@
   border-left-color: rgb(111 199 212 / 14%);
 }
 
+.specialized-variants-family[open] {
+  border-color: transparent;
+  background: transparent;
+
+  > summary { background: rgb(112 224 173 / 4%); }
+
+  > .library-subfamilies {
+    width: 100%;
+    margin-inline: 0;
+    padding-left: 3px;
+    border-left: 0;
+  }
+}
+
 .library-subfamily {
   border-radius: 7px;
 

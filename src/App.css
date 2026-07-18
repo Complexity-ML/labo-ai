@@ -108,9 +108,6 @@
 .preset-comparison-list > button { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #292d35; border-radius: 5px; padding: 0 8px; background: #121419; color: #aeb3bd; font-size: 8px; text-align: left; }
 .preset-comparison-list > button span { color: #626976; font: 7px 'JetBrains Mono'; }
 .interaction-switcher button.confirm-delete { color: #f2b1b1; border-color: rgba(239,100,100,.5); background: rgba(239,100,100,.14); }
-.interaction-switcher .architecture-clear-button { max-width: 220px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 5px; }
-.interaction-switcher .architecture-clear-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.interaction-switcher .architecture-clear-button small { color: #727986; font: 7px 'JetBrains Mono'; white-space: nowrap; }
 .architecture-canvas.edit-mode.has-architecture-target .architecture-node:not(.architecture-target) { opacity: .34; filter: saturate(.45); }
 .architecture-canvas.edit-mode.has-architecture-target .architecture-node.architecture-target { box-shadow: 0 0 0 2px rgba(239,100,100,.3), 0 8px 28px rgba(0,0,0,.36); }
 .create-custom-card-button { min-height: 29px; border: 1px solid rgba(98,169,255,.32); border-radius: 5px; color: #cfe4ff; background: rgba(98,169,255,.1); font-size: 9px; }

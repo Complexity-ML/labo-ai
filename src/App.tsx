@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Sparkles, X } from 'lucide-react'
+import { Search, Settings2, X } from 'lucide-react'
 import { LaboMark } from './LaboMark'
 import './App.css'
 import { ModelStudio } from './model/ModelStudio'
@@ -40,7 +40,7 @@ function App() {
     return () => { active = false; unsubscribe?.() }
   }, [])
 
-  return <main className={`app-shell${runtimeClass}${nativeFullScreen ? ' native-fullscreen' : ''}`}>
+  return <main className={`app-shell workspace-${workspace}${runtimeClass}${nativeFullScreen ? ' native-fullscreen' : ''}`}>
     <header className="topbar">
       <div className="brand">
         <span className="brand-mark"><LaboMark /></span>
@@ -54,10 +54,10 @@ function App() {
       </nav>
       <div className="header-actions">
         <button aria-label="Search model cards" className="ghost-button" onClick={() => setSearchOpen(true)}><Search size={14} /> Search <kbd>{searchShortcut}</kbd></button>
-        <button aria-pressed={askOpen} className="codex-button" onClick={() => {
+        <button aria-label="Open LABO settings" aria-pressed={askOpen} className="codex-button" onClick={() => {
           setWorkspace('model')
           setAskOpen((current) => !current)
-        }}><Sparkles size={14} /> Ask LABO</button>
+        }}><Settings2 size={14} /> Settings</button>
       </div>
     </header>
 

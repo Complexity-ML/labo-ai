@@ -1,5 +1,5 @@
-import { AlertTriangle, Blocks, Cable, Check, Eye, EyeOff, KeyRound, Send, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { AlertTriangle, Blocks, Cable, Check, Eye, EyeOff, FolderKanban, KeyRound, Send, Settings2, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, type AgentGraphMode, type AgentGraphPlan } from '../core/agentic-graph'
 import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
@@ -9,7 +9,9 @@ import type { CustomPyTorchCard } from './custom-card'
 interface AskLaboPanelProps {
   graph: ArchitectureGraph
   customCards: CustomPyTorchCard[]
+  dockClassName?: string
   open: boolean
+  workspaceSettings: ReactNode
   onApply(graph: ArchitectureGraph, actions: NonNullable<AgentGraphPlan['actions']>): void
   onClose(): void
 }
@@ -31,7 +33,7 @@ interface AgentCardOverride {
   code?: string
 }
 
-export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: AskLaboPanelProps) {
+export function AskLaboPanel({ graph, customCards, dockClassName = '', open, workspaceSettings, onApply, onClose }: AskLaboPanelProps) {
   const [request, setRequest] = useState('')
   const [plan, setPlan] = useState<AgentGraphPlan>()
   const [error, setError] = useState('')
@@ -48,6 +50,7 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
   const [editingCard, setEditingCard] = useState<ArchitectureNode>()
   const [editorDraft, setEditorDraft] = useState<AgentCardOverride>()
   const [editorError, setEditorError] = useState('')
+  const [settingsSection, setSettingsSection] = useState<'workspaces' | 'agent'>('workspaces')
   const preview = useMemo(() => {
     if (!plan) return undefined
     const base = previewAgentGraphPlan(graph, plan, graphMode)
@@ -64,7 +67,6 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
   }, [cardOverrides, graph, graphMode, plan])
 
   useEffect(() => {
-    if (!open) return
     setConfirmDelete(false)
     if (!window.labo?.getOpenAISettings) {
       setSettings({ configured: false, source: 'none', encryptionAvailable: false })
@@ -79,7 +81,18 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
     if (window.labo?.runtime !== 'web') window.localStorage.setItem(AGENT_AUTO_APPLY_STORAGE_KEY, String(autoApply))
   }, [autoApply])
 
-  if (!open) return null
+  useEffect(() => {
+    if (!open && !plan) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setPlan(undefined)
+      setCardOverrides({})
+      setError('')
+      onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [onClose, open, plan])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -118,6 +131,9 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
   const apply = () => {
     if (!preview) return
     onApply(preview.graph, preview.acceptedActions)
+    setPlan(undefined)
+    setCardOverrides({})
+    setRequest('')
     onClose()
   }
 
@@ -199,35 +215,66 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
     }
   }
 
-  return <aside aria-label="Ask LABO" aria-modal="false" className="ask-labo-panel" role="dialog">
+  const closeOverlay = () => {
+    if (plan) {
+      setPlan(undefined)
+      setCardOverrides({})
+    }
+    setError('')
+    onClose()
+  }
+
+  return <div className={`ask-labo-backdrop ${dockClassName} ${open ? 'settings-open' : ''} ${plan ? 'review-open' : ''}`} onPointerDown={(event) => { if (event.target === event.currentTarget) closeOverlay() }}>
+  <aside aria-label="Ask LABO" aria-modal={open || Boolean(plan)} className={`ask-labo-panel ${plan ? 'has-plan' : ''}`} role={open || plan ? 'dialog' : 'region'}>
     <header className="ask-labo-header">
-      <span><Sparkles size={15} />Ask LABO</span>
-      <button aria-label="Close Ask LABO" onClick={onClose}><X size={15} /></button>
+      <span>{plan ? <Sparkles size={15} /> : <Settings2 size={15} />}{plan ? 'Review graph plan' : 'LABO settings'}</span>
+      <button aria-label="Close Ask LABO" onClick={closeOverlay}><X size={15} /></button>
     </header>
 
-    <div className="ask-labo-intro">
-      <strong>Atomic graph agent</strong>
-      <p>I inspect and search the card library, then use explicit tools to build, compose missing cards, edit, arrange, run, save or export your graph.</p>
-      <small>Review mode queues every mutation until you approve the plan. Applied generated cards are saved to My cards. Parallel mode keeps all existing work read-only.</small>
-    </div>
-
-    <section className="ask-labo-mode" aria-label="Agent apply mode">
-      <div>
-        <button aria-pressed={!autoApply} onClick={() => setAutoApply(false)} type="button">Review</button>
-        <button aria-pressed={autoApply} onClick={() => setAutoApply(true)} type="button">Auto apply</button>
+    <form className="ask-labo-form" onSubmit={(event) => void submit(event)}>
+      <label htmlFor="ask-labo-request">Ask LABO</label>
+      <div className="ask-labo-composer">
+        <textarea
+          aria-label="What should these blocks build?"
+          id="ask-labo-request"
+          onChange={(event) => setRequest(event.target.value)}
+          placeholder="Ask LABO to build or edit your architecture…"
+          rows={1}
+          value={request}
+        />
+        <div className="ask-labo-composer-meta"><span><Sparkles size={12} />LABO agent</span><small>{autoApply ? 'Auto apply' : 'Review'} · {graphMode === 'parallel' ? 'New parallel' : 'Extend current'}</small></div>
+        <button aria-label="Propose graph changes" disabled={loading || !request.trim() || settings?.configured === false} title={loading ? 'Inspecting graph' : 'Send to LABO'} type="submit"><Send size={15} /><span>{loading ? 'Inspecting…' : 'Send'}</span></button>
       </div>
-      <small>{autoApply ? 'Every locally valid operation is applied immediately. Invalid operations are skipped without asking for approval.' : 'Preview every block, generated card and elastic before applying.'}</small>
-    </section>
+    </form>
 
-    <section className="ask-labo-mode ask-labo-scope" aria-label="Agent graph scope">
-      <div>
-        <button aria-pressed={graphMode === 'extend'} disabled={loading} onClick={() => { setGraphMode('extend'); setPlan(undefined) }} type="button">Extend current</button>
-        <button aria-pressed={graphMode === 'parallel'} disabled={loading} onClick={() => { setGraphMode('parallel'); setPlan(undefined) }} type="button">New parallel</button>
+    <div className="ask-labo-settings">
+      <nav aria-label="Settings sections" className="ask-labo-settings-tabs">
+        <button aria-pressed={settingsSection === 'workspaces'} onClick={() => setSettingsSection('workspaces')} type="button"><FolderKanban size={13} />Workspaces</button>
+        <button aria-pressed={settingsSection === 'agent'} onClick={() => setSettingsSection('agent')} type="button"><Sparkles size={13} />Agent</button>
+      </nav>
+      {settingsSection === 'workspaces' ? <div className="ask-labo-workspace-settings">{workspaceSettings}</div> : <div className="ask-labo-settings-content">
+      <div className="ask-labo-intro">
+        <strong>Atomic graph agent</strong>
+        <p>LABO inspects the typed card library, composes missing reusable cards when possible, wires the graph and returns an explicit plan.</p>
       </div>
-      <small>{graphMode === 'parallel' ? 'Build a separate architecture beside the current graph. Existing cards and elastics are read-only.' : 'The agent may connect new cards to free ports in the current architecture.'}</small>
-    </section>
 
-    <section className="ask-labo-key-settings">
+      <section className="ask-labo-mode" aria-label="Agent apply mode">
+        <div>
+          <button aria-pressed={!autoApply} onClick={() => setAutoApply(false)} type="button">Review</button>
+          <button aria-pressed={autoApply} onClick={() => setAutoApply(true)} type="button">Auto apply</button>
+        </div>
+        <small>{autoApply ? 'Apply every locally valid operation immediately.' : 'Preview cards and elastics before applying.'}</small>
+      </section>
+
+      <section className="ask-labo-mode ask-labo-scope" aria-label="Agent graph scope">
+        <div>
+          <button aria-pressed={graphMode === 'extend'} disabled={loading} onClick={() => { setGraphMode('extend'); setPlan(undefined) }} type="button">Extend current</button>
+          <button aria-pressed={graphMode === 'parallel'} disabled={loading} onClick={() => { setGraphMode('parallel'); setPlan(undefined) }} type="button">New parallel</button>
+        </div>
+        <small>{graphMode === 'parallel' ? 'Keep the existing graph read-only and build beside it.' : 'Connect new cards to compatible free ports.'}</small>
+      </section>
+
+      <section className="ask-labo-key-settings">
       <div className="ask-labo-key-heading"><span><KeyRound size={13} />OpenAI API key</span>{settings?.configured && <b><span className="status-dot" />Connected</b>}</div>
       {settings?.configured ? <>
         <div className="ask-labo-key-status">
@@ -253,20 +300,9 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
         {settings?.encryptionAvailable === false && <small>Secure storage requires the LABO AI desktop app and an available system keychain.</small>}
       </form>}
       {credentialMessage && <p className="ask-labo-key-message">{credentialMessage}</p>}
-    </section>
-
-    <form className="ask-labo-form" onSubmit={(event) => void submit(event)}>
-      <label htmlFor="ask-labo-request">What should these blocks build?</label>
-      <textarea
-        autoFocus
-        id="ask-labo-request"
-        onChange={(event) => setRequest(event.target.value)}
-        placeholder="Example: Connect the router to the existing expert blocks."
-        rows={4}
-        value={request}
-      />
-      <button disabled={loading || !request.trim() || settings?.configured === false} type="submit"><Send size={13} />{loading ? 'Inspecting graph…' : 'Propose graph changes'}</button>
-    </form>
+      </section>
+      </div>}
+    </div>
 
     {error && <div className="ask-labo-error"><AlertTriangle size={14} /><span>{error}</span></div>}
 
@@ -373,4 +409,5 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
       </section>
     </div>}
   </aside>
+  </div>
 }

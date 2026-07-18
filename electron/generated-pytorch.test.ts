@@ -99,7 +99,7 @@ describe('generated PyTorch block graph', () => {
       config: { hiddenSize: 16, queryHeads: 2, keyValueHeads: 2, headDim: 8 },
       contracts: { causal: false, preservesGqaAtZeroGate: false, sdpaCompatible: false, contextualValue: true },
       nodes: [
-        { id: 'tokens', kind: 'input', label: 'Token IDs', role: 'hidden', position: { x: 0, y: 0 } },
+        { id: 'tokens', kind: 'input', label: 'Token IDs', role: 'token-ids', position: { x: 0, y: 0 } },
         { id: 'embedding', kind: 'semantic', atomId: 'token-embedding', label: 'Token embedding', role: 'hidden', position: { x: 0, y: 1 }, attributes: { vocabSize: 128, hiddenSize: 16 } },
         { id: 'norm', kind: 'semantic', atomId: 'rms-norm', label: 'RMSNorm', role: 'hidden', position: { x: 0, y: 2 } },
         { id: 'router', kind: 'semantic', atomId: 'moe-router', label: 'Router', role: 'output', position: { x: 0, y: 3 }, attributes: { nExperts: 4, scoringFunction: 'softmax' } },

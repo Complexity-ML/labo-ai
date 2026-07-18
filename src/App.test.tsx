@@ -70,7 +70,7 @@ describe('LABO AI workspace', () => {
     }
 
     render(<App />)
-    fireEvent.click(screen.getByText('My workspaces'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
 
     await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalled(), { timeout: 2_000 })
@@ -89,7 +89,7 @@ describe('LABO AI workspace', () => {
     }
 
     render(<App />)
-    fireEvent.click(screen.getByText('My workspaces'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     await new Promise((resolve) => setTimeout(resolve, 850))
 
@@ -320,7 +320,7 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('button', { name: 'Add My RMSNorm' })).toHaveAttribute('draggable', 'true')
     expect(screen.getByRole('button', { name: 'Select My RMSNorm' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Select My RMSNorm' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select My RMSNorm' }))
     expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Model card PyTorch module' })).toHaveValue('nn.RMSNorm(768)')
     expect(screen.getByText('Valid safe nn.Module constructor')).toBeInTheDocument()
@@ -336,6 +336,16 @@ describe('LABO AI workspace', () => {
     expect(JSON.parse(window.localStorage.getItem('labo.custom-pytorch-cards.v1') ?? '[]')).toEqual([
       { id: 'my-rmsnorm', label: 'My RMSNorm', code: 'nn.RMSNorm(768)' },
     ])
+  })
+
+  it('closes the Card Builder when its backdrop is clicked', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    const dialog = screen.getByRole('dialog', { name: 'Create model card' })
+
+    fireEvent.pointerDown(dialog.parentElement!)
+
+    expect(screen.queryByRole('dialog', { name: 'Create model card' })).not.toBeInTheDocument()
   })
 
   it('can save a reusable card to the library without mutating the graph', () => {
@@ -437,7 +447,7 @@ describe('LABO AI workspace', () => {
 
     expect(screen.getByRole('button', { name: 'Select Tied language-model head' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Select Tied language-model head' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select Tied language-model head' }))
     expect(screen.getByRole('checkbox', { name: 'Model card setting tieEmbeddingWeights' })).toBeChecked()
     expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('# labo:node=lm-head-1 atom=lm-head')
     expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
@@ -488,7 +498,7 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
   })
 
-  it('creates independent blank workspaces, mixes presets, and clears one architecture in edit mode', () => {
+  it('creates independent blank workspaces, mixes presets, and deletes a multi-selection in edit mode', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     expect(screen.getByText('0 atoms')).toBeInTheDocument()
@@ -500,11 +510,13 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('GPT-like Starter')
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR Basic · Shared + Residual Top-2')
 
-    const clear = screen.getByRole('button', { name: 'Clear architecture TR Basic · Shared + Residual Top-2' })
-    expect(clear).toHaveTextContent('6 cards')
-    expect(document.querySelectorAll('.architecture-node.architecture-target')).toHaveLength(6)
-    fireEvent.click(clear)
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm clearing TR Basic · Shared + Residual Top-2' }))
+    expect(screen.queryByRole('button', { name: /Clear architecture/ })).not.toBeInTheDocument()
+    const trCards = [...document.querySelectorAll<HTMLButtonElement>('[data-node-id^="tr-basic-residual-mlp-1-"] .node-select')]
+    expect(trCards).toHaveLength(6)
+    for (const card of trCards) fireEvent.click(card, { shiftKey: true })
+    expect(screen.getByLabelText('Selected graph cards')).toHaveTextContent('6 cards selected')
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete 6' }))
     expect(screen.getByText('15 atoms')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Select Shared Dense Expert' })).not.toBeInTheDocument()
   })
@@ -608,7 +620,7 @@ describe('LABO AI workspace', () => {
     expect(selectedCard).not.toHaveClass('editing')
     expect(selectedCard?.querySelector('.block-inline-editor')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
     expect(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' })).toBeInTheDocument()
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' }), { target: { value: '0.00001' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -720,7 +732,6 @@ describe('LABO AI workspace', () => {
     Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: elementFromPoint })
     expect(screen.getByText(/20 nodes · 30 links/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Reconnect the attention blocks' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
@@ -751,7 +762,6 @@ describe('LABO AI workspace', () => {
     }
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add a ReLU after the final normalization' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
@@ -794,8 +804,10 @@ describe('LABO AI workspace', () => {
     const originalCard = screen.getByRole('button', { name: 'Select Token IDs' }).closest<HTMLElement>('.architecture-node')!
     const originalPosition = { left: originalCard.style.left, top: originalCard.style.top }
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agent' }))
     fireEvent.click(screen.getByRole('button', { name: 'New parallel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Ask LABO' }))
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add another independent architecture' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
@@ -833,7 +845,6 @@ describe('LABO AI workspace', () => {
     }
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Build a generation branch' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
@@ -860,7 +871,6 @@ describe('LABO AI workspace', () => {
     }
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Create the missing projection' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
@@ -875,7 +885,7 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('button', { name: 'Select Edited projection' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Edited projection' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Select Edited projection' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select Edited projection' }))
     expect(screen.getByRole('textbox', { name: 'Model card PyTorch module' })).toHaveValue('nn.Linear(1024, 1024, bias=True)')
     delete window.labo
   })
@@ -897,8 +907,10 @@ describe('LABO AI workspace', () => {
     }
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agent' }))
     fireEvent.click(screen.getByRole('button', { name: 'Auto apply' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Ask LABO' }))
     fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add a ReLU automatically' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
@@ -922,7 +934,8 @@ describe('LABO AI workspace', () => {
       testOpenAIKey,
     }
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agent' }))
 
     expect(await screen.findByText('No API key configured for this user.')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('OpenAI API key'), { target: { value: 'sk-project-user-secret-123456789' } })
@@ -1007,7 +1020,7 @@ describe('LABO AI workspace', () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Select GQA QKV projection' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select GQA QKV projection' }))
     expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Delete card' }))
 
@@ -1050,7 +1063,7 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply PyTorch to blocks' }))
     fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
 
     expect(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' })).toHaveValue(0.00001)
   })
