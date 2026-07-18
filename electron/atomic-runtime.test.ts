@@ -38,6 +38,37 @@ describe('Electron atomic runtime bridge', () => {
     })
   })
 
+  it('automatically matches grouped-query KV heads at SDPA', async () => {
+    const graph = {
+      ...gptLikeStarterPreset,
+      id: 'gpt-gqa-auto-match',
+      config: { ...gptLikeStarterPreset.config, queryHeads: 8, keyValueHeads: 2, headDim: 96 },
+    }
+    const trace = await runAtomicRuntime({ kind: 'model', graph, tokenIds: [1, 2, 3] })
+
+    expect(trace.status).toBe('completed')
+    expect(trace.results.find((result) => result.atomId === 'sdpa')).toMatchObject({ status: 'passed' })
+  })
+
+  it('continues a healthy parallel architecture after another one fails', async () => {
+    const graph: ArchitectureGraph = {
+      id: 'parallel-runtime-isolation', name: 'Parallel runtime isolation', architecture: 'custom',
+      config: { hiddenSize: 32, queryHeads: 2, keyValueHeads: 2, headDim: 16 },
+      contracts: { causal: false, preservesGqaAtZeroGate: false, sdpaCompatible: false, contextualValue: false },
+      nodes: [
+        { id: 'broken-relu', kind: 'semantic', atomId: 'relu', label: 'Broken ReLU', role: 'hidden', position: { x: 0, y: 100 } },
+        { id: 'healthy-input', kind: 'input', label: 'Healthy input', role: 'hidden', position: { x: 300, y: 0 } },
+        { id: 'healthy-relu', kind: 'semantic', atomId: 'relu', label: 'Healthy ReLU', role: 'hidden', position: { x: 300, y: 100 } },
+      ],
+      edges: [{ id: 'healthy-edge', source: 'healthy-input', sourcePort: 'hidden', target: 'healthy-relu', targetPort: 'hidden' }],
+    }
+    const trace = await runAtomicRuntime({ kind: 'model', graph })
+
+    expect(trace.status).toBe('failed')
+    expect(trace.currentAtomId).toBe('broken-relu')
+    expect(trace.results.find((result) => result.atomId === 'healthy-relu')).toMatchObject({ status: 'passed' })
+  })
+
   it('returns a generic tensor output for a model without an LM head', async () => {
     const trace = await runAtomicRuntime({ kind: 'model', graph: trBasicPreset, tokenIds: [1, 2, 3] })
 

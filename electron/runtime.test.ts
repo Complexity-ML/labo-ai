@@ -43,7 +43,7 @@ describe('atomic Python runtime', () => {
     expect(trace.results.every((item: { status: string }) => item.status === 'passed')).toBe(true)
   })
 
-  it('stops at the first semantic block whose required elastic is missing', () => {
+  it('records the first failure while resolving every independent atom', () => {
     const graph = {
       ...atomicComplexityGraph,
       edges: atomicComplexityGraph.edges.filter((edge) => edge.id !== 'attention-norm-qkv'),
@@ -52,9 +52,9 @@ describe('atomic Python runtime', () => {
 
     expect(trace.status).toBe('failed')
     expect(trace.currentAtomId).toBe('qkv')
-    expect(trace.results.map((item: { atomId: string; status: string }) => [item.atomId, item.status])).toEqual([
-      ['tokens', 'passed'], ['embedding', 'passed'], ['attention-norm', 'passed'], ['qkv', 'failed'],
-    ])
+    expect(trace.results).toHaveLength(atomicComplexityGraph.nodes.length)
+    expect(trace.results.find((item: { atomId: string }) => item.atomId === 'qkv')).toMatchObject({ status: 'failed' })
+    expect(trace.results.find((item: { atomId: string }) => item.atomId === 'fixed-routes')).toMatchObject({ status: 'passed' })
   })
 
   it('executes the model graph atom by atom with real PyTorch tensors', () => {
@@ -69,13 +69,13 @@ describe('atomic Python runtime', () => {
     expect(trace.results[1].summary).toContain('[2, 8, 384]')
   })
 
-  it('stops on the exact failing model atom', () => {
+  it('reports the exact root failure and marks its downstream as blocked', () => {
     const trace = run({ kind: 'model', graph: removeNode(gqaPreset, 'q-proj') })
 
     expect(trace.status).toBe('failed')
     expect(trace.currentAtomId).toBe('sdpa')
-    expect(trace.results.at(-1)).toMatchObject({ atomId: 'sdpa', status: 'failed' })
-    expect(trace.results.some((item: { atomId: string }) => item.atomId === 'output')).toBe(false)
+    expect(trace.results.find((item: { atomId: string }) => item.atomId === 'sdpa')).toMatchObject({ status: 'failed' })
+    expect(trace.results.find((item: { atomId: string }) => item.atomId === 'output')).toMatchObject({ status: 'failed', error: expect.stringContaining('blocked by failed dependency') })
   })
 
   it('executes tokenizer atoms with the real tokenizers backend', () => {

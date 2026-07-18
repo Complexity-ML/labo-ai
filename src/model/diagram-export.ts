@@ -1,7 +1,8 @@
 import type { ArchitectureGraph, ArchitectureNode, TensorRole } from '../core/ir'
+import { layoutArchitectureGraph } from '../core/graph-placement'
 
-const cardWidth = 148
-const cardHeight = 76
+const cardWidth = 210
+const cardHeight = 88
 
 function xml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;')
@@ -20,34 +21,37 @@ function nodeColor(node: ArchitectureNode): string {
 
 export function architectureDiagramSvg(graph: ArchitectureGraph): string {
   if (graph.nodes.length === 0) return `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420"><rect width="720" height="420" fill="#090a0c"/><text x="360" y="210" fill="#7d8490" text-anchor="middle" font-family="monospace">${xml(graph.name)} · blank graph</text></svg>`
-  const minX = Math.min(...graph.nodes.map((node) => node.position.x)) - 45
-  const maxX = Math.max(...graph.nodes.map((node) => node.position.x + cardWidth)) + 45
-  const minY = Math.min(...graph.nodes.map((node) => node.position.y - cardHeight / 2)) - 70
-  const maxY = Math.max(...graph.nodes.map((node) => node.position.y + cardHeight / 2)) + 55
-  const width = Math.max(420, maxX - minX)
-  const height = Math.max(260, maxY - minY)
-  const position = (node: ArchitectureNode) => ({ x: node.position.x - minX, y: node.position.y - minY })
-  const byId = new Map(graph.nodes.map((node) => [node.id, node]))
-  const edges = graph.edges.map((edge) => {
+  const publicationGraph = layoutArchitectureGraph(graph)
+  const paddingX = 70
+  const headerHeight = 66
+  const minX = Math.min(...publicationGraph.nodes.map((node) => node.position.x))
+  const maxX = Math.max(...publicationGraph.nodes.map((node) => node.position.x + cardWidth))
+  const minY = Math.min(...publicationGraph.nodes.map((node) => node.position.y))
+  const maxY = Math.max(...publicationGraph.nodes.map((node) => node.position.y + cardHeight))
+  const width = Math.max(960, maxX - minX + paddingX * 2)
+  const height = Math.max(540, maxY - minY + headerHeight + 55)
+  const offsetX = (width - (maxX - minX)) / 2
+  const position = (node: ArchitectureNode) => ({ x: node.position.x - minX + offsetX, y: node.position.y - minY + headerHeight })
+  const byId = new Map(publicationGraph.nodes.map((node) => [node.id, node]))
+  const edges = publicationGraph.edges.map((edge) => {
     const source = byId.get(edge.source)
     const target = byId.get(edge.target)
     if (!source || !target) return ''
     const from = position(source)
     const to = position(target)
     const sx = from.x + cardWidth / 2
-    const sy = from.y + cardHeight / 2
+    const sy = from.y + cardHeight
     const tx = to.x + cardWidth / 2
-    const ty = to.y - cardHeight / 2
+    const ty = to.y
     const middle = sy + (ty - sy) / 2
     const color = roleColor(source.role)
     return `<path d="M ${sx} ${sy} C ${sx} ${middle}, ${tx} ${middle}, ${tx} ${ty}" fill="none" stroke="${color}" stroke-width="2" opacity="0.82" marker-end="url(#arrow)"/>`
   }).join('')
-  const nodes = graph.nodes.map((node) => {
+  const nodes = publicationGraph.nodes.map((node) => {
     const point = position(node)
-    const top = point.y - cardHeight / 2
-    return `<g transform="translate(${point.x} ${top})"><rect width="${cardWidth}" height="${cardHeight}" rx="8" fill="#15171c" stroke="${nodeColor(node)}" stroke-width="1.5"/><text x="12" y="18" fill="#747c88" font-size="8" font-family="monospace" letter-spacing="0.6">${xml((node.atomId ?? node.kind).toUpperCase())}</text><text x="12" y="40" fill="#edf0f5" font-size="11" font-family="sans-serif" font-weight="600">${xml(node.label.slice(0, 22))}</text><text x="12" y="59" fill="#767e8b" font-size="8" font-family="monospace">${xml(node.role)}</text></g>`
+    return `<g transform="translate(${point.x} ${point.y})"><rect width="${cardWidth}" height="${cardHeight}" rx="10" fill="#15171c" stroke="${nodeColor(node)}" stroke-width="1.5"/><circle cx="${cardWidth / 2}" cy="0" r="4" fill="#090a0c" stroke="${nodeColor(node)}"/><circle cx="${cardWidth / 2}" cy="${cardHeight}" r="4" fill="#090a0c" stroke="${nodeColor(node)}"/><text x="14" y="20" fill="#747c88" font-size="9" font-family="monospace" letter-spacing="0.6">${xml((node.atomId ?? node.kind).toUpperCase().slice(0, 30))}</text><text x="14" y="47" fill="#edf0f5" font-size="13" font-family="sans-serif" font-weight="600">${xml(node.label.slice(0, 30))}</text><text x="14" y="70" fill="#8b93a0" font-size="9" font-family="monospace">${xml(node.id)} · ${xml(node.role)}</text></g>`
   }).join('')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><title>${xml(graph.name)}</title><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#252932" stroke-width="0.6"/></pattern><marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#77808d"/></marker></defs><rect width="100%" height="100%" fill="#090a0c"/><rect width="100%" height="100%" fill="url(#grid)"/><text x="18" y="25" fill="#aeb5c0" font-family="monospace" font-size="11">${xml(graph.name)} · ${graph.nodes.length} cards · ${graph.edges.length} links</text>${edges}${nodes}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><title>${xml(graph.name)}</title><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#252932" stroke-width="0.6"/></pattern><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#77808d"/></marker></defs><rect width="100%" height="100%" fill="#090a0c"/><rect width="100%" height="100%" fill="url(#grid)"/><rect x="0" y="0" width="100%" height="48" fill="#111319" opacity=".96"/><text x="24" y="29" fill="#d4d8df" font-family="monospace" font-size="13" font-weight="600">${xml(graph.name)} · ${graph.nodes.length} cards · ${graph.edges.length} links</text>${edges}${nodes}</svg>`
 }
 
 export function exportFileName(graph: ArchitectureGraph, extension: 'svg' | 'py'): string {

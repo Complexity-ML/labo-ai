@@ -1,7 +1,9 @@
 import { connectCable, inferredEdgeTargetPort } from './cables'
 import { executionLayers } from './execution-plan'
 import { findOpenGraphPosition, layoutArchitectureGraph, layoutParallelArchitecture } from './graph-placement'
-import { addNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from './ir'
+import { addNode, removeNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from './ir'
+import type { CustomPyTorchCard } from '../model/custom-card'
+import { architectureComponents } from './graph-components'
 import { modelAtomRegistry, type ModelAtomDefinition } from './model-atoms'
 import { validCustomPyTorchModule } from './pytorch-compiler'
 
@@ -36,8 +38,24 @@ export interface AgentCreatedBlockProposal {
   nodeId: string
   label: string
   pytorchModule: string
+  inputRole?: TensorRole
+  outputRole?: TensorRole
   reason: string
 }
+
+export interface AgentUpdatedBlockProposal {
+  nodeId: string
+  label: string | null
+  settings: Record<string, number | string | boolean> | null
+  pytorchModule: string | null
+  reason: string
+}
+
+export type AgentGraphAction =
+  | { type: 'layout'; scope: 'all' | 'new'; reason: string }
+  | { type: 'run'; mode: 'play' | 'step'; reason: string }
+  | { type: 'save-preset'; name: string; reason: string }
+  | { type: 'export'; kind: 'svg' | 'python' | 'both'; reason: string }
 
 export interface AgentMissingBlock {
   atomId: string | null
@@ -50,8 +68,13 @@ export interface AgentGraphPlan {
   addedBlocks: AgentBlockProposal[]
   createdBlocks: AgentCreatedBlockProposal[]
   connections: AgentConnectionProposal[]
+  updatedBlocks?: AgentUpdatedBlockProposal[]
+  deletedBlocks?: Array<{ nodeId: string; reason: string }>
+  movedBlocks?: Array<{ nodeId: string; x: number; y: number; reason: string }>
+  actions?: AgentGraphAction[]
   missingBlocks: AgentMissingBlock[]
   warnings: string[]
+  toolTrace?: Array<{ tool: string; status: 'accepted' | 'rejected' | 'read'; summary: string }>
 }
 
 export type AgentGraphMode = 'extend' | 'parallel'
@@ -73,6 +96,8 @@ export interface AgentGraphPreview {
   rejectedBlocks: RejectedAgentBlock[]
   accepted: AgentConnectionProposal[]
   rejected: RejectedAgentConnection[]
+  acceptedActions: AgentGraphAction[]
+  rejectedMutations: Array<{ nodeId?: string; action?: AgentGraphAction; reason: string }>
 }
 
 interface AgentVirtualAtomic {
@@ -122,12 +147,12 @@ function snapshotNode(graph: ArchitectureGraph, node: ArchitectureNode): AgentNo
     label: node.label,
     inputs: node.kind === 'input' ? [] : definition
       ? definition.inputs.map(({ id, tensor }) => ({ id, tensor }))
-      : node.kind === 'custom-pytorch' ? [{ id: 'hidden', tensor: 'hidden' }] : uniquePorts(edgeInputs),
+      : node.kind === 'custom-pytorch' ? [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden' }] : uniquePorts(edgeInputs),
     outputs: node.kind === 'input'
       ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : 'hidden', tensor: node.role }]
       : definition
       ? definition.outputs.map(({ id, tensor }) => ({ id, tensor }))
-      : node.kind === 'custom-pytorch' ? [{ id: 'output', tensor: 'hidden' }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
+      : node.kind === 'custom-pytorch' ? [{ id: 'output', tensor: node.role }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
   }
 }
 
@@ -145,7 +170,7 @@ function sourceTensor(graph: ArchitectureGraph, node: ArchitectureNode, portId?:
   return node.role === 'attention' ? 'attention' : node.role
 }
 
-export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGraphMode = 'extend') {
+export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGraphMode = 'extend', customCards: CustomPyTorchCard[] = []) {
   return {
     operationMode: mode,
     graph: {
@@ -174,6 +199,14 @@ export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGra
         })),
       })),
     ],
+    availableCustomCards: customCards.map((card) => ({
+      id: card.id,
+      label: card.label,
+      code: card.code,
+      inputRole: card.inputRole ?? 'hidden',
+      outputRole: card.outputRole ?? 'hidden',
+    })),
+    architectures: architectureComponents(graph).map((architecture) => ({ id: architecture.id, label: architecture.label, nodeIds: architecture.nodeIds })),
   }
 }
 
@@ -201,6 +234,11 @@ export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: Agent
     connections: [...sourcePlan.connections],
     missingBlocks: [...sourcePlan.missingBlocks],
     warnings: [...sourcePlan.warnings],
+    updatedBlocks: [...(sourcePlan.updatedBlocks ?? [])],
+    deletedBlocks: [...(sourcePlan.deletedBlocks ?? [])],
+    movedBlocks: [...(sourcePlan.movedBlocks ?? [])],
+    actions: [...(sourcePlan.actions ?? [])],
+    toolTrace: [...(sourcePlan.toolTrace ?? [])],
   }
   const normalizeCapabilityText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const samplerPattern = /sampl|echantillonn|decod|token gener|generated token|autoregress|logits[^.]{0,80}token/
@@ -280,6 +318,20 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
   const rejectedBlocks: RejectedAgentBlock[] = []
   const accepted: AgentConnectionProposal[] = []
   const rejected: RejectedAgentConnection[] = []
+  const acceptedActions: AgentGraphAction[] = []
+  const rejectedMutations: AgentGraphPreview['rejectedMutations'] = []
+
+  for (const deletion of plan.deletedBlocks ?? []) {
+    if (!nextGraph.nodes.some((node) => node.id === deletion.nodeId)) {
+      rejectedMutations.push({ nodeId: deletion.nodeId, reason: 'Card does not exist' })
+      continue
+    }
+    if (mode === 'parallel' && existingNodeIds.has(deletion.nodeId)) {
+      rejectedMutations.push({ nodeId: deletion.nodeId, reason: 'Parallel architecture mode cannot delete existing cards' })
+      continue
+    }
+    nextGraph = removeNode(nextGraph, deletion.nodeId)
+  }
 
   for (const block of plan.addedBlocks.slice(0, 24)) {
     const virtual = agentVirtualAtomics[block.atomId]
@@ -330,9 +382,10 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       id: block.nodeId,
       kind: 'custom-pytorch',
       label: block.label.trim(),
-      role: 'hidden',
+      role: block.outputRole ?? 'hidden',
       position: findOpenGraphPosition(nextGraph),
       code: block.pytorchModule.trim(),
+      attributes: { inputRole: block.inputRole ?? 'hidden' },
     })
     acceptedCreatedBlocks.push(block)
   }
@@ -393,9 +446,47 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
     accepted.push(connection)
   }
 
+  for (const update of plan.updatedBlocks ?? []) {
+    const node = nextGraph.nodes.find((candidate) => candidate.id === update.nodeId)
+    if (!node || (mode === 'parallel' && existingNodeIds.has(update.nodeId))) {
+      rejectedMutations.push({ nodeId: update.nodeId, reason: 'Card is unknown or read-only in parallel mode' })
+      continue
+    }
+    if (update.pytorchModule && (node.kind !== 'custom-pytorch' || !validCustomPyTorchModule(update.pytorchModule))) {
+      rejectedMutations.push({ nodeId: update.nodeId, reason: 'PyTorch edit is invalid for this card' })
+      continue
+    }
+    nextGraph = {
+      ...nextGraph,
+      nodes: nextGraph.nodes.map((candidate) => candidate.id === update.nodeId ? {
+        ...candidate,
+        ...(update.label?.trim() ? { label: update.label.trim() } : {}),
+        ...(update.settings ? { attributes: { ...candidate.attributes, ...update.settings } } : {}),
+        ...(update.pytorchModule ? { code: update.pytorchModule.trim() } : {}),
+      } : candidate),
+    }
+  }
+
   const addedNodeIds = [...acceptedBlocks, ...acceptedCreatedBlocks].map((block) => block.nodeId)
+  const layoutAction = (plan.actions ?? []).find((action): action is Extract<AgentGraphAction, { type: 'layout' }> => action.type === 'layout')
   nextGraph = mode === 'parallel'
     ? layoutParallelArchitecture(nextGraph, addedNodeIds)
-    : layoutArchitectureGraph(nextGraph, addedNodeIds)
-  return { graph: nextGraph, acceptedBlocks, acceptedCreatedBlocks, rejectedBlocks, accepted, rejected }
+    : layoutAction?.scope === 'all' ? layoutArchitectureGraph(nextGraph) : layoutArchitectureGraph(nextGraph, addedNodeIds)
+
+  for (const movement of plan.movedBlocks ?? []) {
+    if (!Number.isFinite(movement.x) || !Number.isFinite(movement.y) || (mode === 'parallel' && existingNodeIds.has(movement.nodeId))) {
+      rejectedMutations.push({ nodeId: movement.nodeId, reason: 'Card position is invalid or read-only in parallel mode' })
+      continue
+    }
+    if (!nextGraph.nodes.some((node) => node.id === movement.nodeId)) {
+      rejectedMutations.push({ nodeId: movement.nodeId, reason: 'Card does not exist' })
+      continue
+    }
+    nextGraph = { ...nextGraph, nodes: nextGraph.nodes.map((node) => node.id === movement.nodeId ? { ...node, position: { x: movement.x, y: movement.y } } : node) }
+  }
+  for (const action of plan.actions ?? []) {
+    if (action.type === 'layout' && mode === 'parallel' && action.scope === 'all') rejectedMutations.push({ action, reason: 'Parallel mode cannot lay out existing work' })
+    else acceptedActions.push(action)
+  }
+  return { graph: nextGraph, acceptedBlocks, acceptedCreatedBlocks, rejectedBlocks, accepted, rejected, acceptedActions, rejectedMutations }
 }

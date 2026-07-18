@@ -58,6 +58,8 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
     by_id = {node["id"]: node for node in nodes}
     values: dict[tuple[str, str], Any] = {}
     results: list[dict[str, Any]] = []
+    failed_nodes: set[str] = set()
+    first_failure: tuple[str, str] | None = None
     model_output: dict[str, Any] | None = None
     last_tensor = None
 
@@ -227,7 +229,8 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
             return {"k": inputs["k"].repeat_interleave(repeats, dim=1), "v": inputs["v"].repeat_interleave(repeats, dim=1)}
         if atom == "causal-sdpa":
             require(inputs, "q", "k", "v")
-            return {"output": F.scaled_dot_product_attention(inputs["q"], inputs["k"], inputs["v"], is_causal=True)}
+            use_gqa = inputs["q"].shape[1] != inputs["k"].shape[1]
+            return {"output": F.scaled_dot_product_attention(inputs["q"], inputs["k"], inputs["v"], is_causal=True, enable_gqa=use_gqa)}
         if atom == "eager-causal-attention":
             require(inputs, "q", "k", "v")
             query, key, value = inputs["q"], inputs["k"], inputs["v"]
@@ -238,7 +241,8 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
             return {"output": torch.matmul(weights, value)}
         if atom == "noncausal-sdpa":
             require(inputs, "q", "k", "v")
-            return {"output": F.scaled_dot_product_attention(inputs["q"], inputs["k"], inputs["v"], dropout_p=float(settings.get("dropout", 0)), is_causal=False)}
+            use_gqa = inputs["q"].shape[1] != inputs["k"].shape[1]
+            return {"output": F.scaled_dot_product_attention(inputs["q"], inputs["k"], inputs["v"], dropout_p=float(settings.get("dropout", 0)), is_causal=False, enable_gqa=use_gqa)}
         if atom == "attention-scores":
             require(inputs, "q", "k")
             return {"scores": torch.matmul(inputs["q"], inputs["k"].transpose(-2, -1)) * (inputs["q"].shape[-1] ** -0.5)}
@@ -500,6 +504,12 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
 
     for node in ordered:
         atom_id = node["id"]
+        blocked_by = next((edge["source"] for edge in edges if edge["target"] == atom_id and edge["source"] in failed_nodes), None)
+        if blocked_by is not None:
+            error = RuntimeError(f"blocked by failed dependency {blocked_by}")
+            failed_nodes.add(atom_id)
+            results.append(failed(atom_id, error))
+            continue
         try:
             kind = node["kind"]
             inputs = connected_inputs(atom_id)
@@ -576,10 +586,14 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
             results.append(passed(atom_id, tensor_summary(first_value)))
         except Exception as error:
             results.append(failed(atom_id, error))
-            return {"engine": "pytorch", "status": "failed", "currentAtomId": atom_id, "error": str(error), "results": results}
+            failed_nodes.add(atom_id)
+            if first_failure is None:
+                first_failure = (atom_id, str(error))
 
     if model_output is None and last_tensor is not None and hasattr(last_tensor, "shape"):
         model_output = {"kind": "tensor", "tensorShape": list(last_tensor.shape)}
+    if first_failure is not None:
+        return {"engine": "pytorch", "status": "failed", "currentAtomId": first_failure[0], "error": first_failure[1], "modelOutput": model_output, "results": results}
     return {"engine": "pytorch", "status": "completed", "modelOutput": model_output, "results": results}
 
 

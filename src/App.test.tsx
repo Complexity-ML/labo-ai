@@ -342,6 +342,25 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
   })
 
+  it('creates independent blank workspaces, mixes presets, and clears one architecture in edit mode', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New blank workspace' }))
+    expect(screen.getByText('0 atoms')).toBeInTheDocument()
+    expect(screen.getAllByText('Blank canvas 1').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ GPT-like/ }))
+    fireEvent.click(screen.getByRole('button', { name: /\+ TR Basic/ }))
+    expect(screen.getByText('21 atoms')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('GPT-like Starter')
+    expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR Basic · Shared + Residual Top-2')
+
+    const clear = screen.getByRole('button', { name: 'Clear architecture' })
+    fireEvent.click(clear)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm clear' }))
+    expect(screen.getByText('15 atoms')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Select Shared Dense Expert' })).not.toBeInTheDocument()
+  })
+
   it('tokenizes a real prompt before running the GPT-like graph', async () => {
     const runAtomic = vi.fn(async (payload: { kind: 'model'; graph: unknown; tokenIds?: number[] } | { kind: 'tokenizer'; pipeline: unknown; sample?: string }) => {
       if (payload.kind === 'tokenizer') {
@@ -627,6 +646,8 @@ describe('LABO AI workspace', () => {
     expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ operationMode: 'parallel' }) }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
     expect(screen.getByText(/22 nodes · 32 links/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR 300M')
+    expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('Architecture 2')
     expect({ left: originalCard.style.left, top: originalCard.style.top }).toEqual(originalPosition)
     expect(Number.parseFloat(screen.getByRole('button', { name: 'Select Hidden State' }).closest<HTMLElement>('.architecture-node')!.style.left)).toBeGreaterThan(Number.parseFloat(originalPosition.left))
     delete window.labo

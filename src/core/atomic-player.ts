@@ -20,15 +20,18 @@ export type AtomicExecutor = (atomId: string) => Promise<{ summary?: string }>
 export type PlayerListener = (snapshot: AtomicPlayerSnapshot) => void
 export interface AtomicPlayerOptions {
   onRestart?: () => void
+  continueAfterFailure?: boolean
 }
 
 export class AtomicPlayer {
   private readonly stages: string[][]
   private readonly executor: AtomicExecutor
   private readonly onRestart?: () => void
+  private readonly continueAfterFailure: boolean
   private readonly listeners = new Set<PlayerListener>()
   private readonly atomIds: string[]
   private cursor = 0
+  private firstFailure?: { atomId: string; message: string }
   private state: AtomicPlayerSnapshot
 
   constructor(plan: string[] | string[][], executor: AtomicExecutor, options: AtomicPlayerOptions = {}) {
@@ -36,6 +39,7 @@ export class AtomicPlayer {
     this.atomIds = this.stages.flat()
     this.executor = executor
     this.onRestart = options.onRestart
+    this.continueAfterFailure = options.continueAfterFailure ?? false
     this.state = {
       status: 'idle',
       currentAtomId: this.atomIds[0],
@@ -88,6 +92,7 @@ export class AtomicPlayer {
 
   private restart(): void {
     this.cursor = 0
+    this.firstFailure = undefined
     this.onRestart?.()
     this.state = {
       status: 'idle',
@@ -127,14 +132,24 @@ export class AtomicPlayer {
     this.emit()
 
     if (failure) {
-      this.setState({ status: 'failed', currentAtomId: failure.atomId, currentAtomIds: [failure.atomId], error: failure.message })
+      if (!this.continueAfterFailure) {
+        this.setState({ status: 'failed', currentAtomId: failure.atomId, currentAtomIds: [failure.atomId], error: failure.message })
+        return
+      }
+      this.firstFailure ??= failure
+      this.cursor += 1
+      const nextStage = this.stages[this.cursor]
+      if (!nextStage) this.setState({ status: 'failed', currentAtomId: this.firstFailure.atomId, currentAtomIds: [this.firstFailure.atomId], error: this.firstFailure.message })
+      else this.setState({ status: pauseAfterSuccess ? 'paused' : 'playing', currentAtomId: nextStage[0], currentAtomIds: nextStage, error: this.firstFailure.message })
       return
     }
 
     this.cursor += 1
     const nextStage = this.stages[this.cursor]
     if (!nextStage) {
-      this.setState({ status: 'completed', currentAtomId: undefined, currentAtomIds: undefined })
+      this.setState(this.firstFailure
+        ? { status: 'failed', currentAtomId: this.firstFailure.atomId, currentAtomIds: [this.firstFailure.atomId], error: this.firstFailure.message }
+        : { status: 'completed', currentAtomId: undefined, currentAtomIds: undefined })
     } else {
       this.setState({
         status: pauseAfterSuccess ? 'paused' : this.state.status,

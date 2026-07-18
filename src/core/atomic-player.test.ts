@@ -62,6 +62,22 @@ describe('AtomicPlayer', () => {
     expect(player.snapshot.status).toBe('paused')
   })
 
+  it('finishes all levels in diagnostic mode even when one architecture fails', async () => {
+    const executed: string[] = []
+    const player = new AtomicPlayer([['broken-start', 'healthy-start'], ['broken-end', 'healthy-end']], async (atomId) => {
+      executed.push(atomId)
+      if (atomId.startsWith('broken')) throw new Error('broken architecture')
+      return { summary: 'ok' }
+    }, { continueAfterFailure: true })
+
+    await player.play()
+
+    expect(executed).toEqual(['broken-start', 'healthy-start', 'broken-end', 'healthy-end'])
+    expect(player.snapshot.status).toBe('failed')
+    expect(player.snapshot.results.find((result) => result.atomId === 'healthy-end')).toMatchObject({ status: 'passed' })
+    expect(player.snapshot.results.some((result) => result.status === 'pending')).toBe(false)
+  })
+
   it('reruns the complete plan after completion', async () => {
     const executed: string[] = []
     let restarts = 0

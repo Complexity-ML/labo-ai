@@ -4,11 +4,13 @@ import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, t
 import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
+import type { CustomPyTorchCard } from './custom-card'
 
 interface AskLaboPanelProps {
   graph: ArchitectureGraph
+  customCards: CustomPyTorchCard[]
   open: boolean
-  onApply(graph: ArchitectureGraph): void
+  onApply(graph: ArchitectureGraph, actions: NonNullable<AgentGraphPlan['actions']>): void
   onClose(): void
 }
 
@@ -28,7 +30,7 @@ interface AgentCardOverride {
   code?: string
 }
 
-export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProps) {
+export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: AskLaboPanelProps) {
   const [request, setRequest] = useState('')
   const [plan, setPlan] = useState<AgentGraphPlan>()
   const [error, setError] = useState('')
@@ -91,13 +93,13 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
     setPlan(undefined)
     setCardOverrides({})
     try {
-      const rawResponse = await window.labo.askLabo({ request: prompt, context: createAgentGraphContext(graph, graphMode) })
+      const rawResponse = await window.labo.askLabo({ request: prompt, context: createAgentGraphContext(graph, graphMode, customCards) })
       const response = repairAgentGraphPlan(graph, rawResponse)
       const responsePreview = previewAgentGraphPlan(graph, response, graphMode)
-      const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0
-      const requiresReview = responsePreview.rejectedBlocks.length > 0 || responsePreview.rejected.length > 0 || response.missingBlocks.length > 0 || response.warnings.length > 0
+      const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0 || (response.updatedBlocks?.length ?? 0) > 0 || (response.deletedBlocks?.length ?? 0) > 0 || (response.movedBlocks?.length ?? 0) > 0 || responsePreview.acceptedActions.some((action) => action.type !== 'layout')
+      const requiresReview = responsePreview.rejectedBlocks.length > 0 || responsePreview.rejected.length > 0 || responsePreview.rejectedMutations.length > 0 || response.missingBlocks.length > 0 || response.warnings.length > 0
       if (autoApply && hasAcceptedChanges && !requiresReview) {
-        onApply(responsePreview.graph)
+        onApply(responsePreview.graph, responsePreview.acceptedActions)
         onClose()
       } else setPlan(response)
     } catch (reason) {
@@ -108,8 +110,8 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
   }
 
   const apply = () => {
-    if (!preview || (preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0)) return
-    onApply(preview.graph)
+    if (!preview) return
+    onApply(preview.graph, preview.acceptedActions)
     onClose()
   }
 
@@ -199,8 +201,8 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
 
     <div className="ask-labo-intro">
       <strong>Atomic graph agent</strong>
-      <p>I can add atomic blocks from the LABO library, wire them to the current graph, or report a capability that is still missing.</p>
-      <small>Nothing is added or wired until you approve the preview. Existing blocks are never moved or deleted.</small>
+      <p>I inspect and search the card library, then use explicit tools to build, edit, arrange, run, save or export your graph.</p>
+      <small>Review mode queues every mutation until you approve the plan. Parallel mode keeps all existing work read-only.</small>
     </div>
 
     <section className="ask-labo-mode" aria-label="Agent apply mode">
@@ -264,6 +266,11 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
         <p>{plan.summary}</p>
       </section>
 
+      {(plan.toolTrace?.length ?? 0) > 0 && <section>
+        <h3>Tools used</h3>
+        <ul className="ask-labo-tool-trace">{plan.toolTrace!.map((item, index) => <li data-status={item.status} key={`${item.tool}-${index}`}><code>{item.tool}</code><span>{item.summary}</span></li>)}</ul>
+      </section>}
+
       {preview.acceptedBlocks.length > 0 && <section>
         <h3>{preview.acceptedBlocks.length} atomic block{preview.acceptedBlocks.length === 1 ? '' : 's'} ready</h3>
         <div className="ask-labo-added-blocks">
@@ -300,6 +307,20 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
         </ul>
       </section>}
 
+      {((plan.updatedBlocks?.length ?? 0) > 0 || (plan.deletedBlocks?.length ?? 0) > 0 || (plan.movedBlocks?.length ?? 0) > 0) && <section>
+        <h3>Existing graph changes</h3>
+        {(plan.updatedBlocks ?? []).map((change) => <p key={`edit-${change.nodeId}`}><code>edit {change.nodeId}</code> · {change.reason}</p>)}
+        {(plan.deletedBlocks?.length ?? 0) > 3
+          ? <p><code>delete architecture</code> · {plan.deletedBlocks!.length} cards and their elastics</p>
+          : (plan.deletedBlocks ?? []).map((change) => <p key={`delete-${change.nodeId}`}><code>delete {change.nodeId}</code> · {change.reason}</p>)}
+        {(plan.movedBlocks ?? []).map((change) => <p key={`move-${change.nodeId}`}><code>move {change.nodeId}</code> · {change.reason}</p>)}
+      </section>}
+
+      {preview.acceptedActions.length > 0 && <section>
+        <h3>Actions after approval</h3>
+        {preview.acceptedActions.map((action, index) => <p key={`${action.type}-${index}`}><code>{action.type}{action.type === 'run' ? `:${action.mode}` : action.type === 'export' ? `:${action.kind}` : action.type === 'save-preset' ? `:${action.name}` : `:${action.scope}`}</code> · {action.reason}</p>)}
+      </section>}
+
       {plan.missingBlocks.length > 0 && <section className="ask-labo-missing">
         <h3>Missing blocks</h3>
         {plan.missingBlocks.map((block, index) => <div key={`${block.atomId ?? block.label}-${index}`}>
@@ -308,16 +329,17 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
         </div>)}
       </section>}
 
-      {(preview.rejectedBlocks.length > 0 || preview.rejected.length > 0 || plan.warnings.length > 0) && <section className="ask-labo-warnings">
+      {(preview.rejectedBlocks.length > 0 || preview.rejected.length > 0 || preview.rejectedMutations.length > 0 || plan.warnings.length > 0) && <section className="ask-labo-warnings">
         <h3>Not applied</h3>
         {preview.rejectedBlocks.map(({ block, reason }) => <p key={`${block.nodeId}-${reason}`}>{block.nodeId}: {reason}</p>)}
         {preview.rejected.map(({ connection, reason }) => <p key={`${connection.sourceId}-${connection.targetId}-${reason}`}>{connection.sourceId} → {connection.targetId}: {reason}</p>)}
+        {preview.rejectedMutations.map(({ nodeId, action, reason }, index) => <p key={`${nodeId ?? action?.type ?? 'mutation'}-${index}`}>{nodeId ?? action?.type}: {reason}</p>)}
         {plan.warnings.map((warning) => <p key={warning}>{warning}</p>)}
       </section>}
 
       <div className="ask-labo-actions">
         <button className="ask-labo-cancel" onClick={() => { setPlan(undefined); setCardOverrides({}) }} type="button">Discard</button>
-        <button className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0} onClick={apply} type="button"><Check size={13} />Apply graph plan</button>
+        <button className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (plan.updatedBlocks?.length ?? 0) === 0 && (plan.deletedBlocks?.length ?? 0) === 0 && (plan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply graph plan</button>
       </div>
     </div>}
 

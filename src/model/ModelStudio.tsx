@@ -19,7 +19,8 @@ import {
 import '../App.css'
 import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
 import { executionLayers } from '../core/execution-plan'
-import { findOpenGraphPosition, layoutArchitectureGraph } from '../core/graph-placement'
+import { architectureComponents } from '../core/graph-components'
+import { findOpenGraphPosition, layoutArchitectureGraph, layoutParallelArchitecture } from '../core/graph-placement'
 import { addNode, compileToPyTorch, removeNode, validateGraph, type ArchitectureGraph, type TensorRole } from '../core/ir'
 import { cloneArchitectureGraph, loadModelWorkspace, loadModelWorkspaceFromDatabase, saveModelWorkspace, saveModelWorkspaceCache, syncModelPresetDatabase, type ModelPresetDraft } from '../core/model-workspace'
 import { modelAtomRegistry, type ModelAtomDefinition } from '../core/model-atoms'
@@ -31,10 +32,12 @@ import { deriveGraphStats } from '../core/stats'
 import { GraphCanvas } from './GraphCanvas'
 import { PythonCodeEditor } from './PythonCodeEditor'
 import { AskLaboPanel } from './AskLaboPanel'
+import type { AgentGraphAction } from '../core/agentic-graph'
 import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH, resolveCardDrop } from './card-layout'
 import { CustomCardCreator } from './CustomCardCreator'
 import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
+import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 
 type ViewMode = 'blocks' | 'pytorch' | 'split'
 type InteractionMode = 'add' | 'edit'
@@ -84,11 +87,14 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [graph, setGraph] = useState(() => cloneArchitectureGraph(initialGraph))
   const [selectedNodeId, setSelectedNodeId] = useState(initialDraft?.selectedNodeId ?? initialGraph.nodes[0]?.id ?? '')
   const [view, setView] = useState<ViewMode>('split')
+  const [selectedArchitectureId, setSelectedArchitectureId] = useState('')
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('add')
+  const [confirmArchitectureDelete, setConfirmArchitectureDelete] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [modelPlayerSnapshot, setModelPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', currentAtomId: initialGraph.nodes[0]?.id, results: initialGraph.nodes.map((node) => ({ atomId: node.id, status: 'pending' })) })
   const modelPlayerRef = useRef<AtomicPlayer | null>(null)
+  const pendingAgentRunRef = useRef<'play' | 'step' | undefined>(undefined)
   const presetDraftsRef = useRef(new Map<string, ModelPresetDraft>(Object.entries(initialWorkspace.drafts)))
   const [userPresets, setUserPresets] = useState(() => initialWorkspace.userPresets.map(cloneArchitectureGraph))
   const [presetName, setPresetName] = useState('My model')
@@ -103,7 +109,10 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   latestGraphRef.current = graph
   latestSelectionRef.current = selectedNodeId
   latestUserPresetsRef.current = userPresets
-  const code = useMemo(() => compileToPyTorch(graph), [graph])
+  const graphArchitectures = useMemo(() => architectureComponents(graph, [...builtInModelPresets, ...userPresets]), [graph, userPresets])
+  const selectedArchitecture = graphArchitectures.find((component) => component.id === selectedArchitectureId) ?? graphArchitectures[0]
+  const codeGraph = selectedArchitecture?.graph ?? graph
+  const code = useMemo(() => compileToPyTorch(codeGraph), [codeGraph])
   const [codeDraft, setCodeDraft] = useState(code)
   const [parseDiagnostics, setParseDiagnostics] = useState<PyTorchDialectDiagnostic[]>([])
   const [sampleText, setSampleText] = useState('Bonjour LABO AI')
@@ -128,6 +137,15 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
 
   useLayoutEffect(() => setCodeDraft(code), [code])
+
+  useEffect(() => {
+    if (selectedArchitecture && selectedArchitecture.id !== selectedArchitectureId) setSelectedArchitectureId(selectedArchitecture.id)
+  }, [selectedArchitecture, selectedArchitectureId])
+
+  useEffect(() => {
+    const containingArchitecture = graphArchitectures.find((architecture) => architecture.nodeIds.includes(selectedNodeId))
+    if (containingArchitecture && containingArchitecture.id !== selectedArchitectureId) setSelectedArchitectureId(containingArchitecture.id)
+  }, [graphArchitectures, selectedArchitectureId, selectedNodeId])
 
   useEffect(() => {
     window.localStorage.setItem(CUSTOM_CARDS_STORAGE_KEY, JSON.stringify(customCards))
@@ -185,15 +203,27 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     const executionPlan = validation.valid ? executionLayers(graph) : graph.nodes.map((node) => [node.id])
     const player = new AtomicPlayer(executionPlan, async (atomId) => {
       if (!window.labo?.runAtomic) throw new Error('Atomic PyTorch execution requires the LABO AI desktop app')
+      const runArchitectures = async (tokenIds?: number[]) => {
+        const traces = await Promise.all(graphArchitectures.map((architecture) => window.labo!.runAtomic({ kind: 'model', graph: architecture.graph, ...(tokenIds ? { tokenIds } : {}) })))
+        const failed = traces.find((trace) => trace.status === 'failed')
+        return {
+          engine: 'pytorch' as const,
+          status: failed ? 'failed' as const : 'completed' as const,
+          ...(failed?.currentAtomId ? { currentAtomId: failed.currentAtomId } : {}),
+          ...(failed?.error ? { error: failed.error } : {}),
+          modelOutput: traces.findLast((trace) => trace.modelOutput)?.modelOutput,
+          results: traces.flatMap((trace) => trace.results),
+        }
+      }
       tracePromise ??= (acceptsTokenIds
         ? (async () => {
             const tokenTrace = await window.labo!.runAtomic({ kind: 'tokenizer', pipeline: researchBpePreset, sample: sampleText })
             if (tokenTrace.status === 'failed') throw new Error(tokenTrace.error ?? 'Tokenizer failed')
             if (!tokenTrace.tokenIds?.length) throw new Error('Tokenizer returned no Token IDs')
             setPromptTokenCount(tokenTrace.tokenIds.length)
-            return window.labo!.runAtomic({ kind: 'model', graph, tokenIds: tokenTrace.tokenIds })
+            return runArchitectures(tokenTrace.tokenIds)
           })()
-        : window.labo.runAtomic({ kind: 'model', graph })).then((trace) => {
+        : runArchitectures()).then((trace) => {
           setModelOutput(trace.modelOutput)
           return trace
         })
@@ -202,15 +232,30 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       if (!result) throw new Error(trace.error ?? `PyTorch stopped before ${atomId}`)
       if (result.status === 'failed') throw new Error(result.error ?? `PyTorch failed at ${atomId}`)
       return { summary: result.summary }
-    }, { onRestart: () => { tracePromise = undefined; setModelOutput(undefined) } })
+    }, { onRestart: () => { tracePromise = undefined; setModelOutput(undefined) }, continueAfterFailure: true })
     modelPlayerRef.current = player
     return player.subscribe(setModelPlayerSnapshot)
-  }, [acceptsTokenIds, graph, sampleText, validation.valid])
+  }, [acceptsTokenIds, graph, graphArchitectures, sampleText, validation.valid])
+
+  useEffect(() => {
+    const mode = pendingAgentRunRef.current
+    if (!mode) return
+    pendingAgentRunRef.current = undefined
+    if (mode === 'play') void modelPlayerRef.current?.play()
+    else void modelPlayerRef.current?.step()
+  }, [graph])
 
   const applyPyTorch = () => {
-    const parsed = parsePyTorchDialect(codeDraft, graph)
+    const parsed = parsePyTorchDialect(codeDraft, codeGraph)
     setParseDiagnostics(parsed.diagnostics)
-    setGraph(parsed.graph)
+    const selectedIds = new Set(codeGraph.nodes.map((node) => node.id))
+    setGraph((current) => ({
+      ...current,
+      config: parsed.graph.config,
+      contracts: parsed.graph.contracts,
+      nodes: [...current.nodes.filter((node) => !selectedIds.has(node.id)), ...parsed.graph.nodes],
+      edges: [...current.edges.filter((edge) => !selectedIds.has(edge.source) && !selectedIds.has(edge.target)), ...parsed.graph.edges],
+    }))
   }
 
   const addModelAtom = (definition: ModelAtomDefinition, desiredPosition?: { x: number; y: number }, variant?: { label: string; attributes: Record<string, number | string | boolean> }) => {
@@ -365,8 +410,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     setParseDiagnostics([])
   }
 
-  const createUserPreset = () => {
-    const name = presetName.trim()
+  const saveGraphAsPreset = (requestedName: string, sourceGraph: ArchitectureGraph = graph) => {
+    const name = requestedName.trim()
     if (!name) {
       setPresetError('Give the preset a name.')
       return
@@ -376,11 +421,27 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     let id = baseId
     let sequence = 2
     while (usedIds.has(id)) id = `${baseId}-${sequence++}`
-    const preset = cloneArchitectureGraph({ ...graph, id, name })
+    const preset = cloneArchitectureGraph({ ...sourceGraph, id, name })
     presetDraftsRef.current.set(id, { graph: preset, selectedNodeId })
     setUserPresets((current) => [...current, preset])
     setGraph(preset)
     setPresetError('')
+    return preset
+  }
+
+
+  const createUserPreset = () => { saveGraphAsPreset(presetName) }
+
+  const createBlankWorkspace = () => {
+    let sequence = 1
+    const usedIds = new Set([...builtInModelPresets, ...userPresets].map((preset) => preset.id))
+    while (usedIds.has(`user-blank-${sequence}`)) sequence += 1
+    const blank = cloneArchitectureGraph({ ...blankStarterPreset, id: `user-blank-${sequence}`, name: `Blank canvas ${sequence}` })
+    presetDraftsRef.current.set(blank.id, { graph: blank, selectedNodeId: '' })
+    setUserPresets((current) => [...current, blank])
+    setGraph(blank)
+    setSelectedNodeId('')
+    setInteractionMode('add')
   }
 
   const resetCurrentPreset = () => {
@@ -409,10 +470,69 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     if (preset) loadPreset(preset, preset.nodes[0]?.id ?? '')
   }
 
-  const applyAgentGraph = (nextGraph: ArchitectureGraph) => {
-    const addedNode = nextGraph.nodes.find((node) => !graph.nodes.some((current) => current.id === node.id))
+  const addPresetForComparison = (preset: ArchitectureGraph) => {
+    const current = latestGraphRef.current
+    const usedIds = new Set(current.nodes.map((node) => node.id))
+    const sourceArchitectures = architectureComponents(preset)
+    const addedNodeIds: string[] = []
+    let nextGraph = current
+    for (const [componentIndex, architecture] of sourceArchitectures.entries()) {
+      let sequence = 1
+      let prefix = `${preset.id}-${componentIndex + 1}`
+      while (architecture.nodeIds.some((nodeId) => usedIds.has(`${prefix}-${nodeId}`))) prefix = `${preset.id}-${componentIndex + 1}-${++sequence}`
+      const remap = new Map(architecture.nodeIds.map((nodeId) => [nodeId, `${prefix}-${nodeId}`]))
+      const metadata = {
+        laboArchitectureName: architecture.label,
+        laboArchitectureHiddenSize: architecture.graph.config.hiddenSize,
+        laboArchitectureQueryHeads: architecture.graph.config.queryHeads,
+        laboArchitectureKeyValueHeads: architecture.graph.config.keyValueHeads,
+        laboArchitectureHeadDim: architecture.graph.config.headDim,
+      }
+      const nodes = architecture.graph.nodes.map((node) => ({ ...node, id: remap.get(node.id)!, position: { ...node.position }, attributes: { ...node.attributes, ...metadata } }))
+      const edges = architecture.graph.edges.map((edge) => ({ ...edge, id: `${prefix}-${edge.id}`, source: remap.get(edge.source)!, target: remap.get(edge.target)! }))
+      for (const node of nodes) { usedIds.add(node.id); addedNodeIds.push(node.id) }
+      nextGraph = { ...nextGraph, nodes: [...nextGraph.nodes, ...nodes], edges: [...nextGraph.edges, ...edges] }
+    }
+    nextGraph = layoutParallelArchitecture(nextGraph, addedNodeIds)
     setGraph(nextGraph)
+    setSelectedNodeId(addedNodeIds[0] ?? '')
+    setInteractionMode('edit')
+  }
+
+  const deleteSelectedArchitecture = () => {
+    if (!selectedArchitecture) return
+    if (!confirmArchitectureDelete) {
+      setConfirmArchitectureDelete(true)
+      return
+    }
+    const removed = new Set(selectedArchitecture.nodeIds)
+    const next = {
+      ...graph,
+      nodes: graph.nodes.filter((node) => !removed.has(node.id)),
+      edges: graph.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
+      groups: graph.groups?.filter((group) => !group.nodeIds.some((nodeId) => removed.has(nodeId))),
+    }
+    setGraph(next)
+    setSelectedNodeId(next.nodes[0]?.id ?? '')
+    setConfirmArchitectureDelete(false)
+  }
+
+  const applyAgentGraph = (nextGraph: ArchitectureGraph, actions: AgentGraphAction[]) => {
+    const addedNode = nextGraph.nodes.find((node) => !graph.nodes.some((current) => current.id === node.id))
+    const run = actions.find((action): action is Extract<AgentGraphAction, { type: 'run' }> => action.type === 'run')
+    if (run) pendingAgentRunRef.current = run.mode
+    const preset = actions.find((action): action is Extract<AgentGraphAction, { type: 'save-preset' }> => action.type === 'save-preset')
+    const appliedGraph = preset ? saveGraphAsPreset(preset.name, nextGraph) ?? nextGraph : nextGraph
+    if (!preset) setGraph(appliedGraph)
     if (addedNode) setSelectedNodeId(addedNode.id)
+    for (const action of actions) {
+      if (action.type !== 'export') continue
+      if (action.kind === 'svg' || action.kind === 'both') void exportArchitectureDiagram(appliedGraph)
+      if (action.kind === 'python' || action.kind === 'both') {
+        const architectures = architectureComponents(appliedGraph, [...builtInModelPresets, ...userPresets])
+        for (const architecture of architectures) void exportPyTorchCode(architecture.graph, compileToPyTorch(architecture.graph))
+      }
+    }
   }
 
   const modelAtoms = Object.values(modelAtomRegistry)
@@ -486,6 +606,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
             <button aria-pressed={interactionMode === 'add'} onClick={() => setInteractionMode('add')}><Blocks size={13} />Add blocks</button>
             <button aria-pressed={interactionMode === 'edit'} onClick={() => setInteractionMode('edit')}><Pencil size={13} />Edit cards</button>
             <button aria-haspopup="dialog" onClick={openCardCreator}><Code2 size={13} />Create card</button>
+            {interactionMode === 'edit' && selectedArchitecture && <button className={confirmArchitectureDelete ? 'confirm-delete' : ''} onClick={deleteSelectedArchitecture} title="Delete every card and elastic in the selected architecture"><Trash2 size={13} />{confirmArchitectureDelete ? 'Confirm clear' : 'Clear architecture'}</button>}
           </div>
           <details className="preset-menu"><summary>{presetMenuLabels[graph.id] ?? graph.name}</summary><div aria-label="Model preset">{builtInModelPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{presetMenuLabels[preset.id] ?? preset.name}</button>)}{userPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{preset.name}</button>)}</div></details>
           <details className="model-prompt-menu"><summary>Prompt</summary><label className="model-prompt-control"><span>Generation prompt</span><input aria-label="Model generation prompt" onChange={(event) => { setSampleText(event.target.value); setPromptTokenCount(undefined); setModelOutput(undefined) }} value={sampleText} /><small>{acceptsTokenIds ? (promptTokenCount === undefined ? 'Research BPE' : `${promptTokenCount} Token IDs`) : 'Add a Token IDs input'}</small></label></details>
@@ -503,7 +624,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           </div>
           <button aria-pressed={libraryOpen} className="panel-visibility-button" onClick={() => setLibraryOpen((current) => !current)}><PanelLeft size={13} />Library</button>
           <button aria-pressed={inspectorOpen} className="panel-visibility-button" onClick={() => setInspectorOpen((current) => !current)}><Cpu size={13} />Inspector</button>
-          <ExportMenu code={code} graph={graph} />
+          <ExportMenu code={code} codeGraph={codeGraph} graph={graph} />
         </div>
       </section>
 
@@ -536,8 +657,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                 <label><span>Preset name</span><input aria-label="New model preset name" onChange={(event) => setPresetName(event.target.value)} value={presetName} /></label>
                 {presetError && <p role="alert">{presetError}</p>}
                 <button onClick={createUserPreset}>Save current graph as preset</button>
+                <button onClick={createBlankWorkspace}>New blank workspace</button>
                 <button className="reset-model-preset-button" disabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} onClick={resetCurrentPreset}>Reset current preset</button>
                 <small>Every edit is auto-saved locally for this desktop user. Reset is the only action that restores the original.</small>
+              </div>
+              <div className="preset-comparison-list">
+                <small>Add complete presets side by side on this canvas.</small>
+                {[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)].map((preset) => <button key={`compare-${preset.id}`} onClick={() => addPresetForComparison(preset)}><strong>+ {presetMenuLabels[preset.id] ?? preset.name}</strong><span>{preset.nodes.length} cards</span></button>)}
               </div>
               {userPresets.length > 0 && <div className="user-preset-list">
                 {userPresets.map((preset) => <div key={preset.id}>
@@ -614,7 +740,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
           {view !== 'blocks' && (
             <div className="code-panel">
-              <div className="panel-tab"><Code2 size={13} /> generated_attention.py <span>LABO DIALECT</span><button aria-label="Apply PyTorch to blocks" onClick={applyPyTorch}>Apply to blocks</button></div>
+              <div className="panel-tab"><Code2 size={13} /> generated_attention.py {graphArchitectures.length > 1 && <select aria-label="PyTorch architecture" onChange={(event) => { const architecture = graphArchitectures.find((candidate) => candidate.id === event.target.value); setSelectedArchitectureId(event.target.value); if (architecture?.nodeIds[0]) setSelectedNodeId(architecture.nodeIds[0]) }} value={selectedArchitecture?.id ?? ''}>{graphArchitectures.map((architecture) => <option key={architecture.id} value={architecture.id}>{architecture.label}</option>)}</select>}<span>LABO DIALECT</span><button aria-label="Apply PyTorch to blocks" onClick={applyPyTorch}>Apply to blocks</button></div>
               <PythonCodeEditor onChange={setCodeDraft} value={codeDraft} />
               {parseDiagnostics.length > 0 && <div className="code-diagnostics">{parseDiagnostics.map((diagnostic) => <p key={`${diagnostic.nodeId}-${diagnostic.code}`}>{diagnostic.message}</p>)}</div>}
             </div>
@@ -672,7 +798,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
       {createCardOpen && <CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} />}
 
-      <AskLaboPanel graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} />
+      <AskLaboPanel customCards={customCards} graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} />
 
       <footer className="statusbar">
         <span><span className={`status-dot ${validation.valid || blankGraph ? '' : 'invalid'}`} /> Neural IR {blankGraph ? 'blank' : validation.valid ? 'valid' : 'invalid'}</span>

@@ -29,6 +29,18 @@ describe('agentic graph wiring', () => {
     expect(context.availableAtomics.find((atomic) => atomic.atomId === 'lm-head')?.settings).toContainEqual(expect.objectContaining({ id: 'tieEmbeddingWeights', default: true }))
   })
 
+  it('exposes saved custom cards to the agent search context', () => {
+    const context = createAgentGraphContext(tokenMoePreset, 'extend', [{ id: 'my-gelu', label: 'My GELU', code: 'nn.GELU()', inputRole: 'hidden', outputRole: 'hidden' }])
+    expect(context.availableCustomCards).toEqual([{ id: 'my-gelu', label: 'My GELU', code: 'nn.GELU()', inputRole: 'hidden', outputRole: 'hidden' }])
+  })
+
+  it('describes whole architectures so the agent can clean them as one unit', () => {
+    const context = createAgentGraphContext(tokenMoePreset)
+    expect(context.architectures).toHaveLength(1)
+    expect(context.architectures[0]).toMatchObject({ id: 'architecture-1-tokens', label: tokenMoePreset.name })
+    expect(new Set(context.architectures[0]?.nodeIds)).toEqual(new Set(tokenMoePreset.nodes.map((node) => node.id)))
+  })
+
   it('lets the agent add a typed Token IDs source on a blank graph', () => {
     const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
     const preview = previewAgentGraphPlan(graph, plan([{
@@ -158,6 +170,36 @@ describe('agentic graph wiring', () => {
     expect(preview.graph.nodes.slice(0, originalNodes.length)).toEqual(originalNodes)
     expect(preview.graph.edges.slice(0, originalEdges.length)).toEqual(originalEdges)
     expect(preview.graph.nodes.find((node) => node.id === 'parallel-input')!.position.x).toBeGreaterThan(Math.max(...originalNodes.map((node) => node.position.x)))
+  })
+
+  it('previews edits, deletion, movement and queued actions without mutating the source graph', () => {
+    const sourceNorm = tokenMoePreset.nodes.find((node) => node.id === 'norm')!
+    const preview = previewAgentGraphPlan(tokenMoePreset, {
+      ...plan([]),
+      updatedBlocks: [{ nodeId: 'norm', label: 'Agent RMSNorm', settings: { eps: 0.00001 }, pytorchModule: null, reason: 'Tune norm' }],
+      deletedBlocks: [{ nodeId: 'router-aux-loss', reason: 'Remove objective' }],
+      movedBlocks: [{ nodeId: 'norm', x: 123, y: 456, reason: 'Exact placement' }],
+      actions: [{ type: 'run', mode: 'step', reason: 'Verify one atom' }, { type: 'export', kind: 'svg', reason: 'Share graph' }],
+    })
+
+    expect(tokenMoePreset.nodes.find((node) => node.id === 'norm')).toEqual(sourceNorm)
+    expect(preview.graph.nodes.find((node) => node.id === 'norm')).toMatchObject({ label: 'Agent RMSNorm', position: { x: 123, y: 456 }, attributes: { eps: 0.00001 } })
+    expect(preview.graph.nodes.some((node) => node.id === 'router-aux-loss')).toBe(false)
+    expect(preview.acceptedActions).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'run' }), expect.objectContaining({ type: 'export' })]))
+  })
+
+  it('rejects mutations of existing cards in parallel mode', () => {
+    const preview = previewAgentGraphPlan(tokenMoePreset, {
+      ...plan([]),
+      updatedBlocks: [{ nodeId: 'norm', label: 'Changed', settings: null, pytorchModule: null, reason: 'Forbidden edit' }],
+      deletedBlocks: [{ nodeId: 'shared', reason: 'Forbidden deletion' }],
+      movedBlocks: [{ nodeId: 'routed', x: 0, y: 0, reason: 'Forbidden move' }],
+      actions: [{ type: 'layout', scope: 'all', reason: 'Forbidden global layout' }],
+    }, 'parallel')
+
+    expect(preview.rejectedMutations).toHaveLength(4)
+    expect(preview.graph.nodes.find((node) => node.id === 'norm')?.label).toBe(tokenMoePreset.nodes.find((node) => node.id === 'norm')?.label)
+    expect(preview.graph.nodes.some((node) => node.id === 'shared')).toBe(true)
   })
 
   it('repairs false missing Token IDs and logits-decoder claims with native cards', () => {

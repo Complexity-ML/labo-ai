@@ -136,7 +136,7 @@ const additionalAtomRegistry: Record<string, ModelAtomDefinition> = {
   'noncausal-sdpa': {
     id: 'noncausal-sdpa', label: 'Bidirectional SDPA', category: 'attention',
     inputs: [{ id: 'q', tensor: 'query', rank: 4 }, { id: 'k', tensor: 'key', rank: 4 }, { id: 'v', tensor: 'value', rank: 4 }], outputs: [{ id: 'output', tensor: 'attention', rank: 4 }],
-    settings: [{ id: 'dropout', type: 'number', default: 0 }], lowerings: lowering([], ['{{out:output}} = F.scaled_dot_product_attention({{in:q}}, {{in:k}}, {{in:v}}, dropout_p={{dropout}}, is_causal=False)']),
+    settings: [{ id: 'dropout', type: 'number', default: 0 }], lowerings: lowering([], ['{{out:output}} = F.scaled_dot_product_attention({{in:q}}, {{in:k}}, {{in:v}}, dropout_p={{dropout}}, is_causal=False, enable_gqa={{in:q}}.size(1) != {{in:k}}.size(1))']),
   },
   'attention-scores': {
     id: 'attention-scores', label: 'Scaled attention scores', category: 'attention',
@@ -388,7 +388,7 @@ export const modelAtomRegistry: Record<string, ModelAtomDefinition> = {
     ],
     outputs: [{ id: 'output', tensor: 'attention', rank: 4 }],
     settings: [{ id: 'dropout', type: 'number', default: 0 }],
-    lowerings: lowering([], ['{{out:output}} = F.scaled_dot_product_attention({{in:q}}, {{in:k}}, {{in:v}}, dropout_p={{dropout}}, is_causal=True)']),
+    lowerings: lowering([], ['{{out:output}} = F.scaled_dot_product_attention({{in:q}}, {{in:k}}, {{in:v}}, dropout_p={{dropout}}, is_causal=True, enable_gqa={{in:q}}.size(1) != {{in:k}}.size(1))']),
   },
   'eager-causal-attention': {
     id: 'eager-causal-attention', label: 'Eager causal attention', category: 'attention',
