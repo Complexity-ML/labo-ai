@@ -734,7 +734,7 @@ describe('LABO AI workspace', () => {
         createdBlocks: [],
         connections: [{ sourceId: 'final-norm', sourcePortId: 'output', targetId: 'auto-relu', targetPortId: 'hidden', reason: 'Feed final states.' }],
         missingBlocks: [],
-        warnings: [],
+        warnings: ['The model stopped after a usable partial plan.'],
       }),
     }
     render(<App />)

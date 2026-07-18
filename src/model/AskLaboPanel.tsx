@@ -97,8 +97,7 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
       const response = repairAgentGraphPlan(graph, rawResponse)
       const responsePreview = previewAgentGraphPlan(graph, response, graphMode)
       const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0 || (response.updatedBlocks?.length ?? 0) > 0 || (response.deletedBlocks?.length ?? 0) > 0 || (response.movedBlocks?.length ?? 0) > 0 || responsePreview.acceptedActions.some((action) => action.type !== 'layout')
-      const requiresReview = responsePreview.rejectedBlocks.length > 0 || responsePreview.rejected.length > 0 || responsePreview.rejectedMutations.length > 0 || response.missingBlocks.length > 0 || response.warnings.length > 0
-      if (autoApply && hasAcceptedChanges && !requiresReview) {
+      if (autoApply && hasAcceptedChanges) {
         onApply(responsePreview.graph, responsePreview.acceptedActions)
         onClose()
       } else setPlan(response)
@@ -210,7 +209,7 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
         <button aria-pressed={!autoApply} onClick={() => setAutoApply(false)} type="button">Review</button>
         <button aria-pressed={autoApply} onClick={() => setAutoApply(true)} type="button">Auto apply</button>
       </div>
-      <small>{autoApply ? 'Clean plans are applied immediately. Rejected or missing capabilities still require review.' : 'Preview every block, generated card and elastic before applying.'}</small>
+      <small>{autoApply ? 'Every locally valid operation is applied immediately. Invalid operations are skipped without asking for approval.' : 'Preview every block, generated card and elastic before applying.'}</small>
     </section>
 
     <section className="ask-labo-mode ask-labo-scope" aria-label="Agent graph scope">
