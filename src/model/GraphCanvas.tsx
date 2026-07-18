@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties, type Dispatch, type DragEvent, type PointerEvent, type SetStateAction } from 'react'
-import { Blocks, Cable, Maximize2, Minus, Pencil, Plus, Zap } from 'lucide-react'
+import { Blocks, Cable, Minus, Pencil, Plus, Scan, Zap } from 'lucide-react'
 import type { AtomicPlayerSnapshot } from '../core/atomic-player'
 import { moveGroup, moveNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
@@ -280,7 +280,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
         <button aria-label="Zoom out" onClick={camera.zoomOut}><Minus size={13} /></button>
         <button aria-label="Reset zoom" className="zoom-value" onClick={camera.resetZoom}>{Math.round(camera.viewport.zoom * 100)}%</button>
         <button aria-label="Zoom in" onClick={camera.zoomIn}><Plus size={13} /></button>
-        <button aria-label="Fit graph" onClick={camera.fitGraph}><Maximize2 size={13} /></button>
+        <button aria-label="Fit graph" onClick={camera.fitGraph} title="Center and fit all blocks"><Scan size={14} /></button>
       </div>
       <div className="canvas-badge"><Zap size={12} /> {graph.architecture} · {graph.contracts.causal ? 'causal' : 'non-causal'}</div>
     </div>

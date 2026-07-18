@@ -2,6 +2,7 @@
 .topbar, .workspace-toolbar, .statusbar { display: flex; align-items: center; border-bottom: 1px solid var(--border); background: #0b0c0f; }
 .topbar { padding: 0 12px; justify-content: space-between; }
 .runtime-electron.runtime-darwin .topbar { padding-left: 84px; -webkit-app-region: drag; }
+.runtime-electron.runtime-darwin.native-fullscreen .topbar { padding-left: 12px; }
 .runtime-electron.runtime-darwin .topbar button, .runtime-electron.runtime-darwin .topbar nav { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 9px; width: 270px; color: var(--text); font-size: 14px; letter-spacing: -.2px; }
 .brand-mark { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid rgba(124,117,255,.45); border-radius: 7px; color: #a9a5ff; background: rgba(124,117,255,.12); }
@@ -212,8 +213,8 @@
 .node-hidden, .node-output { border-left: 2px solid #7b818d; }
 
 .canvas-badge { position: absolute; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 6px; color: #737985; font: 9px 'JetBrains Mono'; border: 1px solid var(--border); background: rgba(12,13,16,.8); border-radius: 5px; padding: 6px 8px; }
-.graph-viewport-controls { position: absolute; right: 14px; bottom: 14px; z-index: 30; display: flex; align-items: center; overflow: hidden; border: 1px solid #30343d; border-radius: 6px; background: rgba(12,13,16,.94); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
-.graph-viewport-controls button { min-width: 29px; height: 28px; display: grid; place-items: center; border: 0; border-right: 1px solid #292d35; padding: 0 7px; color: #a4aab5; background: transparent; font: 8px 'JetBrains Mono'; }
+.graph-viewport-controls { position: absolute; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); z-index: 30; display: flex; align-items: center; overflow: hidden; box-sizing: border-box; border: 1px solid #30343d; border-radius: 6px; background: rgba(12,13,16,.94); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.graph-viewport-controls button { flex: 0 0 32px; width: 32px; min-width: 32px; height: 30px; display: grid; place-items: center; box-sizing: border-box; border: 0; border-right: 1px solid #292d35; padding: 0; color: #a4aab5; background: transparent; font: 8px 'JetBrains Mono'; }
 .graph-viewport-controls button:last-child { border-right: 0; }
 .graph-viewport-controls button:hover { color: #fff; background: rgba(124,117,255,.12); }
 .graph-viewport-controls .zoom-value { min-width: 43px; }

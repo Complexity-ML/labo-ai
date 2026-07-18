@@ -17,14 +17,14 @@ describe('agentic graph wiring', () => {
     const routed = context.graph.nodes.find((node) => node.id === 'routed')
 
     expect(routed?.inputs).toEqual(expect.arrayContaining([
-      { id: 'hidden', tensor: 'hidden' },
-      { id: 'expertIndices', tensor: 'expert-indices' },
-      { id: 'expertWeights', tensor: 'routing-weights' },
+      expect.objectContaining({ id: 'hidden', tensor: 'hidden' }),
+      expect.objectContaining({ id: 'expertIndices', tensor: 'expert-indices' }),
+      expect.objectContaining({ id: 'expertWeights', tensor: 'routing-weights' }),
     ]))
     expect(context.availableAtomics.some((atomic) => atomic.atomId === 'top-k-routing')).toBe(true)
     expect(context.availableAtomics).toContainEqual(expect.objectContaining({
       atomId: 'token-ids-input',
-      outputs: [{ id: 'tokenIds', tensor: 'token-ids' }],
+      outputs: [expect.objectContaining({ id: 'tokenIds', tensor: 'token-ids', rank: 2 })],
     }))
     expect(context.availableAtomics.find((atomic) => atomic.atomId === 'lm-head')?.settings).toContainEqual(expect.objectContaining({ id: 'tieEmbeddingWeights', default: true }))
   })
@@ -225,6 +225,27 @@ describe('agentic graph wiring', () => {
       expect.objectContaining({ sourceId: 'head', sourcePortId: 'logits', targetPortId: 'logits' }),
     ]))
     expect(repaired.missingBlocks).toEqual([])
+    expect(previewAgentGraphPlan(graph, repaired).rejected).toEqual([])
+  })
+
+  it('inserts the required head layout between rank-3 QKV and rank-4 attention', () => {
+    const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
+    const repaired = repairAgentGraphPlan(graph, plan([
+      { sourceId: 'qkv', sourcePortId: 'q', targetId: 'attention', targetPortId: 'q', reason: 'Direct Q' },
+      { sourceId: 'qkv', sourcePortId: 'k', targetId: 'attention', targetPortId: 'k', reason: 'Direct K' },
+      { sourceId: 'qkv', sourcePortId: 'v', targetId: 'attention', targetPortId: 'v', reason: 'Direct V' },
+    ], [
+      { atomId: 'qkv-projection', nodeId: 'qkv', reason: 'Project QKV' },
+      { atomId: 'causal-sdpa', nodeId: 'attention', reason: 'Attend causally' },
+    ]))
+
+    const layout = repaired.addedBlocks.find((block) => block.atomId === 'attention-head-layout')
+    expect(layout).toBeDefined()
+    expect(repaired.connections.some((connection) => connection.sourceId === 'qkv' && connection.targetId === 'attention')).toBe(false)
+    expect(repaired.connections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceId: 'qkv', sourcePortId: 'q', targetId: layout?.nodeId, targetPortId: 'q' }),
+      expect.objectContaining({ sourceId: layout?.nodeId, sourcePortId: 'qHeads', targetId: 'attention', targetPortId: 'q' }),
+    ]))
     expect(previewAgentGraphPlan(graph, repaired).rejected).toEqual([])
   })
 })

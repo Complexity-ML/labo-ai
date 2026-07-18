@@ -27,8 +27,8 @@ export interface AskLaboPlan {
 interface AtomicSnapshot {
   atomId: string
   label: string
-  inputs?: Array<{ id: string; tensor: string }>
-  outputs?: Array<{ id: string; tensor: string }>
+  inputs?: Array<{ id: string; tensor: string; rank?: number }>
+  outputs?: Array<{ id: string; tensor: string; rank?: number }>
   settings?: unknown[]
 }
 
@@ -36,8 +36,8 @@ interface NodeSnapshot {
   id: string
   atomId?: string
   label: string
-  inputs?: Array<{ id: string; tensor: string }>
-  outputs?: Array<{ id: string; tensor: string }>
+  inputs?: Array<{ id: string; tensor: string; rank?: number }>
+  outputs?: Array<{ id: string; tensor: string; rank?: number }>
 }
 
 interface FunctionCallItem {
@@ -204,6 +204,7 @@ class AgentToolSession {
       if (this.context.operationMode === 'parallel' && (this.initialNodeIds.has(sourceId) || this.initialNodeIds.has(targetId))) return this.reject(name, 'Parallel mode cannot connect existing work')
       const sourcePort = source.outputs?.find((port) => port.id === sourcePortId), targetPort = target.inputs?.find((port) => port.id === targetPortId)
       if (!sourcePort || !targetPort || sourcePort.tensor !== targetPort.tensor) return this.reject(name, 'Unknown or incompatible typed ports')
+      if (sourcePort.rank && targetPort.rank && sourcePort.rank !== targetPort.rank) return this.reject(name, `Rank-${sourcePort.rank} output cannot plug into rank-${targetPort.rank} input; search for a reshape or head-layout card`)
       this.plan.connections.push({ sourceId, sourcePortId, targetId, targetPortId, reason })
       return this.trace(name, 'accepted', `Queued ${sourceId}.${sourcePortId} → ${targetId}.${targetPortId}`)
     }
@@ -313,6 +314,7 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
             'You are LABO AI, a bounded neural graph agent. Use tools to inspect, search, and construct the requested plan.',
             'Never merely describe a mutation: call its exact tool. Search cards before creating one or reporting it missing.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
+            'Tensor ranks are part of port contracts. QKV projection emits rank-3 Q/K/V and every SDPA consumes rank-4 Q/K/V, so insert Attention head layout between them.',
             'A chatbot or QA assistant request normally means a compact GPT-like autoregressive graph. Build that minimal graph unless the user explicitly asks for a rule-based or non-neural dialogue engine.',
             payload.context.operationMode === 'parallel'
               ? 'Operation mode is parallel architecture. Treat every existing node and connection as read-only; the new architecture must have its own inputs.'

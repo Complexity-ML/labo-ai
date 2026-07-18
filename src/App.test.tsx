@@ -20,6 +20,23 @@ describe('LABO AI workspace', () => {
     delete window.labo
   })
 
+  it('removes the macOS traffic-light offset in native fullscreen', async () => {
+    let publish: ((state: { fullScreen: boolean }) => void) | undefined
+    window.labo = {
+      platform: 'darwin', runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getWindowState: async () => ({ fullScreen: false }),
+      onWindowStateChange: (callback) => { publish = callback; return () => undefined },
+    }
+
+    render(<App />)
+    await waitFor(() => expect(publish).toBeTypeOf('function'))
+    publish?.({ fullScreen: true })
+
+    await waitFor(() => expect(document.querySelector('.app-shell')).toHaveClass('native-fullscreen'))
+    delete window.labo
+  })
+
   it('uses native Windows chrome and Windows keyboard labels', () => {
     window.labo = { platform: 'win32', runtime: 'electron', runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }) }
 

@@ -69,7 +69,29 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
             raise ValueError("tokenIds must be a non-empty list of non-negative integers")
         token_tensor = torch.tensor([supplied_token_ids], dtype=torch.long)
 
-    ordered = nodes
+    # Agent plans can add a missing dependency after its consumer in the node
+    # array. Execution follows the graph, never creation order.
+    node_index = {node["id"]: index for index, node in enumerate(nodes)}
+    indegree = {node["id"]: 0 for node in nodes}
+    outgoing: dict[str, list[str]] = {node["id"]: [] for node in nodes}
+    for edge in edges:
+        source_id, target_id = edge["source"], edge["target"]
+        if source_id in outgoing and target_id in indegree:
+            outgoing[source_id].append(target_id)
+            indegree[target_id] += 1
+    queue = sorted((node_id for node_id, degree in indegree.items() if degree == 0), key=node_index.get)
+    ordered_ids: list[str] = []
+    while queue:
+        node_id = queue.pop(0)
+        ordered_ids.append(node_id)
+        for target_id in sorted(outgoing[node_id], key=node_index.get):
+            indegree[target_id] -= 1
+            if indegree[target_id] == 0:
+                queue.append(target_id)
+                queue.sort(key=node_index.get)
+    if len(ordered_ids) != len(nodes):
+        raise RuntimeError("model graph contains a cycle")
+    ordered = [by_id[node_id] for node_id in ordered_ids]
 
     def connected_inputs(node_id: str) -> dict[str, Any]:
         found: dict[str, Any] = {}

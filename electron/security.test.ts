@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { rendererWebPreferences } from './security'
-import { askLaboChannel, atomicRuntimeChannel, deleteOpenAIKeyChannel, exportFileChannel, openAISettingsChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel } from './ipc-contract'
+import { askLaboChannel, atomicRuntimeChannel, deleteOpenAIKeyChannel, exportFileChannel, openAISettingsChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract'
 
 describe('Electron renderer boundary', () => {
   it('isolates the LABO AI renderer from Node and the main process', () => {
@@ -18,6 +18,7 @@ describe('Electron renderer boundary', () => {
     expect(deleteOpenAIKeyChannel).toBe('labo:openai-key-delete')
     expect(testOpenAIKeyChannel).toBe('labo:openai-key-test')
     expect(exportFileChannel).toBe('labo:export-file')
+    expect(windowStateChannel).toBe('labo:window-state')
   })
 
   it('loads a sandbox-compatible CommonJS preload', () => {

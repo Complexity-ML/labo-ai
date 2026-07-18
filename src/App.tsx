@@ -14,6 +14,7 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [requestedCard, setRequestedCard] = useState<{ atomId: string; requestId: number }>()
+  const [nativeFullScreen, setNativeFullScreen] = useState(false)
   const searchResults = useMemo(() => searchModelCards(searchQuery), [searchQuery])
   const platform = window.labo?.platform
   const runtimeClass = window.labo?.runtime === 'electron' ? ` runtime-electron runtime-${platform ?? 'desktop'}` : ''
@@ -30,7 +31,14 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  return <main className={`app-shell${runtimeClass}`}>
+  useEffect(() => {
+    let active = true
+    void window.labo?.getWindowState?.().then((state) => { if (active) setNativeFullScreen(state.fullScreen) })
+    const unsubscribe = window.labo?.onWindowStateChange?.((state) => setNativeFullScreen(state.fullScreen))
+    return () => { active = false; unsubscribe?.() }
+  }, [])
+
+  return <main className={`app-shell${runtimeClass}${nativeFullScreen ? ' native-fullscreen' : ''}`}>
     <header className="topbar">
       <div className="brand">
         <span className="brand-mark"><FlaskConical size={17} /></span>

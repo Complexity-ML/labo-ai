@@ -73,6 +73,18 @@ function sourcePort(graph: ArchitectureGraph, edge: ArchitectureEdge): string {
   return 'output'
 }
 
+function sourceRank(graph: ArchitectureGraph, edge: ArchitectureEdge): number | undefined {
+  const source = graph.nodes.find((node) => node.id === edge.source)
+  if (!source) return undefined
+  if (source.kind === 'input') {
+    if (source.role === 'token-ids' || source.role === 'labels') return 2
+    if (source.role === 'hidden') return 3
+    return undefined
+  }
+  if (source.kind !== 'semantic' || !source.atomId) return undefined
+  return modelAtomRegistry[source.atomId]?.outputs.find((port) => port.id === sourcePort(graph, edge))?.rank
+}
+
 function edgeMarker(edge: ArchitectureEdge): string {
   return `# labo:edge=${edge.id} source=${edge.source} target=${edge.target} source_port=${edge.sourcePort ?? 'output'} target_port=${edge.targetPort ?? 'input'}`
 }
@@ -197,6 +209,11 @@ export function compileRegistryGraph(graph: ArchitectureGraph, options: Registry
       const targetPort = edge.targetPort ?? definition.inputs[0]?.id
       const value = values.get(`${edge.source}:${sourcePort(graph, edge)}`)
       if (!targetPort) throw new Error(`Cannot resolve edge ${edge.id} into ${node.id}`)
+      const expectedRank = definition.inputs.find((port) => port.id === targetPort)?.rank
+      const actualRank = sourceRank(graph, edge)
+      if (actualRank && expectedRank && actualRank !== expectedRank) {
+        throw new Error(`Rank-${actualRank} ${edge.source}.${sourcePort(graph, edge)} cannot plug into rank-${expectedRank} ${node.id}.${targetPort}`)
+      }
       if (!value) {
         if (options.disconnectedInputs === 'skip') continue
         throw new Error(`Cannot resolve edge ${edge.id} into ${node.id}`)

@@ -10,6 +10,7 @@ import { validCustomPyTorchModule } from './pytorch-compiler'
 export interface AgentPortSnapshot {
   id: string
   tensor: TensorRole
+  rank?: number
 }
 
 export interface AgentNodeSnapshot {
@@ -110,15 +111,15 @@ interface AgentVirtualAtomic {
 
 const agentVirtualAtomics: Record<string, AgentVirtualAtomic> = {
   'token-ids-input': {
-    atomId: 'token-ids-input', label: 'Token IDs input', inputs: [], outputs: [{ id: 'tokenIds', tensor: 'token-ids' }],
+    atomId: 'token-ids-input', label: 'Token IDs input', inputs: [], outputs: [{ id: 'tokenIds', tensor: 'token-ids', rank: 2 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Token IDs', role: 'token-ids', position }),
   },
   'hidden-state-input': {
-    atomId: 'hidden-state-input', label: 'Hidden State input', inputs: [], outputs: [{ id: 'hidden', tensor: 'hidden' }],
+    atomId: 'hidden-state-input', label: 'Hidden State input', inputs: [], outputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Hidden State', role: 'hidden', position }),
   },
   'training-labels-input': {
-    atomId: 'training-labels-input', label: 'Training Labels input', inputs: [], outputs: [{ id: 'labels', tensor: 'labels' }],
+    atomId: 'training-labels-input', label: 'Training Labels input', inputs: [], outputs: [{ id: 'labels', tensor: 'labels', rank: 2 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Training Labels', role: 'labels', position }),
   },
 }
@@ -146,12 +147,12 @@ function snapshotNode(graph: ArchitectureGraph, node: ArchitectureNode): AgentNo
     ...(node.atomId ? { atomId: node.atomId } : {}),
     label: node.label,
     inputs: node.kind === 'input' ? [] : definition
-      ? definition.inputs.map(({ id, tensor }) => ({ id, tensor }))
+      ? definition.inputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
       : node.kind === 'custom-pytorch' ? [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden' }] : uniquePorts(edgeInputs),
     outputs: node.kind === 'input'
-      ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : 'hidden', tensor: node.role }]
+      ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : 'hidden', tensor: node.role, rank: node.role === 'token-ids' || node.role === 'labels' ? 2 : 3 }]
       : definition
-      ? definition.outputs.map(({ id, tensor }) => ({ id, tensor }))
+      ? definition.outputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
       : node.kind === 'custom-pytorch' ? [{ id: 'output', tensor: node.role }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
   }
 }
@@ -189,8 +190,8 @@ export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGra
       ...Object.values(modelAtomRegistry).filter((definition) => !definition.composite).map((definition) => ({
         atomId: definition.id,
         label: definition.label,
-        inputs: definition.inputs.map(({ id, tensor }) => ({ id, tensor })),
-        outputs: definition.outputs.map(({ id, tensor }) => ({ id, tensor })),
+        inputs: definition.inputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) })),
+        outputs: definition.outputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) })),
         settings: definition.settings.map(({ id, type, default: defaultValue, options }) => ({
           id,
           type,
@@ -272,6 +273,30 @@ export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: Agent
   }
 
   const samplerClaimedMissing = samplerPattern.test(missingText())
+
+  for (const attention of plan.addedBlocks.filter((block) => ['causal-sdpa', 'eager-causal-attention', 'noncausal-sdpa'].includes(block.atomId))) {
+    const direct = plan.connections.filter((connection) => connection.targetId === attention.nodeId && ['q', 'k', 'v'].includes(connection.targetPortId))
+    const qkvSource = direct.find((connection) => plan.addedBlocks.some((block) => block.nodeId === connection.sourceId && block.atomId === 'qkv-projection'))?.sourceId
+      ?? plan.addedBlocks.findLast((block) => block.atomId === 'qkv-projection')?.nodeId
+    if (!qkvSource || !capacity()) continue
+    let layout = plan.addedBlocks.find((block) => block.atomId === 'attention-head-layout' && plan.connections.some((connection) => connection.targetId === block.nodeId && connection.sourceId === qkvSource))
+    if (!layout) {
+      layout = { atomId: 'attention-head-layout', nodeId: uniqueAgentNodeId(graph, plan, 'agent-head-layout'), reason: 'LABO inserted the required rank-3 to rank-4 attention head layout.' }
+      plan.addedBlocks.push(layout)
+    }
+    plan.connections = plan.connections.filter((connection) => !(connection.targetId === attention.nodeId && connection.sourceId === qkvSource && ['q', 'k', 'v'].includes(connection.targetPortId)))
+    const portMap = { q: 'qHeads', k: 'kHeads', v: 'vHeads' } as const
+    for (const port of ['q', 'k', 'v'] as const) {
+      if (!plan.connections.some((connection) => connection.sourceId === qkvSource && connection.sourcePortId === port && connection.targetId === layout!.nodeId && connection.targetPortId === port)) {
+        plan.connections.push({ sourceId: qkvSource, sourcePortId: port, targetId: layout.nodeId, targetPortId: port, reason: `Reshape ${port.toUpperCase()} into attention heads.` })
+      }
+      if (!plan.connections.some((connection) => connection.sourceId === layout!.nodeId && connection.sourcePortId === portMap[port] && connection.targetId === attention.nodeId && connection.targetPortId === port)) {
+        plan.connections.push({ sourceId: layout.nodeId, sourcePortId: portMap[port], targetId: attention.nodeId, targetPortId: port, reason: `Feed rank-4 ${port.toUpperCase()} heads into attention.` })
+      }
+    }
+    plan.warnings = plan.warnings.filter((warning) => !/head layout|rank.?3|rank.?4/i.test(warning))
+  }
+
   if (samplerClaimedMissing) {
     for (const head of plan.addedBlocks.filter((block) => block.atomId === 'lm-head')) {
       const alreadyDecoded = plan.connections.some((connection) => connection.sourceId === head.nodeId && connection.sourcePortId === 'logits')
@@ -417,6 +442,10 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
     }
     if (sourcePort.tensor !== targetPort.tensor) {
       rejected.push({ connection, reason: `${sourcePort.tensor} cannot plug into ${targetPort.tensor}` })
+      continue
+    }
+    if (sourcePort.rank && targetPort.rank && sourcePort.rank !== targetPort.rank) {
+      rejected.push({ connection, reason: `Rank-${sourcePort.rank} ${sourcePort.tensor} cannot plug into rank-${targetPort.rank} ${targetPort.tensor}` })
       continue
     }
     if (targetHasConnection(nextGraph, target.id, targetPort.id)) {

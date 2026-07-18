@@ -338,9 +338,9 @@ export const modelAtomRegistry: Record<string, ModelAtomDefinition> = {
     id: 'qkv-projection', label: 'QKV projection', category: 'attention',
     inputs: [hiddenInput],
     outputs: [
-      { id: 'q', tensor: 'query', rank: 4 },
-      { id: 'k', tensor: 'key', rank: 4 },
-      { id: 'v', tensor: 'value', rank: 4 },
+      { id: 'q', tensor: 'query', rank: 3 },
+      { id: 'k', tensor: 'key', rank: 3 },
+      { id: 'v', tensor: 'value', rank: 3 },
     ],
     settings: [
       { id: 'bias', type: 'boolean', default: false },

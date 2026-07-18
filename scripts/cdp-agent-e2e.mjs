@@ -1,6 +1,8 @@
 const endpoint = process.argv[2] || 'http://127.0.0.1:9334/json/list'
 const parallel = process.argv.slice(3).includes('--parallel')
-const prompt = process.argv.slice(3).filter((argument) => argument !== '--parallel').join(' ').trim()
+const demo = process.argv.slice(3).includes('--demo')
+const prepare = process.argv.slice(3).includes('--prepare')
+const prompt = process.argv.slice(3).filter((argument) => !['--parallel', '--demo', '--prepare'].includes(argument)).join(' ').trim()
   || (parallel ? 'Add a small executable GPT-like language model as a separate parallel architecture.' : 'Build a small executable DeepSeek-like language model from the Blank Starter.')
 
 const pages = await fetch(endpoint).then((response) => response.json())
@@ -52,6 +54,33 @@ async function waitFor(expression, timeout = 60_000) {
 
 await send('Runtime.enable')
 await waitFor(`document.querySelector('button[aria-label="Play model atoms"]') !== null`)
+if (prepare) {
+  await evaluate(`(() => {
+    const exactButton = (text) => [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === text)
+    exactButton('Blocks')?.click()
+    exactButton('Blank starter')?.click()
+  })()`)
+  await wait(500)
+  await evaluate(`document.querySelector('.reset-model-preset-button')?.click()`)
+  await waitFor(`document.querySelector('.reset-model-preset-button')?.textContent.includes('Confirm restore') === true`)
+  await evaluate(`document.querySelector('.reset-model-preset-button')?.click()`)
+  await waitFor(`document.querySelectorAll('.architecture-node').length === 0`)
+  await evaluate(`(() => {
+    const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
+    if (panel('Library')?.getAttribute('aria-pressed') !== 'true') panel('Library')?.click()
+    if (panel('Inspector')?.getAttribute('aria-pressed') === 'true') panel('Inspector')?.click()
+  })()`)
+  const state = await evaluate(`({
+    cards: document.querySelectorAll('.architecture-node').length,
+    status: document.querySelector('.statusbar')?.textContent.trim(),
+    blocksView: [...document.querySelectorAll('.view-switcher button')].find((button) => button.textContent.trim() === 'Blocks')?.getAttribute('aria-pressed'),
+    libraryOpen: [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes('Library'))?.getAttribute('aria-pressed'),
+    inspectorOpen: [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes('Inspector'))?.getAttribute('aria-pressed'),
+  })`)
+  process.stdout.write(`${JSON.stringify({ prepared: true, state }, null, 2)}\n`)
+  socket.close()
+  process.exit(0)
+}
 await evaluate(`(() => {
   const exactButton = (text) => [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === text)
   exactButton(${JSON.stringify(parallel ? 'TR 300M' : 'Blank starter')})?.click()
@@ -59,6 +88,7 @@ await evaluate(`(() => {
   askButton?.click()
 })()`)
 await waitFor(`document.querySelector('.ask-labo-key-heading')?.textContent.includes('Connected') === true`)
+if (demo) await wait(2500)
 const beforeCards = await evaluate(`[...document.querySelectorAll('.architecture-node')].map((element) => ({ atomId: element.dataset.atomId, label: element.querySelector('strong')?.textContent.trim(), x: Number.parseFloat(element.style.left), y: Number.parseFloat(element.style.top) }))`)
 await evaluate(`(() => {
   const review = [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Review')
@@ -69,9 +99,11 @@ await evaluate(`(() => {
   setter.call(textarea, ${JSON.stringify(prompt)})
   textarea.dispatchEvent(new Event('input', { bubbles: true }))
 })()`)
+if (demo) await wait(3500)
 await waitFor(`[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Propose graph changes') && !button.disabled)`)
 await evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Propose graph changes')).click()`)
-await waitFor(`document.querySelector('.ask-labo-result, .ask-labo-error') !== null`, 90_000)
+await waitFor(`document.querySelector('.ask-labo-result, .ask-labo-error') !== null`, 210_000)
+if (demo) await wait(5000)
 
 const preview = await evaluate(`(() => ({
   error: document.querySelector('.ask-labo-error')?.textContent.trim() ?? null,
@@ -97,9 +129,19 @@ const preview = await evaluate(`(() => ({
 
 let graph = null
 let player = null
-if (preview.canApply) {
+  if (preview.canApply) {
   await evaluate(`document.querySelector('.ask-labo-apply').click()`)
   await waitFor(`document.querySelector('.ask-labo-panel') === null`)
+  if (demo) await wait(5000)
+  if (demo) {
+    await evaluate(`(() => {
+      const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
+      if (panel('Library')?.getAttribute('aria-pressed') === 'true') panel('Library')?.click()
+      if (panel('Inspector')?.getAttribute('aria-pressed') === 'true') panel('Inspector')?.click()
+      document.querySelector('button[aria-label="Fit graph"]')?.click()
+    })()`)
+    await wait(4000)
+  }
   graph = await evaluate(`(() => ({
     status: document.querySelector('.statusbar')?.textContent.trim(),
     compileStatus: document.querySelector('.toolbar-meta > span')?.textContent.trim(),
@@ -123,10 +165,30 @@ if (preview.canApply) {
     }))()`)
   }
 
-  await evaluate(`(() => {
-    const reset = [...document.querySelectorAll('button')].find((button) => button.textContent.trim().startsWith('Restore '))
-    reset?.click()
-  })()`)
+  if (demo) await wait(6000)
+
+  if (demo && player?.status === 'completed') {
+    await evaluate(`[...document.querySelectorAll('.view-switcher button')].find((button) => button.textContent.trim() === 'PyTorch')?.click()`)
+    await wait(5000)
+    await evaluate(`[...document.querySelectorAll('.view-switcher button')].find((button) => button.textContent.trim() === 'Split')?.click()`)
+    await wait(5000)
+    await evaluate(`[...document.querySelectorAll('.interaction-switcher button')].find((button) => button.textContent.trim() === 'Edit cards')?.click()`)
+    await wait(2500)
+    await evaluate(`document.querySelector('.architecture-node[data-atom-id="qkv-projection"] .node-select')?.click()`)
+    await waitFor(`document.querySelector('[aria-label="Edit model card"]') !== null`)
+    await wait(4500)
+    await evaluate(`document.querySelector('button[aria-label="Close model card editor"]')?.click()`)
+    await wait(2000)
+    await evaluate(`[...document.querySelectorAll('.view-switcher button')].find((button) => button.textContent.trim() === 'Blocks')?.click()`)
+    await wait(3500)
+  }
+
+  if (!demo) {
+    await evaluate(`(() => {
+      const reset = [...document.querySelectorAll('button')].find((button) => button.textContent.trim().startsWith('Restore '))
+      reset?.click()
+    })()`)
+  }
 }
 
 const existingPreserved = graph ? beforeCards.every((card, index) => JSON.stringify(card) === JSON.stringify(graph.cards[index])) : null

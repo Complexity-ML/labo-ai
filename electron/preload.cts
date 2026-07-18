@@ -9,6 +9,7 @@ const saveOpenAIKeyChannel = 'labo:openai-key-save'
 const deleteOpenAIKeyChannel = 'labo:openai-key-delete'
 const testOpenAIKeyChannel = 'labo:openai-key-test'
 const exportFileChannel = 'labo:export-file'
+const windowStateChannel = 'labo:window-state'
 
 contextBridge.exposeInMainWorld('labo', {
   platform: process.platform,
@@ -20,4 +21,10 @@ contextBridge.exposeInMainWorld('labo', {
   deleteOpenAIKey: () => ipcRenderer.invoke(deleteOpenAIKeyChannel),
   testOpenAIKey: () => ipcRenderer.invoke(testOpenAIKeyChannel),
   exportFile: (payload: { filename: string; content: string; kind: 'svg' | 'python' }) => ipcRenderer.invoke(exportFileChannel, payload),
+  getWindowState: () => ipcRenderer.invoke(windowStateChannel),
+  onWindowStateChange: (callback: (state: { fullScreen: boolean }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: { fullScreen: boolean }) => callback(state)
+    ipcRenderer.on(windowStateChannel, listener)
+    return () => ipcRenderer.removeListener(windowStateChannel, listener)
+  },
 })

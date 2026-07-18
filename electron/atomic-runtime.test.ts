@@ -59,6 +59,23 @@ describe('Electron atomic runtime bridge', () => {
     })
   })
 
+  it('runs agent-added dependencies in graph order rather than creation order', async () => {
+    const lateIds = new Set(['head-layout', 'sdpa'])
+    const graph = {
+      ...gptLikeStarterPreset,
+      nodes: [
+        ...gptLikeStarterPreset.nodes.filter((node) => !lateIds.has(node.id)),
+        ...gptLikeStarterPreset.nodes.filter((node) => lateIds.has(node.id)),
+      ],
+    }
+    const trace = await runAtomicRuntime({ kind: 'model', graph, tokenIds: [1, 2, 3] })
+
+    expect(trace.status).toBe('completed')
+    expect(trace.results.find((result) => result.atomId === 'head-layout')).toMatchObject({ status: 'passed' })
+    expect(trace.results.find((result) => result.atomId === 'sdpa')).toMatchObject({ status: 'passed' })
+    expect(trace.results.find((result) => result.atomId === 'merge-heads')).toMatchObject({ status: 'passed' })
+  })
+
   it.each([
     ['vision', visionTransformerPreset],
     ['multimodal image editing', multimodalImageEditorPreset],

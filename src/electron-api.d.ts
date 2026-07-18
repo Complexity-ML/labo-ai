@@ -33,6 +33,8 @@ interface Window {
     deleteOpenAIKey?(): Promise<OpenAISettingsStatus>
     testOpenAIKey?(): Promise<{ ok: true }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
+    getWindowState?(): Promise<{ fullScreen: boolean }>
+    onWindowStateChange?(callback: (state: { fullScreen: boolean }) => void): () => void
   }
 }
 

@@ -163,6 +163,27 @@ describe('registry-driven PyTorch compiler', () => {
     expect(code).toContain('return activation_output')
   })
 
+  it('rejects rank-3 QKV wired directly into rank-4 attention', () => {
+    const invalidAttention: ArchitectureGraph = {
+      ...normReluGraph,
+      id: 'invalid-attention-ranks',
+      nodes: [
+        normReluGraph.nodes[0],
+        { id: 'qkv', kind: 'semantic', atomId: 'qkv-projection', label: 'QKV', role: 'query', position: { x: 0, y: 100 } },
+        { id: 'attention', kind: 'semantic', atomId: 'causal-sdpa', label: 'Attention', role: 'attention', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'hidden-qkv', source: 'hidden', sourcePort: 'output', target: 'qkv', targetPort: 'hidden' },
+        { id: 'q', source: 'qkv', sourcePort: 'q', target: 'attention', targetPort: 'q' },
+        { id: 'k', source: 'qkv', sourcePort: 'k', target: 'attention', targetPort: 'k' },
+        { id: 'v', source: 'qkv', sourcePort: 'v', target: 'attention', targetPort: 'v' },
+      ],
+    }
+
+    expect(() => compileRegistryGraph(invalidAttention)).toThrow('Rank-3 qkv.q cannot plug into rank-4 attention.q')
+    expect(validateGraph(invalidAttention)).toMatchObject({ valid: false, errors: [expect.stringContaining('Rank-3')] })
+  })
+
   it('is the canonical compile path for semantic graphs', () => {
     expect(compileToPyTorch(normReluGraph)).toBe(compileRegistryGraph(normReluGraph))
   })
