@@ -1,13 +1,31 @@
 import { AlertTriangle, Blocks, Cable, Check, Eye, EyeOff, KeyRound, Send, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { createAgentGraphContext, previewAgentGraphPlan, type AgentGraphPlan } from '../core/agentic-graph'
-import type { ArchitectureGraph } from '../core/ir'
+import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, type AgentGraphMode, type AgentGraphPlan } from '../core/agentic-graph'
+import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
+import { modelAtomRegistry } from '../core/model-atoms'
+import { validCustomPyTorchModule } from '../core/pytorch-compiler'
 
 interface AskLaboPanelProps {
   graph: ArchitectureGraph
   open: boolean
   onApply(graph: ArchitectureGraph): void
   onClose(): void
+}
+
+const AGENT_AUTO_APPLY_STORAGE_KEY = 'labo.ask.auto-apply.v1'
+
+function loadAutoApply(): boolean {
+  try {
+    return window.localStorage.getItem(AGENT_AUTO_APPLY_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+interface AgentCardOverride {
+  label: string
+  attributes?: Record<string, number | string | boolean>
+  code?: string
 }
 
 export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProps) {
@@ -21,7 +39,26 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
   const [credentialBusy, setCredentialBusy] = useState(false)
   const [credentialMessage, setCredentialMessage] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const preview = useMemo(() => plan ? previewAgentGraphPlan(graph, plan) : undefined, [graph, plan])
+  const [autoApply, setAutoApply] = useState(loadAutoApply)
+  const [graphMode, setGraphMode] = useState<AgentGraphMode>('extend')
+  const [cardOverrides, setCardOverrides] = useState<Record<string, AgentCardOverride>>({})
+  const [editingCard, setEditingCard] = useState<ArchitectureNode>()
+  const [editorDraft, setEditorDraft] = useState<AgentCardOverride>()
+  const [editorError, setEditorError] = useState('')
+  const preview = useMemo(() => {
+    if (!plan) return undefined
+    const base = previewAgentGraphPlan(graph, plan, graphMode)
+    return {
+      ...base,
+      graph: {
+        ...base.graph,
+        nodes: base.graph.nodes.map((node) => {
+          const override = cardOverrides[node.id]
+          return override ? { ...node, label: override.label, attributes: override.attributes, code: override.code } : node
+        }),
+      },
+    }
+  }, [cardOverrides, graph, graphMode, plan])
 
   useEffect(() => {
     if (!open) return
@@ -34,6 +71,10 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
       .then(setSettings)
       .catch((reason) => setCredentialMessage(reason instanceof Error ? reason.message : String(reason)))
   }, [open])
+
+  useEffect(() => {
+    window.localStorage.setItem(AGENT_AUTO_APPLY_STORAGE_KEY, String(autoApply))
+  }, [autoApply])
 
   if (!open) return null
 
@@ -48,9 +89,17 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
     setLoading(true)
     setError('')
     setPlan(undefined)
+    setCardOverrides({})
     try {
-      const response = await window.labo.askLabo({ request: prompt, context: createAgentGraphContext(graph) })
-      setPlan(response)
+      const rawResponse = await window.labo.askLabo({ request: prompt, context: createAgentGraphContext(graph, graphMode) })
+      const response = repairAgentGraphPlan(graph, rawResponse)
+      const responsePreview = previewAgentGraphPlan(graph, response, graphMode)
+      const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0
+      const requiresReview = responsePreview.rejectedBlocks.length > 0 || responsePreview.rejected.length > 0 || response.missingBlocks.length > 0 || response.warnings.length > 0
+      if (autoApply && hasAcceptedChanges && !requiresReview) {
+        onApply(responsePreview.graph)
+        onClose()
+      } else setPlan(response)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
@@ -59,9 +108,34 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
   }
 
   const apply = () => {
-    if (!preview || (preview.acceptedBlocks.length === 0 && preview.accepted.length === 0)) return
+    if (!preview || (preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0)) return
     onApply(preview.graph)
     onClose()
+  }
+
+  const openCardEditor = (nodeId: string) => {
+    const node = preview?.graph.nodes.find((candidate) => candidate.id === nodeId)
+    if (!node) return
+    setEditingCard(node)
+    setEditorDraft({ label: node.label, attributes: node.attributes ? { ...node.attributes } : undefined, code: node.code })
+    setEditorError('')
+  }
+
+  const saveCardEditor = () => {
+    if (!editingCard || !editorDraft) return
+    const label = editorDraft.label.trim()
+    if (!label) {
+      setEditorError('Give the card a name.')
+      return
+    }
+    if (editingCard.kind === 'custom-pytorch' && !validCustomPyTorchModule(editorDraft.code ?? '')) {
+      setEditorError('Use one safe nn.Module constructor with literal arguments only.')
+      return
+    }
+    setCardOverrides((current) => ({ ...current, [editingCard.id]: { ...editorDraft, label, code: editorDraft.code?.trim() } }))
+    setEditingCard(undefined)
+    setEditorDraft(undefined)
+    setEditorError('')
   }
 
   const saveApiKey = async (event: FormEvent) => {
@@ -129,6 +203,22 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
       <small>Nothing is added or wired until you approve the preview. Existing blocks are never moved or deleted.</small>
     </div>
 
+    <section className="ask-labo-mode" aria-label="Agent apply mode">
+      <div>
+        <button aria-pressed={!autoApply} onClick={() => setAutoApply(false)} type="button">Review</button>
+        <button aria-pressed={autoApply} onClick={() => setAutoApply(true)} type="button">Auto apply</button>
+      </div>
+      <small>{autoApply ? 'Clean plans are applied immediately. Rejected or missing capabilities still require review.' : 'Preview every block, generated card and elastic before applying.'}</small>
+    </section>
+
+    <section className="ask-labo-mode ask-labo-scope" aria-label="Agent graph scope">
+      <div>
+        <button aria-pressed={graphMode === 'extend'} disabled={loading} onClick={() => { setGraphMode('extend'); setPlan(undefined) }} type="button">Extend current</button>
+        <button aria-pressed={graphMode === 'parallel'} disabled={loading} onClick={() => { setGraphMode('parallel'); setPlan(undefined) }} type="button">New parallel</button>
+      </div>
+      <small>{graphMode === 'parallel' ? 'Build a separate architecture beside the current graph. Existing cards and elastics are read-only.' : 'The agent may connect new cards to free ports in the current architecture.'}</small>
+    </section>
+
     <section className="ask-labo-key-settings">
       <div className="ask-labo-key-heading"><span><KeyRound size={13} />OpenAI API key</span>{settings?.configured && <b><span className="status-dot" />Connected</b>}</div>
       {settings?.configured ? <>
@@ -177,10 +267,26 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
       {preview.acceptedBlocks.length > 0 && <section>
         <h3>{preview.acceptedBlocks.length} atomic block{preview.acceptedBlocks.length === 1 ? '' : 's'} ready</h3>
         <div className="ask-labo-added-blocks">
-          {preview.acceptedBlocks.map((block) => <div key={block.nodeId}>
+          {preview.acceptedBlocks.map((block) => {
+            const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)
+            return <div key={block.nodeId}>
             <Blocks size={13} />
-            <span><strong>{block.nodeId}</strong><code>{block.atomId}</code><small>{block.reason}</small></span>
-          </div>)}
+            <span><strong>{node?.label ?? block.nodeId}</strong><code>{block.atomId}</code><small>{block.reason}</small></span>
+            <button aria-label={`Edit ${node?.label ?? block.nodeId}`} onClick={() => openCardEditor(block.nodeId)} type="button">Edit</button>
+          </div>})}
+        </div>
+      </section>}
+
+      {preview.acceptedCreatedBlocks.length > 0 && <section>
+        <h3>{preview.acceptedCreatedBlocks.length} generated card{preview.acceptedCreatedBlocks.length === 1 ? '' : 's'} ready</h3>
+        <div className="ask-labo-created-blocks">
+          {preview.acceptedCreatedBlocks.map((block) => {
+            const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)
+            return <div key={block.nodeId}>
+            <Blocks size={13} />
+            <span><strong>{node?.label ?? block.label}</strong><code>{node?.code ?? block.pytorchModule}</code><small>{block.reason}</small></span>
+            <button aria-label={`Edit ${node?.label ?? block.label}`} onClick={() => openCardEditor(block.nodeId)} type="button">Edit</button>
+          </div>})}
         </div>
       </section>}
 
@@ -210,9 +316,29 @@ export function AskLaboPanel({ graph, open, onApply, onClose }: AskLaboPanelProp
       </section>}
 
       <div className="ask-labo-actions">
-        <button className="ask-labo-cancel" onClick={() => setPlan(undefined)} type="button">Discard</button>
-        <button className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.accepted.length === 0} onClick={apply} type="button"><Check size={13} />Apply graph plan</button>
+        <button className="ask-labo-cancel" onClick={() => { setPlan(undefined); setCardOverrides({}) }} type="button">Discard</button>
+        <button className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0} onClick={apply} type="button"><Check size={13} />Apply graph plan</button>
       </div>
+    </div>}
+
+    {editingCard && editorDraft && <div className="ask-labo-card-modal-backdrop">
+      <section aria-label="Edit agent card" aria-modal="true" className="ask-labo-card-modal" role="dialog">
+        <header><strong>Edit card</strong><button aria-label="Close card editor" onClick={() => setEditingCard(undefined)} type="button"><X size={13} /></button></header>
+        <label><span>Name</span><input aria-label="Agent card name" onChange={(event) => setEditorDraft((current) => current ? { ...current, label: event.target.value } : current)} value={editorDraft.label} /></label>
+        <label><span>Block ID</span><input aria-label="Agent card ID" disabled value={editingCard.id} /></label>
+        {editingCard.kind === 'custom-pytorch' ? <label><span>PyTorch module</span><textarea aria-label="Agent card PyTorch module" onChange={(event) => setEditorDraft((current) => current ? { ...current, code: event.target.value } : current)} rows={4} spellCheck={false} value={editorDraft.code ?? ''} /></label> : <div className="ask-labo-card-settings">
+          {modelAtomRegistry[editingCard.atomId ?? '']?.settings.map((setting) => {
+            const value = editorDraft.attributes?.[setting.id] ?? setting.default
+            return <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean'
+              ? <input aria-label={`Agent card setting ${setting.id}`} checked={Boolean(value)} onChange={(event) => setEditorDraft((current) => current ? { ...current, attributes: { ...current.attributes, [setting.id]: event.target.checked } } : current)} type="checkbox" />
+              : setting.type === 'select'
+                ? <select aria-label={`Agent card setting ${setting.id}`} onChange={(event) => setEditorDraft((current) => current ? { ...current, attributes: { ...current.attributes, [setting.id]: event.target.value } } : current)} value={String(value)}>{setting.options?.map((option) => <option key={option}>{option}</option>)}</select>
+                : <input aria-label={`Agent card setting ${setting.id}`} onChange={(event) => setEditorDraft((current) => current ? { ...current, attributes: { ...current.attributes, [setting.id]: setting.type === 'number' ? Number(event.target.value) : event.target.value } } : current)} type={setting.type === 'number' ? 'number' : 'text'} value={String(value)} />}</label>
+          })}
+        </div>}
+        {editorError && <p role="alert">{editorError}</p>}
+        <footer><button onClick={() => setEditingCard(undefined)} type="button">Cancel</button><button onClick={saveCardEditor} type="button">Save card</button></footer>
+      </section>
     </div>}
   </aside>
 }

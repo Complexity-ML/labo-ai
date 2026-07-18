@@ -25,6 +25,15 @@ export function panViewport(viewport: GraphViewport, deltaX: number, deltaY: num
   return { ...viewport, x: viewport.x + deltaX, y: viewport.y + deltaY }
 }
 
+export function graphGridStyle(viewport: GraphViewport, spacing = 24): { backgroundPosition: string; backgroundSize: string } {
+  const scaledSpacing = spacing * viewport.zoom
+  const wrap = (value: number) => ((value % scaledSpacing) + scaledSpacing) % scaledSpacing
+  return {
+    backgroundPosition: `${wrap(viewport.x)}px ${wrap(viewport.y)}px`,
+    backgroundSize: `${scaledSpacing}px ${scaledSpacing}px`,
+  }
+}
+
 export function zoomViewportAt(viewport: GraphViewport, requestedZoom: number, pointer: Point2D): GraphViewport {
   const zoom = clampZoom(requestedZoom)
   const world = screenToWorld(pointer, viewport)

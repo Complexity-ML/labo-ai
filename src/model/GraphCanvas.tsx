@@ -7,6 +7,7 @@ import { useElasticCables, type CablePath, type PortDirection } from './useElast
 import { useGraphViewport } from './useGraphViewport'
 import { screenToWorld } from './viewport'
 import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH, resolveCardDrop } from './card-layout'
+import { orderedNodeInputPorts } from './port-layout'
 
 function describeNode(node: ArchitectureNode): string {
   if (node.attributes?.inFeatures && node.attributes?.outFeatures) return `${node.attributes.inFeatures} → ${node.attributes.outFeatures}`
@@ -30,7 +31,7 @@ function Port({ direction, id, portId, nodeId, role, label, className = '', styl
   return <button aria-label={`${nodeId} ${direction} ${label}`} className={`block-port port-${direction === 'input' ? 'top' : 'bottom'} port-${role} ${className}`} data-node-id={nodeId} data-port-direction={direction} data-port-id={id} data-port-key={portId ?? role} data-port-role={role} onPointerDown={(event) => onPointerDown(event, nodeId, portId ?? role, role, direction)} style={style} type="button">{label}</button>
 }
 
-function NodePorts({ node, onPointerDown }: { node: ArchitectureNode; onPointerDown: PortHandler }) {
+function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; node: ArchitectureNode; onPointerDown: PortHandler }) {
   if (node.kind === 'input') {
     const role = node.role === 'token-ids' || node.id.toLowerCase().includes('token') ? 'token-ids' : node.role
     const portId = role === 'token-ids' ? 'tokenIds' : role
@@ -42,8 +43,16 @@ function NodePorts({ node, onPointerDown }: { node: ArchitectureNode; onPointerD
     if (!definition) return null
     const label = (tensor: TensorRole) => ({ 'token-ids': 'IDs', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[tensor])
     return <>
-      {definition.inputs.map((port, index) => <Port direction="input" id={`${node.id}-${port.id}-input`} key={`in-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (definition.inputs.length + 1)) * 100}%` }} />)}
+      {orderedNodeInputPorts(graph, node).map((port, index) => <Port direction="input" id={`${node.id}-${port.id}-input`} key={`in-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (definition.inputs.length + 1)) * 100}%` }} />)}
       {definition.outputs.map((port, index) => <Port direction="output" id={`${node.id}-${port.id}-output`} key={`out-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (definition.outputs.length + 1)) * 100}%` }} />)}
+    </>
+  }
+  if (node.kind === 'custom-pytorch') {
+    const inputRole = (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden'
+    const label = (role: TensorRole) => ({ 'token-ids': 'IDs', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[role])
+    return <>
+      <Port direction="input" id={`${node.id}-input-input`} label={label(inputRole)} nodeId={node.id} onPointerDown={onPointerDown} portId="input" role={inputRole} />
+      <Port direction="output" id={`${node.id}-output-output`} label={label(node.role)} nodeId={node.id} onPointerDown={onPointerDown} portId="output" role={node.role} />
     </>
   }
   if (node.kind === 'sdpa') return <>
@@ -59,16 +68,16 @@ function NodePorts({ node, onPointerDown }: { node: ArchitectureNode; onPointerD
   </>
 }
 
-function ArchitectureNodeCard({ node, selected, status, grouped = false, dragging = false, onSelect, onPortPointerDown, onDragPointerDown }: { node: ArchitectureNode; selected: boolean; status: string; grouped?: boolean; dragging?: boolean; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
+function ArchitectureNodeCard({ editMode = false, graph, node, selected, status, grouped = false, dragging = false, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; status: string; grouped?: boolean; dragging?: boolean; onEdit?(): void; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
   return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
-    <NodePorts node={node} onPointerDown={onPortPointerDown} />
-    <button aria-label={`Select ${node.label}`} className="node-select" onClick={onSelect} onPointerDown={(event) => onDragPointerDown?.(event, node)}>
+    <NodePorts graph={graph} node={node} onPointerDown={onPortPointerDown} />
+    <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={onEdit} onPointerDown={(event) => onDragPointerDown?.(event, node)}>
       <span className="node-type">{node.kind}</span><strong>{node.label}</strong><small>{describeNode(node)}</small>
     </button>
   </div>
 }
 
-export function GraphCanvas({ graph, setGraph, selectedNodeId, setSelectedNodeId, playerSnapshot, onDropAtom, onDropCustom, onDropInput }: { graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void }) {
+export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onEditNode }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onEditNode?(nodeId: string): void }) {
   const qkvGroup = graph.groups?.find((group) => group.kind === 'qkv-projection')
   const qkvNodeIds = new Set(qkvGroup?.nodeIds ?? [])
   const canvasRef = useRef<HTMLDivElement | null>(null)
@@ -238,8 +247,9 @@ export function GraphCanvas({ graph, setGraph, selectedNodeId, setSelectedNodeId
       ref={canvasRef}
       tabIndex={0}
     >
+      <div className="canvas-grid" style={camera.gridStyle} />
       <div className="graph-world" data-testid="graph-world" style={camera.worldStyle}>
-      <div className="canvas-grid" /><CableLayer draftPath={cables.draftPath} paths={cables.paths} />
+      <CableLayer draftPath={cables.draftPath} paths={cables.paths} />
       {qkvGroup && !qkvGroup.expanded && <div className={`qkv-composite ${selectedNodeId === qkvGroup.id ? 'selected' : ''} ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}>
         <Port direction="input" id="qkv-hidden-input" label="H" nodeId="qkv-projections" onPointerDown={cables.beginCable} role="hidden" />
         <Port className="port-third-1" direction="output" id="qkv-query-output" label="Q" nodeId="q-proj" onPointerDown={cables.beginCable} role="query" />
@@ -249,12 +259,12 @@ export function GraphCanvas({ graph, setGraph, selectedNodeId, setSelectedNodeId
 
         <button aria-label="Expand QKV projections" className="group-transform-button" onClick={() => setQkvExpanded(true)}>Décomposer en Q / K / V</button>
       </div>}
-      {qkvGroup?.expanded && <section className={`qkv-expanded-group ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} aria-label="QKV projection group" data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}><div className="qkv-group-header" onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><div><span className="node-type">COMPOSITE · EXPANDED</span><strong>QKV projections</strong></div><button aria-label="Collapse QKV projections" onClick={() => setQkvExpanded(false)}>Regrouper en QKV</button></div><div className="qkv-child-grid">{graph.nodes.filter((node) => qkvNodeIds.has(node.id)).map((node) => <ArchitectureNodeCard grouped key={node.id} node={node} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />)}</div></section>}
+      {qkvGroup?.expanded && <section className={`qkv-expanded-group ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} aria-label="QKV projection group" data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}><div className="qkv-group-header" onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><div><span className="node-type">COMPOSITE · EXPANDED</span><strong>QKV projections</strong></div><button aria-label="Collapse QKV projections" onClick={() => setQkvExpanded(false)}>Regrouper en QKV</button></div><div className="qkv-child-grid">{graph.nodes.filter((node) => qkvNodeIds.has(node.id)).map((node) => <ArchitectureNodeCard editMode={editMode} graph={graph} grouped key={node.id} node={node} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />)}</div></section>}
       {graph.nodes.filter((node) => !qkvNodeIds.has(node.id)).map((node) => {
         const shift = qkvGroup ? (qkvGroup.expanded ? 140 : 55) : 0
         const previewPosition = dragPreview?.nodeId === node.id ? dragPreview.position : node.position
         const displayed = previewPosition.y >= 300 ? { ...node, position: { ...previewPosition, y: previewPosition.y + shift } } : { ...node, position: previewPosition }
-        return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} key={node.id} node={displayed} onDragPointerDown={beginNodeDrag} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />
+        return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} editMode={editMode} graph={graph} key={node.id} node={displayed} onDragPointerDown={beginNodeDrag} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />
       })}
       </div>
       <div className="graph-viewport-controls" aria-label="Graph viewport controls">

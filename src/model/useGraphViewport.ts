@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject, type WheelEvent } from 'react'
-import { clampZoom, panViewport, screenToWorld, zoomViewportAt, type GraphViewport } from './viewport'
+import { clampZoom, graphGridStyle, panViewport, screenToWorld, zoomViewportAt, type GraphViewport } from './viewport'
 
 const DEFAULT_VIEWPORT: GraphViewport = { x: 0, y: 0, zoom: 1 }
 
@@ -89,6 +89,7 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
   return {
     viewport,
     isPanning,
+    gridStyle: graphGridStyle(viewport),
     worldStyle: { transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})` },
     onWheel,
     onPointerDown,

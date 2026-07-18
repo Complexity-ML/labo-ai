@@ -444,6 +444,18 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
         if atom == "lm-head":
             require(inputs, "hidden")
             return {"logits": nn.Linear(hidden_size, int(settings["vocabSize"]), bias=bool(settings.get("bias", False)))(inputs["hidden"])}
+        if atom in {"greedy-token-decoder", "top-k-token-sampler", "multinomial-token-sampler"}:
+            require(inputs, "logits")
+            logits = inputs["logits"]
+            if atom == "greedy-token-decoder":
+                token_ids = torch.argmax(logits, dim=-1)
+            elif atom == "top-k-token-sampler":
+                top_k = max(1, min(int(settings.get("topK", 50)), logits.shape[-1]))
+                token_ids = torch.topk(logits / max(float(settings.get("temperature", 1)), 1e-6), k=top_k, dim=-1).indices[..., 0]
+            else:
+                probabilities = F.softmax(logits / max(float(settings.get("temperature", 1)), 1e-6), dim=-1)
+                token_ids = torch.multinomial(probabilities.reshape(-1, probabilities.shape[-1]), num_samples=1).reshape(probabilities.shape[:-1])
+            return {"tokenIds": token_ids}
         if atom == "log-softmax":
             require(inputs, "logits")
             return {"logits": F.log_softmax(inputs["logits"], dim=int(settings.get("dimension", -1)))}
@@ -549,6 +561,15 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
                     "predictedTokenId": int(top_token_ids[0]),
                     "topTokenIds": [int(token_id) for token_id in top_token_ids],
                     "topProbabilities": [round(float(probability), 6) for probability in top_probabilities],
+                }
+            if node.get("atomId") in {"greedy-token-decoder", "top-k-token-sampler", "multinomial-token-sampler"} and "tokenIds" in produced:
+                generated = produced["tokenIds"]
+                model_output = {
+                    "kind": "token-ids",
+                    "tensorShape": list(generated.shape),
+                    "predictedTokenId": int(generated[0, -1]),
+                    "topTokenIds": [int(generated[0, -1])],
+                    "topProbabilities": [1.0],
                 }
             first_value = next(iter(produced.values()))
             last_tensor = first_value

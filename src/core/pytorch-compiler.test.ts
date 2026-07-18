@@ -223,4 +223,29 @@ describe('registry-driven PyTorch compiler', () => {
 
     expect(nodeOrder(compileToPyTorch(reconnected))).toEqual(nodeOrder(compileToPyTorch(complexityDeepPreset)))
   })
+
+  it('compiles independent architectures with unique inputs and branch-local tied embeddings', () => {
+    const graph: ArchitectureGraph = {
+      ...normReluGraph,
+      nodes: [
+        { id: 'tokens-a', kind: 'input', label: 'Tokens A', role: 'token-ids', position: { x: 0, y: 0 } },
+        { id: 'embedding-a', kind: 'semantic', atomId: 'token-embedding', label: 'Embedding A', role: 'hidden', position: { x: 0, y: 100 } },
+        { id: 'head-a', kind: 'semantic', atomId: 'lm-head', label: 'Head A', role: 'output', position: { x: 0, y: 200 }, attributes: { tieEmbeddingWeights: true } },
+        { id: 'tokens-b', kind: 'input', label: 'Tokens B', role: 'token-ids', position: { x: 300, y: 0 } },
+        { id: 'embedding-b', kind: 'semantic', atomId: 'token-embedding', label: 'Embedding B', role: 'hidden', position: { x: 300, y: 100 } },
+        { id: 'head-b', kind: 'semantic', atomId: 'lm-head', label: 'Head B', role: 'output', position: { x: 300, y: 200 }, attributes: { tieEmbeddingWeights: true } },
+      ],
+      edges: [
+        { id: 'tokens-a-embedding', source: 'tokens-a', sourcePort: 'tokenIds', target: 'embedding-a', targetPort: 'tokenIds' },
+        { id: 'embedding-a-head', source: 'embedding-a', sourcePort: 'output', target: 'head-a', targetPort: 'hidden' },
+        { id: 'tokens-b-embedding', source: 'tokens-b', sourcePort: 'tokenIds', target: 'embedding-b', targetPort: 'tokenIds' },
+        { id: 'embedding-b-head', source: 'embedding-b', sourcePort: 'output', target: 'head-b', targetPort: 'hidden' },
+      ],
+    }
+    const code = compileRegistryGraph(graph)
+
+    expect(code).toContain('def forward(self, tokens_a: torch.Tensor, tokens_b: torch.Tensor):')
+    expect(code).toContain('self.head_a.weight = self.embedding_a.weight')
+    expect(code).toContain('self.head_b.weight = self.embedding_b.weight')
+  })
 })

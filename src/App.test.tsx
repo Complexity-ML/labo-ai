@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -162,27 +162,70 @@ describe('LABO AI workspace', () => {
     expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('return token_ids')
   })
 
+  it('searches native cards with natural language and adds the selected result', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search model cards' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Natural language card search' }), { target: { value: 'convertir logits en token généré' } })
+
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Search cards' })).getByRole('button', { name: /Greedy token decoder/ }))
+    expect(screen.queryByRole('dialog', { name: 'Search cards' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Greedy token decoder' })).toBeInTheDocument()
+  })
+
+  it('keeps card editing distinct from Blockly adding and uses the central modal', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+
+    expect(screen.getByRole('button', { name: 'Add Token IDs' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Select Tied token embedding' }))
+    expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
+    expect(screen.getByText(/No new Blockly card is added in this mode/)).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Tied token embedding vocabSize' })).not.toBeInTheDocument()
+  })
+
   it('creates a reusable custom PyTorch card and keeps its code editable', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    expect(screen.queryByRole('textbox', { name: 'Custom card name' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create card' }))
+    expect(screen.getByRole('dialog', { name: 'Create model card' })).toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My RMSNorm' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create and add card' }))
 
     expect(screen.getByRole('button', { name: 'Add My RMSNorm' })).toHaveAttribute('draggable', 'true')
     expect(screen.getByRole('button', { name: 'Select My RMSNorm' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Selected custom card PyTorch code' })).toHaveValue('nn.RMSNorm(768)')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select My RMSNorm' }))
+    expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Model card PyTorch module' })).toHaveValue('nn.RMSNorm(768)')
     expect(screen.getByText('Valid safe nn.Module constructor')).toBeInTheDocument()
     const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
     expect(code).toContain('kind=custom-pytorch')
     expect(code).toContain('self.custom_my_rmsnorm_1 = nn.RMSNorm(768)')
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Selected custom card PyTorch code' }), { target: { value: 'torch.load("unsafe.pt")' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Model card PyTorch module' }), { target: { value: 'torch.load("unsafe.pt")' } })
     expect(screen.getByText('Invalid or unsupported nn.Module constructor')).toBeInTheDocument()
-    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('class GeneratedInvalidGraph')
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('safe nn.Module')
+    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).not.toContain('class GeneratedInvalidGraph')
     expect(JSON.parse(window.localStorage.getItem('labo.custom-pytorch-cards.v1') ?? '[]')).toEqual([
       { id: 'my-rmsnorm', label: 'My RMSNorm', code: 'nn.RMSNorm(768)' },
     ])
+  })
+
+  it('auto-composes category-specific Blockly card construction blocks', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Create card' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'activation' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Use a SiLU activation for the expert branch' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-compose blocks' }))
+
+    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.SiLU()')
+    expect((screen.getByRole('textbox', { name: 'Custom card name' }) as HTMLInputElement).value).toMatch(/^Use a SiLU activation/)
+    expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU')
+    expect(screen.queryByText('Create PyTorch card')).not.toBeInTheDocument()
   })
 
   it('exposes the supervised objective that consumes the Training Labels Y plug', () => {
@@ -205,7 +248,9 @@ describe('LABO AI workspace', () => {
     fireEvent.click(card)
 
     expect(screen.getByRole('button', { name: 'Select Tied language-model head' })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: 'Tied language-model head tieEmbeddingWeights' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Tied language-model head' }))
+    expect(screen.getByRole('checkbox', { name: 'Model card setting tieEmbeddingWeights' })).toBeChecked()
     expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('# labo:node=lm-head-1 atom=lm-head')
     expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
   })
@@ -223,6 +268,36 @@ describe('LABO AI workspace', () => {
     expect(screen.getByText('1 atoms')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select Token IDs' })).toBeInTheDocument()
     expect(document.querySelector('[data-port-id="token-ids-tokenIds-output"]')).toBeInTheDocument()
+  })
+
+  it('restores the active graph after the editor is closed and reopened', () => {
+    const first = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Token IDs' }))
+    expect(screen.getByText('1 atoms')).toBeInTheDocument()
+
+    first.unmount()
+    render(<App />)
+
+    expect(screen.getByText('1 atoms')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Token IDs' })).toBeInTheDocument()
+  })
+
+  it('creates a named user preset and restores its evolving draft', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Token IDs' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'New model preset name' }), { target: { value: 'My routed model' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save current graph as preset' }))
+    fireEvent.click(screen.getByText(/Activations/))
+    fireEvent.click(screen.getByRole('button', { name: 'Add ReLU' }))
+    expect(screen.getByText('2 atoms')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'GPT-like' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load preset My routed model' }))
+
+    expect(screen.getByText('2 atoms')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
   })
 
   it('tokenizes a real prompt before running the GPT-like graph', async () => {
@@ -314,10 +389,14 @@ describe('LABO AI workspace', () => {
     const selectedCard = screen.getByRole('button', { name: 'Select Attention RMSNorm' }).closest('.architecture-node')
     expect(selectedCard).not.toHaveClass('editing')
     expect(selectedCard?.querySelector('.block-inline-editor')).not.toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: 'Attention RMSNorm epsilon' }).closest('.inspector')).toBeInTheDocument()
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Attention RMSNorm epsilon' }), { target: { value: '0.00001' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+    expect(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' }), { target: { value: '0.00001' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('self.attention_norm = nn.RMSNorm(1024, eps=1e-05)')
 
+    fireEvent.click(screen.getByRole('button', { name: 'Add blocks' }))
     fireEvent.click(screen.getByText(/Activations/))
     fireEvent.click(screen.getByRole('button', { name: 'Add ReLU' }))
     expect(screen.getByText('21 atoms')).toBeInTheDocument()
@@ -406,6 +485,7 @@ describe('LABO AI workspace', () => {
       askLabo: async () => ({
         summary: 'Reconnect the attention path.',
         addedBlocks: [],
+        createdBlocks: [],
         connections: [{
           sourceId: 'attention-norm', sourcePortId: 'output', targetId: 'qkv', targetPortId: 'hidden', reason: 'QKV needs normalized hidden states.',
         }],
@@ -443,6 +523,7 @@ describe('LABO AI workspace', () => {
       askLabo: async () => ({
         summary: 'Add a ReLU branch after the final normalization.',
         addedBlocks: [{ atomId: 'relu', nodeId: 'agent-relu', reason: 'The activation is not on the canvas.' }],
+        createdBlocks: [],
         connections: [{
           sourceId: 'final-norm', sourcePortId: 'output', targetId: 'agent-relu', targetPortId: 'hidden', reason: 'Feed normalized states into the new activation.',
         }],
@@ -457,13 +538,152 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
 
     expect(await screen.findByText('1 atomic block ready')).toBeInTheDocument()
-    expect(screen.getByText('agent-relu')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit ReLU' })).toBeInTheDocument()
     expect(screen.getByText('1 elastic ready')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Select ReLU' })).not.toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Edit ReLU' }))
+    expect(screen.getByRole('dialog', { name: 'Edit agent card' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Agent card name' }), { target: { value: 'Reviewed ReLU' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save card' }))
+
     fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
-    expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Reviewed ReLU' })).toBeInTheDocument()
     expect(screen.getByText(/21 nodes · 32 links/)).toBeInTheDocument()
+    delete window.labo
+  })
+
+  it('adds a complete parallel architecture without moving or wiring into existing cards', async () => {
+    const askLabo = vi.fn(async () => ({
+      summary: 'Add an independent branch.',
+      addedBlocks: [
+        { atomId: 'hidden-state-input', nodeId: 'parallel-input', reason: 'Independent input.' },
+        { atomId: 'identity', nodeId: 'parallel-output', reason: 'Independent output.' },
+      ],
+      createdBlocks: [],
+      connections: [{ sourceId: 'parallel-input', sourcePortId: 'hidden', targetId: 'parallel-output', targetPortId: 'hidden', reason: 'Internal branch connection.' }],
+      missingBlocks: [],
+      warnings: [],
+    }))
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo,
+    }
+    render(<App />)
+    const originalCard = screen.getByRole('button', { name: 'Select Token IDs' }).closest<HTMLElement>('.architecture-node')!
+    const originalPosition = { left: originalCard.style.left, top: originalCard.style.top }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New parallel' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add another independent architecture' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('2 atomic blocks ready')).toBeInTheDocument()
+    expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ operationMode: 'parallel' }) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    expect(screen.getByText(/22 nodes · 32 links/)).toBeInTheDocument()
+    expect({ left: originalCard.style.left, top: originalCard.style.top }).toEqual(originalPosition)
+    expect(Number.parseFloat(screen.getByRole('button', { name: 'Select Hidden State' }).closest<HTMLElement>('.architecture-node')!.style.left)).toBeGreaterThan(Number.parseFloat(originalPosition.left))
+    delete window.labo
+  })
+
+  it('replaces false agent missing claims with native Token IDs and decoder cards', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Build a generation branch.',
+        addedBlocks: [
+          { atomId: 'token-embedding', nodeId: 'repair-embedding', reason: 'Embed tokens.' },
+          { atomId: 'lm-head', nodeId: 'repair-head', reason: 'Produce logits.' },
+        ],
+        createdBlocks: [],
+        connections: [{ sourceId: 'repair-embedding', sourcePortId: 'output', targetId: 'repair-head', targetPortId: 'hidden', reason: 'Project states.' }],
+        missingBlocks: [
+          { atomId: null, label: 'Source de Token IDs / tokenizer', reason: 'Aucun atomic disponible.' },
+          { atomId: null, label: 'Échantillonneur ou décodeur de logits', reason: 'Convertir les logits en token généré.' },
+        ],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Build a generation branch' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('4 atomic blocks ready')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Greedy token decoder' })).toBeInTheDocument()
+    expect(screen.queryByText('Missing blocks')).not.toBeInTheDocument()
+    delete window.labo
+  })
+
+  it('previews an agent-generated safe PyTorch card before applying it', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Create a missing projection card.',
+        addedBlocks: [],
+        createdBlocks: [{ nodeId: 'agent-projection', label: 'Agent projection', pytorchModule: 'nn.Linear(1024, 1024, bias=False)', reason: 'A dedicated projection is required.' }],
+        connections: [{ sourceId: 'final-norm', sourcePortId: 'output', targetId: 'agent-projection', targetPortId: 'hidden', reason: 'Project final hidden states.' }],
+        missingBlocks: [],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Create the missing projection' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('1 generated card ready')).toBeInTheDocument()
+    expect(screen.getByText('nn.Linear(1024, 1024, bias=False)')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Select Agent projection' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Agent projection' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Agent card name' }), { target: { value: 'Edited projection' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Agent card PyTorch module' }), { target: { value: 'nn.Linear(1024, 1024, bias=True)' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    expect(screen.getByRole('button', { name: 'Select Edited projection' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Edited projection' }))
+    expect(screen.getByRole('textbox', { name: 'Model card PyTorch module' })).toHaveValue('nn.Linear(1024, 1024, bias=True)')
+    delete window.labo
+  })
+
+  it('auto-applies a clean agent plan when Auto apply mode is enabled', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Add a ReLU after final normalization.',
+        addedBlocks: [{ atomId: 'relu', nodeId: 'auto-relu', reason: 'Requested activation.' }],
+        createdBlocks: [],
+        connections: [{ sourceId: 'final-norm', sourcePortId: 'output', targetId: 'auto-relu', targetPortId: 'hidden', reason: 'Feed final states.' }],
+        missingBlocks: [],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Auto apply' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add a ReLU automatically' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Ask LABO' })).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('labo.ask.auto-apply.v1')).toBe('true')
     delete window.labo
   })
 
@@ -565,8 +785,10 @@ describe('LABO AI workspace', () => {
   it('deletes a model atom without recreating it in PyTorch', () => {
     render(<App />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
     fireEvent.click(screen.getByRole('button', { name: 'Select GQA QKV projection' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete selected model atom' }))
+    expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete card' }))
 
     const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
     expect(code).not.toContain('self.qkv_q =')
@@ -585,8 +807,10 @@ describe('LABO AI workspace', () => {
     fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace('self.attention_norm = nn.RMSNorm(1024, eps=1e-06)', 'self.attention_norm = nn.RMSNorm(1024, eps=1e-05)') } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply PyTorch to blocks' }))
     fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
 
-    expect(screen.getByRole('spinbutton', { name: 'Attention RMSNorm epsilon' })).toHaveValue(0.00001)
+    expect(screen.getByRole('spinbutton', { name: 'Model card setting epsilon' })).toHaveValue(0.00001)
   })
 
   it('opens the atomic Tokenizer Studio and compiles its IR to Python or Rust', () => {

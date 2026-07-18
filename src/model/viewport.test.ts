@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampZoom, panViewport, screenToWorld, zoomViewportAt } from './viewport'
+import { clampZoom, graphGridStyle, panViewport, screenToWorld, zoomViewportAt } from './viewport'
 
 describe('2D graph viewport geometry', () => {
   it('zooms around the pointer without moving the world point under it', () => {
@@ -22,5 +22,12 @@ describe('2D graph viewport geometry', () => {
 
   it('converts screen coordinates back into graph-world coordinates', () => {
     expect(screenToWorld({ x: 300, y: 180 }, { x: 100, y: -20, zoom: 2 })).toEqual({ x: 100, y: 100 })
+  })
+
+  it('keeps the repeating grid aligned with arbitrarily distant pan and zoom values', () => {
+    expect(graphGridStyle({ x: -10_003, y: 20_011, zoom: 1.5 })).toEqual({
+      backgroundPosition: '5px 31px',
+      backgroundSize: '36px 36px',
+    })
   })
 })

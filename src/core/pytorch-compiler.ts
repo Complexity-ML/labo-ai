@@ -45,9 +45,25 @@ function orderedNodes(graph: ArchitectureGraph): ArchitectureNode[] {
 
 function inputArgument(node: ArchitectureNode): string {
   if (node.id === 'hidden' || node.id === 'hidden-states' || node.id === 'hidden_states') return 'hidden_states'
-  if (node.id.toLowerCase().includes('token')) return 'token_ids'
-  if (node.id.toLowerCase().includes('label')) return 'labels'
+  if (['token', 'tokens', 'token-ids', 'token_ids'].includes(node.id.toLowerCase())) return 'token_ids'
+  if (['label', 'labels', 'training-labels'].includes(node.id.toLowerCase())) return 'labels'
   return identifier(node.id)
+}
+
+function upstreamEmbedding(graph: ArchitectureGraph, nodeId: string): ArchitectureNode | undefined {
+  const pending = [nodeId]
+  const visited = new Set<string>()
+  while (pending.length > 0) {
+    const current = pending.shift()!
+    if (visited.has(current)) continue
+    visited.add(current)
+    for (const edge of graph.edges.filter((candidate) => candidate.target === current)) {
+      const source = graph.nodes.find((candidate) => candidate.id === edge.source)
+      if (source?.atomId === 'token-embedding') return source
+      if (source) pending.push(source.id)
+    }
+  }
+  return undefined
 }
 
 function sourcePort(graph: ArchitectureGraph, edge: ArchitectureEdge): string {
@@ -116,7 +132,6 @@ export function validCustomPyTorchModule(code: string): boolean {
 export function compileRegistryGraph(graph: ArchitectureGraph, options: RegistryCompileOptions = {}): string {
   const nodes = orderedNodes(graph)
   const inputNodes = nodes.filter((node) => node.kind === 'input')
-  const semanticNodes = nodes.filter((node) => node.kind === 'semantic')
   const executableNodes = nodes.filter((node) => node.kind === 'semantic' || node.kind === 'custom-pytorch')
   if (executableNodes.length === 0 && inputNodes.length === 0) throw new Error('Registry compiler requires at least one input or executable atom')
 
@@ -153,6 +168,7 @@ export function compileRegistryGraph(graph: ArchitectureGraph, options: Registry
       forward.push(`        ${output} = self.${module}(${firstInput})`)
       values.set(`${node.id}:output`, output)
       values.set(`${node.id}:hidden`, output)
+      values.set(`${node.id}:${node.role}`, output)
       nodeOutputs.set(node.id, [output])
       continue
     }
@@ -170,7 +186,7 @@ export function compileRegistryGraph(graph: ArchitectureGraph, options: Registry
     declarations.push(`        # labo:node=${node.id} atom=${definition.id}`)
     for (const line of definition.lowerings.pytorch.declarations) declarations.push(`        ${render(line, context)}`)
     if (definition.id === 'lm-head' && settings.tieEmbeddingWeights === true) {
-      const embedding = semanticNodes.find((candidate) => candidate.atomId === 'token-embedding')
+      const embedding = upstreamEmbedding(graph, node.id)
       if (embedding) declarations.push(`        self.${module}.weight = self.${identifier(embedding.id)}.weight`)
       else if (options.disconnectedInputs !== 'skip') throw new Error(`LM head ${node.id} requests tied weights but no token embedding exists`)
     }

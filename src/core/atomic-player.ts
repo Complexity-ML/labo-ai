@@ -58,7 +58,7 @@ export class AtomicPlayer {
   }
 
   async play(): Promise<void> {
-    if (this.state.status === 'completed' || this.state.status === 'failed') this.restart()
+    if (this.state.status === 'completed' || this.state.status === 'failed' || this.state.status === 'stopped') this.restart()
     if (this.isTerminal()) return
     this.setState({ status: 'playing', error: undefined })
     while (this.state.status === 'playing' && this.cursor < this.stages.length) {
@@ -67,7 +67,7 @@ export class AtomicPlayer {
   }
 
   async step(): Promise<void> {
-    if (this.state.status === 'completed' || this.state.status === 'failed') this.restart()
+    if (this.state.status === 'completed' || this.state.status === 'failed' || this.state.status === 'stopped') this.restart()
     if (this.isTerminal()) return
     this.setState({ status: 'playing', error: undefined })
     await this.executeCurrent(true)

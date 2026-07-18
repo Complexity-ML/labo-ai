@@ -94,17 +94,19 @@ describe('AtomicPlayer', () => {
     expect(player.snapshot.results.map((result) => result.status)).toEqual(['passed', 'pending'])
   })
 
-  it('does not execute after stop', async () => {
+  it('restarts from the beginning when play is pressed after stop', async () => {
     const executed: string[] = []
+    let restarts = 0
     const player = new AtomicPlayer(['q'], async (atomId) => {
       executed.push(atomId)
       return { summary: 'ok' }
-    })
+    }, { onRestart: () => { restarts += 1 } })
 
     player.stop()
     await player.play()
 
-    expect(executed).toEqual([])
-    expect(player.snapshot.status).toBe('stopped')
+    expect(executed).toEqual(['q'])
+    expect(restarts).toBe(1)
+    expect(player.snapshot.status).toBe('completed')
   })
 })

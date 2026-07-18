@@ -1,8 +1,9 @@
 import { connectCable, inferredEdgeTargetPort } from './cables'
 import { executionLayers } from './execution-plan'
-import { findOpenGraphPosition } from './graph-placement'
+import { findOpenGraphPosition, layoutArchitectureGraph, layoutParallelArchitecture } from './graph-placement'
 import { addNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from './ir'
 import { modelAtomRegistry, type ModelAtomDefinition } from './model-atoms'
+import { validCustomPyTorchModule } from './pytorch-compiler'
 
 export interface AgentPortSnapshot {
   id: string
@@ -31,6 +32,13 @@ export interface AgentBlockProposal {
   reason: string
 }
 
+export interface AgentCreatedBlockProposal {
+  nodeId: string
+  label: string
+  pytorchModule: string
+  reason: string
+}
+
 export interface AgentMissingBlock {
   atomId: string | null
   label: string
@@ -40,13 +48,16 @@ export interface AgentMissingBlock {
 export interface AgentGraphPlan {
   summary: string
   addedBlocks: AgentBlockProposal[]
+  createdBlocks: AgentCreatedBlockProposal[]
   connections: AgentConnectionProposal[]
   missingBlocks: AgentMissingBlock[]
   warnings: string[]
 }
 
+export type AgentGraphMode = 'extend' | 'parallel'
+
 export interface RejectedAgentBlock {
-  block: AgentBlockProposal
+  block: AgentBlockProposal | AgentCreatedBlockProposal
   reason: string
 }
 
@@ -58,9 +69,33 @@ export interface RejectedAgentConnection {
 export interface AgentGraphPreview {
   graph: ArchitectureGraph
   acceptedBlocks: AgentBlockProposal[]
+  acceptedCreatedBlocks: AgentCreatedBlockProposal[]
   rejectedBlocks: RejectedAgentBlock[]
   accepted: AgentConnectionProposal[]
   rejected: RejectedAgentConnection[]
+}
+
+interface AgentVirtualAtomic {
+  atomId: string
+  label: string
+  inputs: AgentPortSnapshot[]
+  outputs: AgentPortSnapshot[]
+  createNode(nodeId: string, position: { x: number; y: number }): ArchitectureNode
+}
+
+const agentVirtualAtomics: Record<string, AgentVirtualAtomic> = {
+  'token-ids-input': {
+    atomId: 'token-ids-input', label: 'Token IDs input', inputs: [], outputs: [{ id: 'tokenIds', tensor: 'token-ids' }],
+    createNode: (id, position) => ({ id, kind: 'input', label: 'Token IDs', role: 'token-ids', position }),
+  },
+  'hidden-state-input': {
+    atomId: 'hidden-state-input', label: 'Hidden State input', inputs: [], outputs: [{ id: 'hidden', tensor: 'hidden' }],
+    createNode: (id, position) => ({ id, kind: 'input', label: 'Hidden State', role: 'hidden', position }),
+  },
+  'training-labels-input': {
+    atomId: 'training-labels-input', label: 'Training Labels input', inputs: [], outputs: [{ id: 'labels', tensor: 'labels' }],
+    createNode: (id, position) => ({ id, kind: 'input', label: 'Training Labels', role: 'labels', position }),
+  },
 }
 
 function uniquePorts(ports: AgentPortSnapshot[]): AgentPortSnapshot[] {
@@ -85,8 +120,14 @@ function snapshotNode(graph: ArchitectureGraph, node: ArchitectureNode): AgentNo
     id: node.id,
     ...(node.atomId ? { atomId: node.atomId } : {}),
     label: node.label,
-    inputs: definition ? definition.inputs.map(({ id, tensor }) => ({ id, tensor })) : uniquePorts(edgeInputs),
-    outputs: definition ? definition.outputs.map(({ id, tensor }) => ({ id, tensor })) : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
+    inputs: node.kind === 'input' ? [] : definition
+      ? definition.inputs.map(({ id, tensor }) => ({ id, tensor }))
+      : node.kind === 'custom-pytorch' ? [{ id: 'hidden', tensor: 'hidden' }] : uniquePorts(edgeInputs),
+    outputs: node.kind === 'input'
+      ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : 'hidden', tensor: node.role }]
+      : definition
+      ? definition.outputs.map(({ id, tensor }) => ({ id, tensor }))
+      : node.kind === 'custom-pytorch' ? [{ id: 'output', tensor: 'hidden' }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
   }
 }
 
@@ -104,8 +145,9 @@ function sourceTensor(graph: ArchitectureGraph, node: ArchitectureNode, portId?:
   return node.role === 'attention' ? 'attention' : node.role
 }
 
-export function createAgentGraphContext(graph: ArchitectureGraph) {
+export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGraphMode = 'extend') {
   return {
+    operationMode: mode,
     graph: {
       id: graph.id,
       name: graph.name,
@@ -117,23 +159,101 @@ export function createAgentGraphContext(graph: ArchitectureGraph) {
         targetPortId: edge.targetPort ?? inferredEdgeTargetPort(graph, edge),
       })),
     },
-    availableAtomics: Object.values(modelAtomRegistry).filter((definition) => !definition.composite).map((definition) => ({
-      atomId: definition.id,
-      label: definition.label,
-      inputs: definition.inputs.map(({ id, tensor }) => ({ id, tensor })),
-      outputs: definition.outputs.map(({ id, tensor }) => ({ id, tensor })),
-    })),
+    availableAtomics: [
+      ...Object.values(agentVirtualAtomics).map(({ atomId, label, inputs, outputs }) => ({ atomId, label, inputs, outputs, settings: [] })),
+      ...Object.values(modelAtomRegistry).filter((definition) => !definition.composite).map((definition) => ({
+        atomId: definition.id,
+        label: definition.label,
+        inputs: definition.inputs.map(({ id, tensor }) => ({ id, tensor })),
+        outputs: definition.outputs.map(({ id, tensor }) => ({ id, tensor })),
+        settings: definition.settings.map(({ id, type, default: defaultValue, options }) => ({
+          id,
+          type,
+          default: id in graph.config ? graph.config[id as keyof ArchitectureGraph['config']] : defaultValue,
+          ...(options ? { options } : {}),
+        })),
+      })),
+    ],
   }
 }
 
 function roleForDefinition(definition: ModelAtomDefinition): TensorRole {
   const output = definition.outputs[0]?.tensor
-  if (output === 'query' || output === 'key' || output === 'value') return output
+  if (output === 'query' || output === 'key' || output === 'value' || output === 'token-ids') return output
   if (output === 'logits' || output === 'scalar') return 'output'
   return 'hidden'
 }
 
-function agentNode(definition: ModelAtomDefinition, nodeId: string, position: { x: number; y: number }): ArchitectureNode {
+function uniqueAgentNodeId(graph: ArchitectureGraph, plan: AgentGraphPlan, base: string): string {
+  const used = new Set([...graph.nodes.map((node) => node.id), ...plan.addedBlocks.map((block) => block.nodeId), ...plan.createdBlocks.map((block) => block.nodeId)])
+  if (!used.has(base)) return base
+  let sequence = 2
+  while (used.has(`${base}-${sequence}`)) sequence += 1
+  return `${base}-${sequence}`
+}
+
+/** Deterministically fixes source/sampler omissions that the model incorrectly reports as missing. */
+export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: AgentGraphPlan): AgentGraphPlan {
+  const plan: AgentGraphPlan = {
+    ...sourcePlan,
+    addedBlocks: [...sourcePlan.addedBlocks],
+    createdBlocks: [...sourcePlan.createdBlocks],
+    connections: [...sourcePlan.connections],
+    missingBlocks: [...sourcePlan.missingBlocks],
+    warnings: [...sourcePlan.warnings],
+  }
+  const normalizeCapabilityText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const samplerPattern = /sampl|echantillonn|decod|token gener|generated token|autoregress|logits[^.]{0,80}token/
+  const missingText = () => normalizeCapabilityText(plan.missingBlocks.map((block) => `${block.atomId ?? ''} ${block.label} ${block.reason}`).join(' '))
+  const hasIncoming = (nodeId: string, portId: string) => plan.connections.some((connection) => connection.targetId === nodeId && connection.targetPortId === portId)
+    || graph.edges.some((edge) => edge.target === nodeId && edge.targetPort === portId)
+  const capacity = () => plan.addedBlocks.length + plan.createdBlocks.length < 24
+
+  for (const block of [...plan.addedBlocks]) {
+    const definition = modelAtomRegistry[block.atomId]
+    for (const input of definition?.inputs ?? []) {
+      if (!['token-ids', 'labels'].includes(input.tensor) || hasIncoming(block.nodeId, input.id)) continue
+      const virtualAtomId = input.tensor === 'token-ids' ? 'token-ids-input' : 'training-labels-input'
+      let source = plan.addedBlocks.find((candidate) => candidate.atomId === virtualAtomId)
+      if (!source && capacity()) {
+        source = {
+          atomId: virtualAtomId,
+          nodeId: uniqueAgentNodeId(graph, plan, input.tensor === 'token-ids' ? 'agent-token-ids' : 'agent-training-labels'),
+          reason: `LABO repaired the missing ${input.tensor} graph source locally.`,
+        }
+        plan.addedBlocks.push(source)
+      }
+      if (source) plan.connections.push({
+        sourceId: source.nodeId,
+        sourcePortId: input.tensor === 'token-ids' ? 'tokenIds' : 'labels',
+        targetId: block.nodeId,
+        targetPortId: input.id,
+        reason: `LABO connected the available ${input.tensor} source locally.`,
+      })
+    }
+  }
+
+  const samplerClaimedMissing = samplerPattern.test(missingText())
+  if (samplerClaimedMissing) {
+    for (const head of plan.addedBlocks.filter((block) => block.atomId === 'lm-head')) {
+      const alreadyDecoded = plan.connections.some((connection) => connection.sourceId === head.nodeId && connection.sourcePortId === 'logits')
+      if (alreadyDecoded || !capacity()) continue
+      const nodeId = uniqueAgentNodeId(graph, plan, 'agent-greedy-decoder')
+      plan.addedBlocks.push({ atomId: 'greedy-token-decoder', nodeId, reason: 'LABO resolved the requested logits-to-token capability with the native greedy decoder.' })
+      plan.connections.push({ sourceId: head.nodeId, sourcePortId: 'logits', targetId: nodeId, targetPortId: 'logits', reason: 'Decode language-model logits into generated Token IDs.' })
+    }
+  }
+
+  plan.missingBlocks = plan.missingBlocks.filter((block) => {
+    const text = normalizeCapabilityText(`${block.atomId ?? ''} ${block.label} ${block.reason}`)
+    if (/token[- ]?ids|token ids|tokenizer/.test(text) && plan.addedBlocks.some((candidate) => candidate.atomId === 'token-ids-input')) return false
+    if (samplerPattern.test(text) && plan.addedBlocks.some((candidate) => ['greedy-token-decoder', 'top-k-token-sampler', 'multinomial-token-sampler'].includes(candidate.atomId))) return false
+    return true
+  })
+  return plan
+}
+
+function agentNode(definition: ModelAtomDefinition, nodeId: string, position: { x: number; y: number }, config: ArchitectureGraph['config']): ArchitectureNode {
   return {
     id: nodeId,
     kind: 'semantic',
@@ -141,7 +261,10 @@ function agentNode(definition: ModelAtomDefinition, nodeId: string, position: { 
     label: definition.label,
     role: roleForDefinition(definition),
     position,
-    attributes: Object.fromEntries(definition.settings.map((setting) => [setting.id, setting.default])),
+    attributes: Object.fromEntries(definition.settings.map((setting) => [
+      setting.id,
+      setting.id in config ? config[setting.id as keyof ArchitectureGraph['config']] : setting.default,
+    ])),
   }
 }
 
@@ -149,20 +272,23 @@ function targetHasConnection(graph: ArchitectureGraph, targetId: string, targetP
   return graph.edges.some((edge) => edge.target === targetId && (edge.targetPort ?? inferredEdgeTargetPort(graph, edge)) === targetPortId)
 }
 
-export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraphPlan): AgentGraphPreview {
+export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraphPlan, mode: AgentGraphMode = 'extend'): AgentGraphPreview {
   let nextGraph = graph
+  const existingNodeIds = new Set(graph.nodes.map((node) => node.id))
   const acceptedBlocks: AgentBlockProposal[] = []
+  const acceptedCreatedBlocks: AgentCreatedBlockProposal[] = []
   const rejectedBlocks: RejectedAgentBlock[] = []
   const accepted: AgentConnectionProposal[] = []
   const rejected: RejectedAgentConnection[] = []
 
   for (const block of plan.addedBlocks.slice(0, 24)) {
+    const virtual = agentVirtualAtomics[block.atomId]
     const definition = modelAtomRegistry[block.atomId]
-    if (!definition) {
+    if (!definition && !virtual) {
       rejectedBlocks.push({ block, reason: 'Atomic block is not available in the LABO library' })
       continue
     }
-    if (definition.composite) {
+    if (definition?.composite) {
       rejectedBlocks.push({ block, reason: 'Composite recipes must be expanded into their atomic blocks' })
       continue
     }
@@ -174,11 +300,44 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       rejectedBlocks.push({ block, reason: `Block id ${block.nodeId} already exists` })
       continue
     }
-    nextGraph = addNode(nextGraph, agentNode(definition, block.nodeId, findOpenGraphPosition(nextGraph)))
+    const position = findOpenGraphPosition(nextGraph)
+    nextGraph = addNode(nextGraph, virtual ? virtual.createNode(block.nodeId, position) : agentNode(definition!, block.nodeId, position, graph.config))
     acceptedBlocks.push(block)
   }
   if (plan.addedBlocks.length > 24) {
     for (const block of plan.addedBlocks.slice(24)) rejectedBlocks.push({ block, reason: 'A single agent plan can add at most 24 blocks' })
+  }
+
+  const remainingBlockCapacity = Math.max(0, 24 - acceptedBlocks.length)
+  for (const block of (plan.createdBlocks ?? []).slice(0, Math.min(12, remainingBlockCapacity))) {
+    if (!/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(block.nodeId)) {
+      rejectedBlocks.push({ block, reason: 'Generated card id must start with a letter and contain only letters, numbers, or hyphens' })
+      continue
+    }
+    if (nextGraph.nodes.some((node) => node.id === block.nodeId)) {
+      rejectedBlocks.push({ block, reason: `Block id ${block.nodeId} already exists` })
+      continue
+    }
+    if (!block.label.trim() || block.label.length > 80) {
+      rejectedBlocks.push({ block, reason: 'Generated card must have a short label' })
+      continue
+    }
+    if (!validCustomPyTorchModule(block.pytorchModule)) {
+      rejectedBlocks.push({ block, reason: 'Generated PyTorch card is outside the safe nn.Module subset' })
+      continue
+    }
+    nextGraph = addNode(nextGraph, {
+      id: block.nodeId,
+      kind: 'custom-pytorch',
+      label: block.label.trim(),
+      role: 'hidden',
+      position: findOpenGraphPosition(nextGraph),
+      code: block.pytorchModule.trim(),
+    })
+    acceptedCreatedBlocks.push(block)
+  }
+  for (const block of (plan.createdBlocks ?? []).slice(Math.min(12, remainingBlockCapacity))) {
+    rejectedBlocks.push({ block, reason: 'A single agent plan can add at most 24 blocks, including 12 generated cards' })
   }
 
   for (const connection of plan.connections) {
@@ -186,6 +345,10 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
     const target = nextGraph.nodes.find((node) => node.id === connection.targetId)
     if (!source || !target) {
       rejected.push({ connection, reason: 'Unknown source or target block' })
+      continue
+    }
+    if (mode === 'parallel' && (existingNodeIds.has(source.id) || existingNodeIds.has(target.id))) {
+      rejected.push({ connection, reason: 'Parallel architecture mode cannot connect to or modify the existing graph' })
       continue
     }
     if (source.id === target.id) {
@@ -230,5 +393,9 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
     accepted.push(connection)
   }
 
-  return { graph: nextGraph, acceptedBlocks, rejectedBlocks, accepted, rejected }
+  const addedNodeIds = [...acceptedBlocks, ...acceptedCreatedBlocks].map((block) => block.nodeId)
+  nextGraph = mode === 'parallel'
+    ? layoutParallelArchitecture(nextGraph, addedNodeIds)
+    : layoutArchitectureGraph(nextGraph, addedNodeIds)
+  return { graph: nextGraph, acceptedBlocks, acceptedCreatedBlocks, rejectedBlocks, accepted, rejected }
 }

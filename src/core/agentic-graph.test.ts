@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentGraphContext, previewAgentGraphPlan, type AgentGraphPlan } from './agentic-graph'
+import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, type AgentGraphPlan } from './agentic-graph'
 import { tokenMoePreset } from './presets'
 
-const plan = (connections: AgentGraphPlan['connections'], addedBlocks: AgentGraphPlan['addedBlocks'] = []): AgentGraphPlan => ({
+const plan = (connections: AgentGraphPlan['connections'], addedBlocks: AgentGraphPlan['addedBlocks'] = [], createdBlocks: AgentGraphPlan['createdBlocks'] = []): AgentGraphPlan => ({
   summary: 'Connect the existing blocks',
   addedBlocks,
+  createdBlocks,
   connections,
   missingBlocks: [],
   warnings: [],
@@ -21,6 +22,26 @@ describe('agentic graph wiring', () => {
       { id: 'expertWeights', tensor: 'routing-weights' },
     ]))
     expect(context.availableAtomics.some((atomic) => atomic.atomId === 'top-k-routing')).toBe(true)
+    expect(context.availableAtomics).toContainEqual(expect.objectContaining({
+      atomId: 'token-ids-input',
+      outputs: [{ id: 'tokenIds', tensor: 'token-ids' }],
+    }))
+    expect(context.availableAtomics.find((atomic) => atomic.atomId === 'lm-head')?.settings).toContainEqual(expect.objectContaining({ id: 'tieEmbeddingWeights', default: true }))
+  })
+
+  it('lets the agent add a typed Token IDs source on a blank graph', () => {
+    const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
+    const preview = previewAgentGraphPlan(graph, plan([{
+      sourceId: 'tokens', sourcePortId: 'tokenIds', targetId: 'embedding', targetPortId: 'tokenIds', reason: 'Feed tokens to embedding',
+    }], [
+      { atomId: 'token-ids-input', nodeId: 'tokens', reason: 'Blank graph needs an input source' },
+      { atomId: 'token-embedding', nodeId: 'embedding', reason: 'Embed input tokens' },
+    ]))
+
+    expect(preview.acceptedBlocks).toHaveLength(2)
+    expect(preview.accepted).toHaveLength(1)
+    expect(preview.graph.nodes).toContainEqual(expect.objectContaining({ id: 'tokens', kind: 'input', role: 'token-ids' }))
+    expect(preview.graph.edges).toContainEqual(expect.objectContaining({ source: 'tokens', sourcePort: 'tokenIds', target: 'embedding', targetPort: 'tokenIds' }))
   })
 
   it('previews a valid missing elastic without mutating the original graph', () => {
@@ -45,6 +66,47 @@ describe('agentic graph wiring', () => {
     expect(preview.accepted).toHaveLength(1)
     expect(preview.graph.nodes).toContainEqual(expect.objectContaining({ id: 'agent-relu', atomId: 'relu', kind: 'semantic' }))
     expect(preview.graph.edges).toContainEqual(expect.objectContaining({ source: 'norm', target: 'agent-relu', targetPort: 'hidden' }))
+  })
+
+  it('lays out agent-created parallel branches by graph depth', () => {
+    const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
+    const preview = previewAgentGraphPlan(graph, plan([
+      { sourceId: 'input-node', sourcePortId: 'output', targetId: 'left-branch', targetPortId: 'hidden', reason: 'Left branch' },
+      { sourceId: 'input-node', sourcePortId: 'output', targetId: 'right-branch', targetPortId: 'hidden', reason: 'Right branch' },
+    ], [
+      { atomId: 'identity', nodeId: 'input-node', reason: 'Input transform' },
+      { atomId: 'relu', nodeId: 'left-branch', reason: 'Parallel left' },
+      { atomId: 'gelu', nodeId: 'right-branch', reason: 'Parallel right' },
+    ]))
+    const input = preview.graph.nodes.find((node) => node.id === 'input-node')!
+    const left = preview.graph.nodes.find((node) => node.id === 'left-branch')!
+    const right = preview.graph.nodes.find((node) => node.id === 'right-branch')!
+
+    expect(left.position.y).toBe(right.position.y)
+    expect(left.position.x).not.toBe(right.position.x)
+    expect(input.position.y).toBeLessThan(left.position.y)
+  })
+
+  it('creates a safe unary PyTorch card and wires its hidden ports', () => {
+    const preview = previewAgentGraphPlan(tokenMoePreset, plan([{
+      sourceId: 'norm', sourcePortId: 'output', targetId: 'agent-projection', targetPortId: 'hidden', reason: 'Project normalized states',
+    }], [], [{
+      nodeId: 'agent-projection', label: 'Agent projection', pytorchModule: 'nn.Linear(384, 384, bias=False)', reason: 'No exact library card was selected',
+    }]))
+
+    expect(preview.acceptedCreatedBlocks).toHaveLength(1)
+    expect(preview.graph.nodes).toContainEqual(expect.objectContaining({ id: 'agent-projection', kind: 'custom-pytorch', code: 'nn.Linear(384, 384, bias=False)' }))
+    expect(preview.graph.edges).toContainEqual(expect.objectContaining({ source: 'norm', target: 'agent-projection', targetPort: 'hidden' }))
+  })
+
+  it('rejects unsafe generated PyTorch cards before they reach the graph', () => {
+    const preview = previewAgentGraphPlan(tokenMoePreset, plan([], [], [{
+      nodeId: 'unsafe-card', label: 'Unsafe card', pytorchModule: 'torch.load("weights.pt")', reason: 'Unsafe request',
+    }]))
+
+    expect(preview.acceptedCreatedBlocks).toHaveLength(0)
+    expect(preview.rejectedBlocks[0]?.reason).toContain('safe nn.Module subset')
+    expect(preview.graph.nodes.some((node) => node.id === 'unsafe-card')).toBe(false)
   })
 
   it('rejects unavailable, composite, and duplicate agent blocks', () => {
@@ -78,5 +140,49 @@ describe('agentic graph wiring', () => {
     expect(incompatible.rejected[0]?.reason).toContain('cannot plug')
     expect(cyclic.accepted).toHaveLength(1)
     expect(cyclic.rejected[0]?.reason).toContain('cycle')
+  })
+
+  it('builds a separate architecture without changing or connecting to existing work', () => {
+    const originalNodes = tokenMoePreset.nodes.map((node) => ({ ...node, position: { ...node.position } }))
+    const originalEdges = tokenMoePreset.edges.map((edge) => ({ ...edge }))
+    const preview = previewAgentGraphPlan(tokenMoePreset, plan([
+      { sourceId: 'parallel-input', sourcePortId: 'hidden', targetId: 'parallel-relu', targetPortId: 'hidden', reason: 'New branch' },
+      { sourceId: 'norm', sourcePortId: 'output', targetId: 'parallel-relu', targetPortId: 'hidden', reason: 'Must not touch existing work' },
+    ], [
+      { atomId: 'hidden-state-input', nodeId: 'parallel-input', reason: 'Independent source' },
+      { atomId: 'relu', nodeId: 'parallel-relu', reason: 'Independent model' },
+    ]), 'parallel')
+
+    expect(preview.accepted).toHaveLength(1)
+    expect(preview.rejected[0]?.reason).toContain('cannot connect to or modify')
+    expect(preview.graph.nodes.slice(0, originalNodes.length)).toEqual(originalNodes)
+    expect(preview.graph.edges.slice(0, originalEdges.length)).toEqual(originalEdges)
+    expect(preview.graph.nodes.find((node) => node.id === 'parallel-input')!.position.x).toBeGreaterThan(Math.max(...originalNodes.map((node) => node.position.x)))
+  })
+
+  it('repairs false missing Token IDs and logits-decoder claims with native cards', () => {
+    const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
+    const repaired = repairAgentGraphPlan(graph, {
+      summary: 'Language model',
+      addedBlocks: [
+        { atomId: 'token-embedding', nodeId: 'embedding', reason: 'Embed tokens' },
+        { atomId: 'lm-head', nodeId: 'head', reason: 'Create logits' },
+      ],
+      createdBlocks: [],
+      connections: [{ sourceId: 'embedding', sourcePortId: 'output', targetId: 'head', targetPortId: 'hidden', reason: 'Project states' }],
+      missingBlocks: [
+        { atomId: null, label: 'Source de Token IDs / tokenizer', reason: 'Aucun atomic ne fournit token-ids.' },
+        { atomId: null, label: 'Échantillonneur ou décodeur de logits', reason: 'Convertir les logits en token généré.' },
+      ],
+      warnings: [],
+    })
+
+    expect(repaired.addedBlocks.map((block) => block.atomId)).toEqual(expect.arrayContaining(['token-ids-input', 'greedy-token-decoder']))
+    expect(repaired.connections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourcePortId: 'tokenIds', targetId: 'embedding', targetPortId: 'tokenIds' }),
+      expect.objectContaining({ sourceId: 'head', sourcePortId: 'logits', targetPortId: 'logits' }),
+    ]))
+    expect(repaired.missingBlocks).toEqual([])
+    expect(previewAgentGraphPlan(graph, repaired).rejected).toEqual([])
   })
 })

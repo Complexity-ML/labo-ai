@@ -25,4 +25,24 @@ describe('elastic execution plan', () => {
       ['head'],
     ])
   })
+
+  it('plays two disconnected architectures in parallel by execution depth', () => {
+    const graph = {
+      ...complexityDeepPreset,
+      nodes: [
+        { id: 'a-input', kind: 'input' as const, label: 'A input', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'b-input', kind: 'input' as const, label: 'B input', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'a-output', kind: 'semantic' as const, atomId: 'identity', label: 'A output', role: 'hidden' as const, position: { x: 0, y: 0 } },
+        { id: 'b-output', kind: 'semantic' as const, atomId: 'identity', label: 'B output', role: 'hidden' as const, position: { x: 0, y: 0 } },
+      ],
+      edges: [
+        { id: 'a', source: 'a-input', target: 'a-output' },
+        { id: 'b', source: 'b-input', target: 'b-output' },
+      ],
+    }
+    expect(executionLayers(graph)).toEqual([
+      ['a-input', 'b-input'],
+      ['a-output', 'b-output'],
+    ])
+  })
 })

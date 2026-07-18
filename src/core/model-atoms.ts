@@ -661,6 +661,30 @@ export const modelAtomRegistry: Record<string, ModelAtomDefinition> = {
       ['{{out:logits}} = self.{{module}}({{in:hidden}})'],
     ),
   },
+  'greedy-token-decoder': {
+    id: 'greedy-token-decoder', label: 'Greedy token decoder', category: 'output',
+    inputs: [{ id: 'logits', tensor: 'logits', rank: 3 }],
+    outputs: [{ id: 'tokenIds', tensor: 'token-ids', rank: 2 }],
+    settings: [],
+    lowerings: lowering([], ['{{out:tokenIds}} = torch.argmax({{in:logits}}, dim=-1)']),
+  },
+  'top-k-token-sampler': {
+    id: 'top-k-token-sampler', label: 'Top-k token sampler', category: 'output',
+    inputs: [{ id: 'logits', tensor: 'logits', rank: 3 }],
+    outputs: [{ id: 'tokenIds', tensor: 'token-ids', rank: 2 }],
+    settings: [{ id: 'topK', type: 'number', default: 50 }, { id: 'temperature', type: 'number', default: 1 }],
+    lowerings: lowering([], ['{{out:tokenIds}} = torch.topk({{in:logits}} / max({{temperature}}, 1e-6), k=min({{topK}}, {{in:logits}}.shape[-1]), dim=-1).indices[..., 0]']),
+  },
+  'multinomial-token-sampler': {
+    id: 'multinomial-token-sampler', label: 'Multinomial token sampler', category: 'output',
+    inputs: [{ id: 'logits', tensor: 'logits', rank: 3 }],
+    outputs: [{ id: 'tokenIds', tensor: 'token-ids', rank: 2 }],
+    settings: [{ id: 'temperature', type: 'number', default: 1 }],
+    lowerings: lowering([], [
+      '{{module}}_probabilities = F.softmax({{in:logits}} / max({{temperature}}, 1e-6), dim=-1)',
+      '{{out:tokenIds}} = torch.multinomial({{module}}_probabilities.reshape(-1, {{module}}_probabilities.shape[-1]), num_samples=1).reshape({{module}}_probabilities.shape[:-1])',
+    ]),
+  },
   'log-softmax': {
     id: 'log-softmax', label: 'LogSoftmax output', category: 'output',
     inputs: [{ id: 'logits', tensor: 'logits', rank: 3 }],
