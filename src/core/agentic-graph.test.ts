@@ -65,6 +65,30 @@ describe('agentic graph wiring', () => {
     expect(preview.graph.edges).toContainEqual(expect.objectContaining({ source: 'tokens', sourcePort: 'tokenIds', target: 'embedding', targetPort: 'tokenIds' }))
   })
 
+  it('normalizes underscore IDs across a complete multimodal plan before validation', () => {
+    const graph = { ...tokenMoePreset, nodes: [], edges: [], groups: [] }
+    const repaired = repairAgentGraphPlan(graph, plan([
+      { sourceId: 'text_tokens', sourcePortId: 'tokenIds', targetId: 'text_embedding', targetPortId: 'tokenIds', reason: 'Embed text' },
+      { sourceId: 'image_input', sourcePortId: 'image', targetId: 'image_patch_embedding', targetPortId: 'image', reason: 'Embed image patches' },
+    ], [
+      { atomId: 'token-ids-input', nodeId: 'text_tokens', reason: 'Text source' },
+      { atomId: 'token-embedding', nodeId: 'text_embedding', reason: 'Text embedding' },
+      { atomId: 'image-tensor-input', nodeId: 'image_input', reason: 'Image source' },
+      { atomId: 'image-patch-embedding', nodeId: 'image_patch_embedding', reason: 'Image patches' },
+    ]))
+    const preview = previewAgentGraphPlan(graph, repaired)
+
+    expect(repaired.addedBlocks.map((block) => block.nodeId)).toEqual(['text-tokens', 'text-embedding', 'image-input', 'image-patch-embedding'])
+    expect(repaired.connections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceId: 'text-tokens', targetId: 'text-embedding' }),
+      expect.objectContaining({ sourceId: 'image-input', targetId: 'image-patch-embedding' }),
+    ]))
+    expect(preview.acceptedBlocks).toHaveLength(4)
+    expect(preview.accepted).toHaveLength(2)
+    expect(preview.rejectedBlocks).toHaveLength(0)
+    expect(preview.rejected).toHaveLength(0)
+  })
+
   it('previews a valid missing elastic without mutating the original graph', () => {
     const graph = { ...tokenMoePreset, edges: tokenMoePreset.edges.filter((edge) => edge.id !== 'router-topk') }
     const preview = previewAgentGraphPlan(graph, plan([{

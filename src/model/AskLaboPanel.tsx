@@ -198,9 +198,11 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
 
   const reviewFullPlan = (activity: AgentActivity) => {
     if (!activity.plan) return
+    const repairedPlan = repairAgentGraphPlan(graph, activity.plan)
     activeActivityIdRef.current = activity.id
+    updateActivity(activity.id, { plan: repairedPlan })
     setCardOverrides({})
-    setPlan(activity.plan)
+    setPlan(repairedPlan)
     setActivityOpen(false)
   }
 

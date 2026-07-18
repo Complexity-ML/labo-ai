@@ -234,20 +234,59 @@ function uniqueAgentNodeId(graph: ArchitectureGraph, plan: AgentGraphPlan, base:
   return `${base}-${sequence}`
 }
 
+function normalizeAgentPlanNodeIds(graph: ArchitectureGraph, sourcePlan: AgentGraphPlan): AgentGraphPlan {
+  const used = new Set(graph.nodes.map((node) => node.id))
+  const replacements = new Map<string, string>()
+  const normalize = (sourceId: string) => {
+    const existing = replacements.get(sourceId)
+    if (existing) return existing
+    let base = sourceId
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    if (!/^[A-Za-z]/.test(base)) base = `agent-${base || 'card'}`
+    base = base.slice(0, 64).replace(/-$/g, '') || 'agent-card'
+    let candidate = base
+    let sequence = 2
+    while (used.has(candidate)) {
+      const suffix = `-${sequence++}`
+      candidate = `${base.slice(0, 64 - suffix.length).replace(/-$/g, '')}${suffix}`
+    }
+    used.add(candidate)
+    replacements.set(sourceId, candidate)
+    return candidate
+  }
+
+  for (const block of [...sourcePlan.addedBlocks, ...(sourcePlan.createdBlocks ?? [])]) normalize(block.nodeId)
+  const reference = (nodeId: string) => replacements.get(nodeId) ?? nodeId
+  return {
+    ...sourcePlan,
+    addedBlocks: sourcePlan.addedBlocks.map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
+    createdBlocks: (sourcePlan.createdBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
+    connections: sourcePlan.connections.map((connection) => ({ ...connection, sourceId: reference(connection.sourceId), targetId: reference(connection.targetId) })),
+    updatedBlocks: (sourcePlan.updatedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
+    deletedBlocks: (sourcePlan.deletedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
+    movedBlocks: (sourcePlan.movedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
+  }
+}
+
 /** Deterministically fixes source/sampler omissions that the model incorrectly reports as missing. */
 export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: AgentGraphPlan): AgentGraphPlan {
+  const normalizedPlan = normalizeAgentPlanNodeIds(graph, sourcePlan)
   const plan: AgentGraphPlan = {
-    ...sourcePlan,
-    addedBlocks: [...sourcePlan.addedBlocks],
-    createdBlocks: [...sourcePlan.createdBlocks],
-    connections: [...sourcePlan.connections],
-    missingBlocks: [...sourcePlan.missingBlocks],
-    warnings: [...sourcePlan.warnings],
-    updatedBlocks: [...(sourcePlan.updatedBlocks ?? [])],
-    deletedBlocks: [...(sourcePlan.deletedBlocks ?? [])],
-    movedBlocks: [...(sourcePlan.movedBlocks ?? [])],
-    actions: [...(sourcePlan.actions ?? [])],
-    toolTrace: [...(sourcePlan.toolTrace ?? [])],
+    ...normalizedPlan,
+    addedBlocks: [...normalizedPlan.addedBlocks],
+    createdBlocks: [...normalizedPlan.createdBlocks],
+    connections: [...normalizedPlan.connections],
+    missingBlocks: [...normalizedPlan.missingBlocks],
+    warnings: [...normalizedPlan.warnings],
+    updatedBlocks: [...(normalizedPlan.updatedBlocks ?? [])],
+    deletedBlocks: [...(normalizedPlan.deletedBlocks ?? [])],
+    movedBlocks: [...(normalizedPlan.movedBlocks ?? [])],
+    actions: [...(normalizedPlan.actions ?? [])],
+    toolTrace: [...(normalizedPlan.toolTrace ?? [])],
   }
   const normalizeCapabilityText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const samplerPattern = /sampl|echantillonn|decod|token gener|generated token|autoregress|logits[^.]{0,80}token/
