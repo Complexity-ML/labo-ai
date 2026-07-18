@@ -21,10 +21,12 @@ import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
 import { executionLayers } from '../core/execution-plan'
 import { architectureComponents } from '../core/graph-components'
 import { findOpenGraphPosition, layoutArchitectureGraph, layoutParallelArchitecture } from '../core/graph-placement'
-import { addNode, compileToPyTorch, removeNode, validateGraph, type ArchitectureGraph, type TensorRole } from '../core/ir'
+import { addNode, compileToPyTorch, removeNode, validateGraph, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from '../core/ir'
+import { connectCable } from '../core/cables'
 import { cloneArchitectureGraph, loadModelWorkspace, loadModelWorkspaceFromDatabase, saveModelWorkspace, saveModelWorkspaceCache, syncModelPresetDatabase, type ModelPresetDraft } from '../core/model-workspace'
 import { modelAtomRegistry, type ModelAtomDefinition } from '../core/model-atoms'
 import { blankStarterPreset, complexityDeepPreset, gptLikeStarterPreset, tokenMoePreset, trBasicPreset } from '../core/presets'
+import { multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../core/media-presets'
 import { researchBpePreset } from '../core/tokenizer-presets'
 import { parsePyTorchDialect, type PyTorchDialectDiagnostic } from '../core/pytorch-dialect'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
@@ -34,7 +36,7 @@ import { PythonCodeEditor } from './PythonCodeEditor'
 import { AskLaboPanel } from './AskLaboPanel'
 import type { AgentGraphAction } from '../core/agentic-graph'
 import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH, resolveCardDrop } from './card-layout'
-import { CustomCardCreator } from './CustomCardCreator'
+import { CustomCardCreator, type CustomCardDestination, type CustomCardCreateResult } from './CustomCardCreator'
 import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
@@ -50,13 +52,16 @@ interface CardEditDraft {
 
 const CUSTOM_CARDS_STORAGE_KEY = 'labo.custom-pytorch-cards.v1'
 
-const builtInModelPresets = [blankStarterPreset, gptLikeStarterPreset, trBasicPreset, tokenMoePreset, complexityDeepPreset]
+const builtInModelPresets = [blankStarterPreset, gptLikeStarterPreset, trBasicPreset, tokenMoePreset, complexityDeepPreset, visionTransformerPreset, multimodalImageEditorPreset, videoTransformerPreset]
 const presetMenuLabels: Record<string, string> = {
   [blankStarterPreset.id]: 'Blank starter',
   [gptLikeStarterPreset.id]: 'GPT-like',
   [trBasicPreset.id]: 'TR Basic',
   [tokenMoePreset.id]: 'Learned MoE',
   [complexityDeepPreset.id]: 'TR 300M',
+  [visionTransformerPreset.id]: 'Vision',
+  [multimodalImageEditorPreset.id]: 'Image edit',
+  [videoTransformerPreset.id]: 'Video',
 }
 
 function loadCustomCards(): CustomPyTorchCard[] {
@@ -99,6 +104,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [userPresets, setUserPresets] = useState(() => initialWorkspace.userPresets.map(cloneArchitectureGraph))
   const [presetName, setPresetName] = useState('My model')
   const [presetError, setPresetError] = useState('')
+  const [confirmPresetReset, setConfirmPresetReset] = useState(false)
   const [databaseReady, setDatabaseReady] = useState(false)
   const startupGraphRef = useRef(graph)
   const startupSelectionRef = useRef(selectedNodeId)
@@ -149,6 +155,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   }, [graphArchitectures, selectedArchitectureId, selectedNodeId])
 
   useEffect(() => setConfirmArchitectureDelete(false), [selectedArchitecture?.id])
+  useEffect(() => setConfirmPresetReset(false), [graph.id])
 
   useEffect(() => {
     window.localStorage.setItem(CUSTOM_CARDS_STORAGE_KEY, JSON.stringify(customCards))
@@ -329,15 +336,59 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     setSelectedNodeId(id)
   }
 
-  const createCustomCard = ({ label, code, inputRole, outputRole }: Omit<CustomPyTorchCard, 'id'>) => {
+  const createCustomCard = ({ label, code, inputRole, outputRole }: Omit<CustomPyTorchCard, 'id'>, destination: CustomCardDestination): CustomCardCreateResult => {
     const baseId = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pytorch'
     let id = baseId
     let sequence = 2
     while (customCards.some((card) => card.id === id)) id = `${baseId}-${sequence++}`
     const card: CustomPyTorchCard = { id, label, code, ...(inputRole ? { inputRole } : {}), ...(outputRole ? { outputRole } : {}) }
+    const inputTensor = inputRole ?? 'hidden'
+    const outputTensor = outputRole ?? 'hidden'
+    const current = latestGraphRef.current
+    const graphNodeId = (() => {
+      const base = `custom-${card.id}`
+      let candidate = base
+      let suffix = 2
+      while (current.nodes.some((node) => node.id === candidate)) candidate = `${base}-${suffix++}`
+      return candidate
+    })()
+    const customNode: ArchitectureNode = { id: graphNodeId, kind: 'custom-pytorch', label: card.label, role: outputTensor, position: findOpenGraphPosition(current), code: card.code, attributes: { inputRole: inputTensor } }
+
+    if (destination === 'selected') {
+      const source = current.nodes.find((node) => node.id === selectedNodeId)
+      const definition = source?.atomId ? modelAtomRegistry[source.atomId] : undefined
+      const output = source?.kind === 'input'
+        ? { id: source.role === 'token-ids' ? 'tokenIds' : source.role, tensor: source.role }
+        : source?.kind === 'custom-pytorch'
+          ? { id: 'output', tensor: source.role }
+          : definition?.outputs.find((port) => port.tensor === inputTensor)
+      if (!source || !output || output.tensor !== inputTensor) return { ok: false, message: `${source?.label ?? 'The selected card'} has no ${inputTensor} output for this card.` }
+      const withNode = addNode(current, customNode)
+      const connected = connectCable(withNode, { sourceId: source.id, sourcePort: inputTensor, sourcePortId: output.id, targetId: graphNodeId, targetPort: inputTensor, targetPortId: 'input' })
+      if (!connected.ok) return { ok: false, message: connected.message }
+      setGraph(layoutArchitectureGraph(connected.graph, [graphNodeId]))
+      setSelectedNodeId(graphNodeId)
+    } else if (destination === 'new-architecture') {
+      let inputId = `${graphNodeId}-input`
+      let suffix = 2
+      while (current.nodes.some((node) => node.id === inputId)) inputId = `${graphNodeId}-input-${suffix++}`
+      const metadata = {
+        laboArchitectureName: `Custom · ${label}`,
+        laboArchitectureHiddenSize: current.config.hiddenSize,
+        laboArchitectureQueryHeads: current.config.queryHeads,
+        laboArchitectureKeyValueHeads: current.config.keyValueHeads,
+        laboArchitectureHeadDim: current.config.headDim,
+      }
+      const inputNode: ArchitectureNode = { id: inputId, kind: 'input', label: `${label} input`, role: inputTensor, position: findOpenGraphPosition(current), attributes: metadata }
+      const withNodes = addNode(addNode(current, inputNode), { ...customNode, attributes: { ...customNode.attributes, ...metadata } })
+      const connected = connectCable(withNodes, { sourceId: inputId, sourcePort: inputTensor, sourcePortId: inputTensor === 'token-ids' ? 'tokenIds' : inputTensor, targetId: graphNodeId, targetPort: inputTensor, targetPortId: 'input' })
+      if (!connected.ok) return { ok: false, message: connected.message }
+      setGraph(layoutParallelArchitecture(connected.graph, [inputId, graphNodeId]))
+      setSelectedNodeId(graphNodeId)
+    }
     setCustomCards((current) => [...current, card])
-    addCustomCard(card)
     setCreateCardOpen(false)
+    return { ok: true }
   }
 
   const openCardCreator = () => {
@@ -450,11 +501,16 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const resetCurrentPreset = () => {
     const original = builtInModelPresets.find((preset) => preset.id === graph.id) ?? userPresets.find((preset) => preset.id === graph.id)
     if (!original) return
+    if (!confirmPresetReset) {
+      setConfirmPresetReset(true)
+      return
+    }
     const reset = cloneArchitectureGraph(original)
     presetDraftsRef.current.set(reset.id, { graph: reset, selectedNodeId: reset.nodes[0]?.id ?? '' })
     setGraph(reset)
     setSelectedNodeId(reset.nodes[0]?.id ?? '')
     setParseDiagnostics([])
+    setConfirmPresetReset(false)
   }
 
   const deleteUserPreset = (preset: ArchitectureGraph) => {
@@ -553,6 +609,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     { label: 'Composition variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'composition') },
     { label: 'MLP variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'mlp') },
     { label: 'Output variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'output') },
+    { label: 'Image, video & multimodal', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'media') },
   ]
   const trBasicIds = new Set(['deterministic-token-routing', 'routed-expert-bank', 'shared-expert-bank', 'branch-gated-merge'])
   const learnedRouterIds = new Set(['moe-router', 'top-k-routing', 'load-balancing-loss', 'router-entropy-loss'])
@@ -608,7 +665,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           <div className="interaction-switcher" aria-label="Canvas interaction mode">
             <button aria-pressed={interactionMode === 'add'} onClick={() => setInteractionMode('add')}><Blocks size={13} />Add blocks</button>
             <button aria-pressed={interactionMode === 'edit'} onClick={() => setInteractionMode('edit')}><Pencil size={13} />Edit cards</button>
-            <button aria-haspopup="dialog" onClick={openCardCreator}><Code2 size={13} />Create card</button>
+            <button aria-haspopup="dialog" onClick={openCardCreator} title="Build a reusable PyTorch card, then choose exactly where it goes"><Code2 size={13} />New reusable card</button>
             {interactionMode === 'edit' && selectedArchitecture && <button
               aria-label={confirmArchitectureDelete ? `Confirm clearing ${selectedArchitecture.label}` : `Clear architecture ${selectedArchitecture.label}`}
               className={confirmArchitectureDelete ? 'confirm-delete architecture-clear-button' : 'architecture-clear-button'}
@@ -660,18 +717,20 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
               {definition.label}
             </button>)}
             <details className="library-family model-preset-family">
-              <summary>My presets <span>{userPresets.length}</span></summary>
+              <summary>My workspaces <span>{userPresets.length}</span></summary>
               <div className="model-preset-builder">
-                <label><span>Preset name</span><input aria-label="New model preset name" onChange={(event) => setPresetName(event.target.value)} value={presetName} /></label>
+                <div className="workspace-current-target"><span>CURRENT WORKSPACE</span><strong>{presetMenuLabels[graph.id] ?? graph.name}</strong><small>{graph.nodes.length} cards · edits auto-saved locally</small></div>
+                <label><span>Name for the saved copy</span><input aria-label="New model preset name" onChange={(event) => setPresetName(event.target.value)} value={presetName} /></label>
                 {presetError && <p role="alert">{presetError}</p>}
-                <button onClick={createUserPreset}>Save current graph as preset</button>
-                <button onClick={createBlankWorkspace}>New blank workspace</button>
-                <button className="reset-model-preset-button" disabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} onClick={resetCurrentPreset}>Reset current preset</button>
-                <small>Every edit is auto-saved locally for this desktop user. Reset is the only action that restores the original.</small>
+                <button aria-label={`Save a named copy of ${presetMenuLabels[graph.id] ?? graph.name}`} onClick={createUserPreset}>Save a named copy</button>
+                <button onClick={createBlankWorkspace}>Create and open a blank workspace</button>
+                <button className={`reset-model-preset-button${confirmPresetReset ? ' confirm-reset' : ''}`} disabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} onClick={resetCurrentPreset}>{confirmPresetReset ? `Confirm restore ${presetMenuLabels[graph.id] ?? graph.name}` : `Restore ${presetMenuLabels[graph.id] ?? graph.name}`}</button>
+                <small>Opening another workspace preserves this draft. Restore discards only the current workspace edits and requires confirmation.</small>
               </div>
               <div className="preset-comparison-list">
-                <small>Add complete presets side by side on this canvas.</small>
-                {[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)].map((preset) => <button key={`compare-${preset.id}`} onClick={() => addPresetForComparison(preset)}><strong>+ {presetMenuLabels[preset.id] ?? preset.name}</strong><span>{preset.nodes.length} cards</span></button>)}
+                <strong>COMPARE ON CURRENT CANVAS</strong>
+                <small>Add a complete architecture beside the current graph without switching workspace.</small>
+                {[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)].map((preset) => <button aria-label={`Add ${presetMenuLabels[preset.id] ?? preset.name} beside current graph`} key={`compare-${preset.id}`} onClick={() => addPresetForComparison(preset)}><strong>+ {presetMenuLabels[preset.id] ?? preset.name}</strong><span>{preset.nodes.length} cards</span></button>)}
               </div>
               {userPresets.length > 0 && <div className="user-preset-list">
                 {userPresets.map((preset) => <div key={preset.id}>
@@ -804,7 +863,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </section>
       </div>}
 
-      {createCardOpen && <CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} />}
+      {createCardOpen && <CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} />}
 
       <AskLaboPanel customCards={customCards} graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} />
 

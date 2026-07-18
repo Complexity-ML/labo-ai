@@ -15,7 +15,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [requestedCard, setRequestedCard] = useState<{ atomId: string; requestId: number }>()
   const searchResults = useMemo(() => searchModelCards(searchQuery), [searchQuery])
-  const runtimeClass = window.labo?.runtime === 'electron' ? ' runtime-electron' : ''
+  const platform = window.labo?.platform
+  const runtimeClass = window.labo?.runtime === 'electron' ? ` runtime-electron runtime-${platform ?? 'desktop'}` : ''
+  const searchShortcut = platform === 'darwin' ? '⌘K' : 'Ctrl+K'
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -41,7 +43,7 @@ function App() {
         <button aria-pressed={workspace === 'tokenizer'} onClick={() => setWorkspace('tokenizer')}>Tokenizer Studio</button>
       </nav>
       <div className="header-actions">
-        <button aria-label="Search model cards" className="ghost-button" onClick={() => setSearchOpen(true)}><Search size={14} /> Search <kbd>⌘K</kbd></button>
+        <button aria-label="Search model cards" className="ghost-button" onClick={() => setSearchOpen(true)}><Search size={14} /> Search <kbd>{searchShortcut}</kbd></button>
         <button aria-pressed={askOpen} className="codex-button" onClick={() => {
           setWorkspace('model')
           setAskOpen((current) => !current)

@@ -124,7 +124,7 @@ if (preview.canApply) {
   }
 
   await evaluate(`(() => {
-    const reset = [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Reset current preset')
+    const reset = [...document.querySelectorAll('button')].find((button) => button.textContent.trim().startsWith('Restore '))
     reset?.click()
   })()`)
 }

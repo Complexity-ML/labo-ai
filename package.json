@@ -13,11 +13,15 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "electron:dev": "npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "electron:start": "npm run build && npm run build:electron && electron .",
+    "demo:agent": "npm run build && npm run build:electron && electron scripts/demo-agent.mjs",
     "package:mac": "npm run build && npm run build:electron && electron-builder --mac dmg zip",
     "package:mac:dir": "npm run build && npm run build:electron && electron-builder --mac dir",
+    "package:win": "npm run build && npm run build:electron && electron-builder --win nsis zip --x64",
+    "package:win:dir": "npm run build && npm run build:electron && electron-builder --win dir --x64",
+    "package:win:arm64": "npm run build && npm run build:electron && electron-builder --win nsis zip --arm64",
     "lint": "oxlint",
     "test": "vitest run",
-    "test:desktop": "npm run build && npm run build:electron && vitest run electron/atomic-runtime.test.ts electron/runtime.test.ts electron/security.test.ts electron/openai-credentials.test.ts electron/ask-labo.test.ts src/App.test.tsx src/core/graph-placement.test.ts src/core/agentic-graph.test.ts src/core/pytorch-compiler.test.ts && node scripts/desktop-smoke.mjs",
+    "test:desktop": "npm run build && npm run build:electron && vitest run electron/atomic-runtime.test.ts electron/runtime.test.ts electron/security.test.ts electron/openai-credentials.test.ts electron/ask-labo.test.ts src/App.test.tsx src/core/graph-placement.test.ts src/core/agentic-graph.test.ts src/core/pytorch-compiler.test.ts src/core/media-presets.test.ts && node scripts/desktop-smoke.mjs",
     "preview": "vite preview"
   },
   "build": {
@@ -45,6 +49,19 @@
         "zip"
       ],
       "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "dmg": {
       "title": "LABO AI ${version}",

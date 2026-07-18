@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,15 +11,17 @@ import { deleteOpenAIApiKey, getOpenAISettingsStatus, saveOpenAIApiKey, testOpen
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 
 function createMainWindow(): BrowserWindow {
+  const platformFrame: BrowserWindowConstructorOptions = process.platform === 'darwin'
+    ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 15, y: 17 } }
+    : { titleBarStyle: 'default', autoHideMenuBar: true }
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1180,
-    minHeight: 720,
+    minWidth: 1024,
+    minHeight: 680,
     backgroundColor: '#08090b',
     title: 'LABO AI',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 15, y: 17 },
+    ...platformFrame,
     webPreferences: {
       ...rendererWebPreferences,
       preload: join(currentDirectory, 'preload.cjs'),

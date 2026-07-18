@@ -5,8 +5,10 @@ import { validCustomPyTorchModule } from '../core/pytorch-compiler'
 import { customCardModule, customCardOperations, operationsByCategory, suggestedCardOperation, type CustomCardCategory, type CustomCardOperation, type CustomPyTorchCard } from './custom-card'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
+export type CustomCardDestination = 'library' | 'selected' | 'new-architecture'
+export interface CustomCardCreateResult { ok: boolean; message?: string }
 
-export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCreate(card: CardDraft): void }) {
+export function CustomCardCreator({ onClose, onCreate, selectedTarget }: { onClose(): void; onCreate(card: CardDraft, destination: CustomCardDestination): CustomCardCreateResult; selectedTarget?: string }) {
   const [name, setName] = useState('My PyTorch block')
   const [code, setCode] = useState('nn.Linear(768, 768)')
   const [operation, setOperation] = useState<CustomCardOperation>('linear')
@@ -18,6 +20,7 @@ export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCr
   const [inputRole, setInputRole] = useState<TensorRole>('hidden')
   const [outputRole, setOutputRole] = useState<TensorRole>('hidden')
   const [error, setError] = useState('')
+  const [destination, setDestination] = useState<CustomCardDestination>('new-architecture')
   const availableOperations = customCardOperations.filter((candidate) => operationsByCategory[category].includes(candidate.id))
 
   const changeCategory = (nextCategory: CustomCardCategory) => {
@@ -50,7 +53,8 @@ export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCr
     const module = code.trim()
     if (!label) return setError('Give the card a name.')
     if (!validCustomPyTorchModule(module)) return setError('Use one supported safe nn.Module constructor.')
-    onCreate({ label, code: module, ...(inputRole === 'hidden' ? {} : { inputRole }), ...(outputRole === 'hidden' ? {} : { outputRole }) })
+    const result = onCreate({ label, code: module, ...(inputRole === 'hidden' ? {} : { inputRole }), ...(outputRole === 'hidden' ? {} : { outputRole }) }, destination)
+    if (!result.ok) setError(result.message ?? 'The selected destination is not compatible with this card.')
   }
 
   return <div className="model-card-modal-backdrop">
@@ -78,9 +82,17 @@ export function CustomCardCreator({ onClose, onCreate }: { onClose(): void; onCr
         {(operation === 'rmsnorm' || operation === 'layernorm') && <label><span>Normalized dimension</span><input aria-label="Custom card normalized dimension" min="1" onChange={(event) => { const value = Number(event.target.value); setOutFeatures(value); setCode(customCardModule(operation, inFeatures, value, probability)) }} type="number" value={outFeatures} /></label>}
         {operation === 'dropout' && <label><span>Probability</span><input aria-label="Custom card dropout probability" max="1" min="0" onChange={(event) => { const value = Number(event.target.value); setProbability(value); setCode(customCardModule(operation, inFeatures, outFeatures, value)) }} step="0.05" type="number" value={probability} /></label>}
       </div>
+      <section aria-label="Card destination" className="card-destination-picker">
+        <header><strong>Where should this card go?</strong><small>The reusable definition is always saved in My cards.</small></header>
+        <div>
+          <button aria-pressed={destination === 'library'} onClick={() => setDestination('library')}><strong>Library only</strong><small>Save it without changing the canvas.</small></button>
+          <button aria-pressed={destination === 'selected'} disabled={!selectedTarget} onClick={() => setDestination('selected')}><strong>After selected card</strong><small>{selectedTarget ? `Connect after ${selectedTarget}.` : 'Select a compatible graph card first.'}</small></button>
+          <button aria-pressed={destination === 'new-architecture'} onClick={() => setDestination('new-architecture')}><strong>New architecture</strong><small>Create and connect its own typed input.</small></button>
+        </div>
+      </section>
       <details className="card-constructor-code" open><summary>Generated PyTorch</summary><textarea aria-label="Custom card PyTorch code" onChange={(event) => setCode(event.target.value)} rows={4} spellCheck={false} value={code} /><small className={validCustomPyTorchModule(code) ? 'custom-code-valid' : 'custom-code-invalid'}>{validCustomPyTorchModule(code) ? 'Valid safe nn.Module constructor' : 'Invalid or unsupported nn.Module constructor'}</small></details>
       {error && <p className="model-card-modal-error" role="alert">{error}</p>}
-      <footer><button onClick={onClose}>Cancel</button><button className="create-custom-card-button" onClick={create}>Create and add card</button></footer>
+      <footer><button onClick={onClose}>Cancel</button><button className="create-custom-card-button" onClick={create}>{destination === 'library' ? 'Save to My cards' : destination === 'selected' ? `Create after ${selectedTarget ?? 'selection'}` : 'Create as new architecture'}</button></footer>
     </section>
   </div>
 }

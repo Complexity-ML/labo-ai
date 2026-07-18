@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resolveAtomicRuntimePaths, runAtomicRuntime } from './atomic-runtime'
 import { gptLikeStarterPreset, gqaPreset, tokenMoePreset, trBasicPreset } from '../src/core/presets'
 import { activationAtomRegistry } from '../src/core/activation-atoms'
 import type { ArchitectureGraph } from '../src/core/ir'
+import { multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../src/core/media-presets'
 
 describe('Electron atomic runtime bridge', () => {
   it('resolves the development venv and runner outside Electron archives', () => {
@@ -14,6 +18,23 @@ describe('Electron atomic runtime bridge', () => {
       pythonExecutable: `${process.cwd()}/.venv/bin/python`,
       runnerScript: `${process.cwd()}/scripts/atomic_runtime.py`,
     })
+  })
+
+  it('resolves the standard Windows virtual-environment layout', () => {
+    const root = mkdtempSync(join(tmpdir(), 'labo-ai-windows-'))
+    try {
+      mkdirSync(join(root, '.venv', 'Scripts'), { recursive: true })
+      mkdirSync(join(root, 'scripts'), { recursive: true })
+      writeFileSync(join(root, '.venv', 'Scripts', 'python.exe'), '')
+      writeFileSync(join(root, 'scripts', 'atomic_runtime.py'), '')
+
+      expect(resolveAtomicRuntimePaths({ projectRoot: root, resourcesPath: join(root, 'resources'), homeDirectory: join(root, 'home'), environmentPath: '', platform: 'win32' })).toEqual({
+        pythonExecutable: join(root, '.venv', 'Scripts', 'python.exe'),
+        runnerScript: join(root, 'scripts', 'atomic_runtime.py'),
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('runs a validated payload through the project-local Python runtime', async () => {
@@ -36,6 +57,19 @@ describe('Electron atomic runtime bridge', () => {
       predictedTokenId: expect.any(Number),
       topTokenIds: expect.arrayContaining([expect.any(Number)]),
     })
+  })
+
+  it.each([
+    ['vision', visionTransformerPreset],
+    ['multimodal image editing', multimodalImageEditorPreset],
+    ['video', videoTransformerPreset],
+  ] as const)('runs the %s starter through PyTorch', async (_name, graph) => {
+    const trace = await runAtomicRuntime({ kind: 'model', graph })
+
+    expect(trace.status).toBe('completed')
+    expect(trace.results).toHaveLength(graph.nodes.length)
+    expect(trace.results.at(-1)).toMatchObject({ status: 'passed' })
+    expect(trace.modelOutput).toMatchObject({ kind: 'tensor', tensorShape: [2, 8, 512] })
   })
 
   it('automatically matches grouped-query KV heads at SDPA', async () => {

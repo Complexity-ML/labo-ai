@@ -262,6 +262,30 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
         if atom == "attention-output-projection":
             require(inputs, "hidden")
             return {"output": nn.Linear(query_heads * head_dim, hidden_size, bias=bool(settings.get("bias", False)))(inputs["hidden"])}
+        if atom in {"vision-patch-projection", "conditioning-projection", "image-latent-decoder", "video-latent-decoder"}:
+            require(inputs, "hidden")
+            return {"output": nn.Linear(hidden_size, hidden_size, bias=bool(settings.get("bias", True)))(inputs["hidden"])}
+        if atom == "modality-type-embedding":
+            require(inputs, "hidden")
+            embedding = torch.randn(1, 1, hidden_size, device=inputs["hidden"].device) * float(settings.get("initialScale", 0.02))
+            return {"output": inputs["hidden"] + embedding}
+        if atom == "adaptive-conditioning":
+            require(inputs, "content", "conditioning")
+            joined = torch.cat((inputs["content"], inputs["conditioning"]), dim=-1)
+            return {"output": nn.Linear(hidden_size * 2, hidden_size, bias=bool(settings.get("bias", True)))(joined)}
+        if atom == "temporal-depthwise-convolution":
+            require(inputs, "hidden")
+            kernel = int(settings.get("kernelSize", 3))
+            source = inputs["hidden"].transpose(1, 2)
+            output = nn.Conv1d(hidden_size, hidden_size, kernel_size=kernel, padding=kernel // 2, groups=hidden_size)(source)
+            return {"output": output.transpose(1, 2)}
+        if atom == "latent-denoiser":
+            require(inputs, "hidden")
+            source = inputs["hidden"]
+            intermediate = int(settings.get("intermediateSize", hidden_size * 4))
+            bias = bool(settings.get("bias", True))
+            denoised = nn.Linear(intermediate, hidden_size, bias=bias)(F.gelu(nn.Linear(hidden_size, intermediate, bias=bias)(source)))
+            return {"output": source + denoised}
         if atom == "residual-add":
             require(inputs, "residual", "branch")
             return {"output": inputs["residual"] + inputs["branch"]}

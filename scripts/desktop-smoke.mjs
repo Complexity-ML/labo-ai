@@ -66,3 +66,15 @@ for (const app of [
   check(packagedHtml.includes('src="./assets/'), `${app} contains the non-black-screen renderer build`)
   check(await exists(join(app, 'Contents', 'Resources', 'runtime', 'atomic_runtime.py')), `${app} contains the Python runner resource`)
 }
+
+for (const app of [
+  join(root, 'release', 'win-unpacked'),
+  join(root, 'release', 'win-arm64-unpacked'),
+]) {
+  const archive = join(app, 'resources', 'app.asar')
+  if (!await exists(archive)) continue
+  const packagedHtml = extractFile(archive, 'dist/index.html').toString('utf8')
+  check(packagedHtml.includes('src="./assets/'), `${app} contains the non-black-screen renderer build`)
+  check(await exists(join(app, 'resources', 'runtime', 'atomic_runtime.py')), `${app} contains the Python runner resource`)
+  check(await exists(join(app, 'LABO AI.exe')), `${app} contains the Windows executable`)
+}

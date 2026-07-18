@@ -20,6 +20,17 @@ describe('LABO AI workspace', () => {
     delete window.labo
   })
 
+  it('uses native Windows chrome and Windows keyboard labels', () => {
+    window.labo = { platform: 'win32', runtime: 'electron', runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }) }
+
+    render(<App />)
+
+    expect(document.querySelector('.app-shell')).toHaveClass('runtime-electron', 'runtime-win32')
+    expect(document.querySelector('.app-shell')).not.toHaveClass('runtime-darwin')
+    expect(screen.getByRole('button', { name: 'Search model cards' })).toHaveTextContent('Ctrl+K')
+    delete window.labo
+  })
+
   it('disables native PyTorch execution in a browser renderer', () => {
     delete window.labo
     render(<App />)
@@ -80,6 +91,22 @@ describe('LABO AI workspace', () => {
     for (const card of ['ScaleNorm', 'Bidirectional SDPA', 'Sinusoidal position encoding', 'Learned gated blend', 'Squared-ReLU MLP', 'Softmax output']) {
       expect(screen.getByRole('button', { name: `Add ${card}` })).toBeInTheDocument()
     }
+  })
+
+  it('offers executable vision, image-editing, and video starters with their own card family', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByText('Specialized variants'))
+    fireEvent.click(screen.getByText('Image, video & multimodal'))
+    expect(screen.getByRole('button', { name: 'Add Vision patch projection' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Adaptive multimodal conditioning' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Temporal depthwise convolution' })).toBeInTheDocument()
+
+    fireEvent.click(document.querySelector('.preset-menu > summary')!)
+    for (const preset of ['Vision', 'Image edit', 'Video']) expect(screen.getByRole('button', { name: preset })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Image edit' }))
+    expect(screen.getByRole('button', { name: 'Select Adaptive text-image conditioning' })).toBeInTheDocument()
+    expect(screen.getByText('16 atoms')).toBeInTheDocument()
   })
 
   it('switches to a focused TR Basic module graph without changing the full TR 300M preset', () => {
@@ -201,11 +228,13 @@ describe('LABO AI workspace', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     expect(screen.queryByRole('textbox', { name: 'Custom card name' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Create card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
     expect(screen.getByRole('dialog', { name: 'Create model card' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Card destination' })).toHaveTextContent('The reusable definition is always saved in My cards.')
+    expect(screen.getByRole('button', { name: /After selected card/ })).toBeDisabled()
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My RMSNorm' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create and add card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create as new architecture' }))
 
     expect(screen.getByRole('button', { name: 'Add My RMSNorm' })).toHaveAttribute('draggable', 'true')
     expect(screen.getByRole('button', { name: 'Select My RMSNorm' })).toBeInTheDocument()
@@ -216,7 +245,7 @@ describe('LABO AI workspace', () => {
     expect(screen.getByText('Valid safe nn.Module constructor')).toBeInTheDocument()
     const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
     expect(code).toContain('kind=custom-pytorch')
-    expect(code).toContain('self.custom_my_rmsnorm_1 = nn.RMSNorm(768)')
+    expect(code).toContain('self.custom_my_rmsnorm = nn.RMSNorm(768)')
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Model card PyTorch module' }), { target: { value: 'torch.load("unsafe.pt")' } })
     expect(screen.getByText('Invalid or unsupported nn.Module constructor')).toBeInTheDocument()
@@ -228,9 +257,23 @@ describe('LABO AI workspace', () => {
     ])
   })
 
+  it('can save a reusable card to the library without mutating the graph', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    fireEvent.click(screen.getByRole('button', { name: /Library only/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'Library RMSNorm' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save to My cards' }))
+
+    expect(screen.getByRole('button', { name: 'Add Library RMSNorm' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Select Library RMSNorm' })).not.toBeInTheDocument()
+    expect(screen.getByText('0 atoms')).toBeInTheDocument()
+  })
+
   it('auto-composes category-specific Blockly card construction blocks', () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'Create card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
     fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'activation' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Use a SiLU activation for the expert branch' } })
     fireEvent.click(screen.getByRole('button', { name: 'Auto-compose blocks' }))
@@ -243,7 +286,7 @@ describe('LABO AI workspace', () => {
 
   it('changes the available card blocks and plugs with the selected category', () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'Create card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
     const palette = screen.getByLabelText('Card operation palette')
 
     expect(within(palette).getByRole('button', { name: 'Linear' })).toBeInTheDocument()
@@ -330,7 +373,7 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add Token IDs' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'New model preset name' }), { target: { value: 'My routed model' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save current graph as preset' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save a named copy of Blank starter' }))
     fireEvent.click(screen.getByText(/Activations/))
     fireEvent.click(screen.getByRole('button', { name: 'Add ReLU' }))
     expect(screen.getByText('2 atoms')).toBeInTheDocument()
@@ -344,12 +387,12 @@ describe('LABO AI workspace', () => {
 
   it('creates independent blank workspaces, mixes presets, and clears one architecture in edit mode', () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'New blank workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     expect(screen.getByText('0 atoms')).toBeInTheDocument()
     expect(screen.getAllByText('Blank canvas 1').length).toBeGreaterThan(0)
 
-    fireEvent.click(screen.getByRole('button', { name: /\+ GPT-like/ }))
-    fireEvent.click(screen.getByRole('button', { name: /\+ TR Basic/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add GPT-like beside current graph' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add TR Basic beside current graph' }))
     expect(screen.getByText('21 atoms')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('GPT-like Starter')
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR Basic · Shared + Residual Top-2')

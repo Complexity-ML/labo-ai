@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { delimiter, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type AtomicRuntimePayload =
@@ -46,24 +46,36 @@ export function resolveAtomicRuntimePaths(options: {
   resourcesPath?: string
   homeDirectory?: string
   configuredPython?: string
+  environmentPath?: string
+  platform?: NodeJS.Platform
 } = {}): AtomicRuntimePaths {
   const root = options.projectRoot ?? projectRoot
   const resources = options.resourcesPath ?? (typeof process.resourcesPath === 'string' ? process.resourcesPath : root)
   const home = options.homeDirectory ?? homedir()
+  const platform = options.platform ?? process.platform
+  const environmentPath = options.environmentPath ?? process.env.PATH ?? process.env.Path ?? ''
+  const pathDelimiter = platform === 'win32' ? ';' : delimiter
+  const executableNames = platform === 'win32' ? ['python.exe', 'python3.exe', 'py.exe'] : ['python3', 'python']
+  const pathCandidates = environmentPath.split(pathDelimiter).filter(Boolean).flatMap((directory) => executableNames.map((name) => resolve(directory, name)))
   const pythonCandidates = [
     options.configuredPython,
     process.env.LABO_AI_PYTHON,
+    resolve(root, '.venv', 'Scripts', 'python.exe'),
     resolve(root, '.venv', 'bin', 'python'),
+    resolve(home, 'Dev', 'labo-ai', '.venv', 'Scripts', 'python.exe'),
     resolve(home, 'Dev', 'labo-ai', '.venv', 'bin', 'python'),
+    resolve(home, 'Development', 'labo-ai', '.venv', 'Scripts', 'python.exe'),
     resolve(home, 'Development', 'labo-ai', '.venv', 'bin', 'python'),
+    resolve(home, 'Projects', 'labo-ai', '.venv', 'Scripts', 'python.exe'),
     resolve(home, 'Projects', 'labo-ai', '.venv', 'bin', 'python'),
+    ...pathCandidates,
     '/opt/homebrew/bin/python3',
     '/usr/local/bin/python3',
     '/usr/bin/python3',
   ].filter((candidate): candidate is string => Boolean(candidate))
   const pythonExecutable = pythonCandidates.find(existsSync)
   if (!pythonExecutable) {
-    throw new Error('Atomic runtime needs Python. Set LABO_AI_PYTHON or keep the project .venv available.')
+    throw new Error('Atomic runtime needs Python 3 with PyTorch. Set LABO_AI_PYTHON or keep a project .venv available (.venv/Scripts/python.exe on Windows).')
   }
 
   const runnerCandidates = [
@@ -97,6 +109,7 @@ export async function runAtomicRuntime(payload: AtomicRuntimePayload): Promise<A
     const child = spawn(pythonExecutable, [runnerScript], {
       cwd: dirname(runnerScript),
       env: { ...process.env, PYTHONNOUSERSITE: '1' },
+      windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     let stdout = ''

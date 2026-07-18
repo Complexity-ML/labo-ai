@@ -6,6 +6,7 @@ LABO AI is a desktop laboratory for composing neural architectures from executab
 
 - More than 100 typed, executable model cards grouped by useful families.
 - Blank, GPT-like, learned-MoE, token-routing, and TR 300M starters.
+- Executable Vision Transformer, multimodal image-editing, and spatiotemporal video starters with dedicated media atomics.
 - Drag-and-drop graph composition with typed elastic cables and deterministic topology-aware XY placement that preserves parallel lanes and minimizes crossings.
 - Two-way graph/PyTorch synchronization for supported semantic atoms.
 - Dedicated modal card builder with category-aware auto-composition, visual input/operation/output blocks, typed plugs, and a safe generated `nn.Module` preview.
@@ -26,7 +27,7 @@ Requirements:
 
 - Node.js and npm
 - Python 3 with the packages in `requirements-runtime.txt`
-- macOS for the packaged desktop build
+- macOS or Windows for the packaged desktop build
 
 ```bash
 npm install
@@ -54,6 +55,20 @@ Create the macOS application, DMG, and ZIP:
 ```bash
 npm run package:mac
 ```
+
+Create the Windows NSIS installer and ZIP on a Windows build host:
+
+```bash
+npm run package:win
+```
+
+Run the guided one-minute agent demo after adding an API key in the app:
+
+```bash
+npm run demo:agent
+```
+
+The recording sequence and hackathon copy are in [`docs/hackathon-submission.md`](docs/hackathon-submission.md).
 
 Artifacts are written to `release/`. The Python atomic runtime is bundled as an Electron extra resource so packaged builds do not resolve it through the application archive.
 
