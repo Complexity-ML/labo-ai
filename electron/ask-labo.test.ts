@@ -32,7 +32,7 @@ describe('Ask LABO OpenAI bridge', () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const requestBody = JSON.parse(String(init?.body)) as { model: string; tools: Array<{ name: string; strict: boolean }>; input: unknown[]; parallel_tool_calls: boolean }
       expect(requestBody.model).toBe('test-model')
-      expect(requestBody.parallel_tool_calls).toBe(false)
+      expect(requestBody.parallel_tool_calls).toBe(true)
       expect(requestBody.tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'search_cards', strict: true }), expect.objectContaining({ name: 'finish_plan', strict: true })]))
       expect(init?.headers).toMatchObject({ Authorization: 'Bearer test-secret-key' })
       if (fetchMock.mock.calls.length === 1) return new Response(JSON.stringify({ output: [functionCall('add_block', { atom_id: 'relu', node_id: 'agent-relu', reason: 'Activation' }, 'call-add')] }), { status: 200 })
