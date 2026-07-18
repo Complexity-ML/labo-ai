@@ -303,6 +303,8 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
   if (!config) throw new Error('No OpenAI API key is configured for LABO AI')
   const controller = new AbortController()
   const session = new AgentToolSession(payload.context)
+  const rawResponseLocale = typeof payload.context.responseLocale === 'string' ? payload.context.responseLocale : 'en'
+  const responseLocale = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(rawResponseLocale) ? rawResponseLocale : 'en'
   const input: unknown[] = [{ role: 'user', content: JSON.stringify({ request: payload.request.trim(), context: payload.context }) }]
   const timeout = setTimeout(() => controller.abort(), 180_000)
   let totalCalls = 0
@@ -320,6 +322,7 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
             'Tensor ranks are part of port contracts. QKV projection emits rank-3 Q/K/V and every SDPA consumes rank-4 Q/K/V, so insert Attention head layout between them.',
             'hiddenSize, queryHeads, keyValueHeads and headDim are graph-wide dimensions. Never edit them on individual cards; use the current graph-wide values consistently.',
             'A chatbot or QA assistant request normally means a compact GPT-like autoregressive graph. Build that minimal graph unless the user explicitly asks for a rule-based or non-neural dialogue engine.',
+            `Write every human-readable summary, reason, warning, missing-block explanation and generated label in the language used by the user request. The UI locale is ${responseLocale}; use it only as a tie-breaker for a mixed or ambiguous request. Never answer in Spanish unless the request itself is Spanish. Keep node ids, port ids and code in English.`,
             payload.context.operationMode === 'parallel'
               ? 'Operation mode is parallel architecture. Treat every existing node and connection as read-only; the new architecture must have its own inputs.'
               : 'Operation mode is extend current graph. Existing cards may be edited only when the request requires it.',

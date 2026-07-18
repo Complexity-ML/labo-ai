@@ -93,7 +93,13 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
     setPlan(undefined)
     setCardOverrides({})
     try {
-      const rawResponse = await window.labo.askLabo({ request: prompt, context: createAgentGraphContext(graph, graphMode, customCards) })
+      const rawResponse = await window.labo.askLabo({
+        request: prompt,
+        context: {
+          ...createAgentGraphContext(graph, graphMode, customCards),
+          responseLocale: navigator.language || 'en',
+        },
+      })
       const response = repairAgentGraphPlan(graph, rawResponse)
       const responsePreview = previewAgentGraphPlan(graph, response, graphMode)
       const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0 || (response.updatedBlocks?.length ?? 0) > 0 || (response.deletedBlocks?.length ?? 0) > 0 || (response.movedBlocks?.length ?? 0) > 0 || responsePreview.acceptedActions.some((action) => action.type !== 'layout')
