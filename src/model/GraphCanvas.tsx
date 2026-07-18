@@ -72,7 +72,13 @@ function ArchitectureNodeCard({ editMode = false, graph, node, selected, status,
   const editability = node.kind === 'custom-pytorch' ? 'CODE' : node.kind === 'input' ? 'LABEL' : 'SETTINGS'
   return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
     <NodePorts graph={graph} node={node} onPointerDown={onPortPointerDown} />
-    <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={onEdit} onPointerDown={(event) => onDragPointerDown?.(event, node)}>
+    <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEdit?.() }} onPointerDown={(event) => {
+      if (editMode || event.detail > 1) {
+        event.stopPropagation()
+        return
+      }
+      onDragPointerDown?.(event, node)
+    }}>
       <span className="node-type">{node.kind}</span><strong>{node.label}</strong><small>{describeNode(node)}</small>
     </button>
     {editMode && <span aria-label={`Editable card: ${editability.toLowerCase()}`} className="card-editability-badge"><Pencil size={9} />{editability}</span>}

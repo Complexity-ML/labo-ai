@@ -186,6 +186,17 @@ describe('LABO AI workspace', () => {
     expect(screen.queryByRole('textbox', { name: 'Tied token embedding vocabSize' })).not.toBeInTheDocument()
   })
 
+  it('opens the central card editor on double-click without switching modes first', () => {
+    render(<App />)
+    const card = screen.getByRole('button', { name: 'Select Tied token embedding' })
+
+    fireEvent.pointerDown(card, { detail: 2, pointerId: 1 })
+    fireEvent.doubleClick(card)
+
+    expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Model card name' })).toHaveValue('Tied token embedding')
+  })
+
   it('creates a reusable custom PyTorch card and keeps its code editable', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
