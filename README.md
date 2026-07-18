@@ -104,6 +104,17 @@ The recording sequence and hackathon copy are in [`docs/hackathon-submission.md`
 
 Artifacts are written to `release/`. The Python atomic runtime is bundled as an Electron extra resource so packaged builds do not resolve it through the application archive.
 
+### Publish a desktop release
+
+The package version is the release source of truth. After the release changes are committed on `main`, bump it and push the generated commit and tag:
+
+```bash
+npm version patch
+git push origin main --follow-tags
+```
+
+The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches `package.json`, validates the project, builds Apple-silicon macOS and Windows x64 packages on their native runners, and publishes them to the matching GitHub release. The Complexity website reads the latest published release automatically, so its download buttons do not require a separate version edit.
+
 ## Security model
 
 - Renderer isolation is enforced through the Electron preload bridge.

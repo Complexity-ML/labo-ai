@@ -19,7 +19,7 @@ export interface ModelWorkspaceState {
   updatedAt: number
 }
 
-const emptyWorkspace = (): ModelWorkspaceState => ({
+export const emptyModelWorkspace = (): ModelWorkspaceState => ({
   activePresetId: '',
   drafts: {},
   userPresets: [],
@@ -68,8 +68,8 @@ function browserStorage(): Storage | undefined {
   }
 }
 
-function parseWorkspace(value: unknown): ModelWorkspaceState {
-  if (!value || typeof value !== 'object') return emptyWorkspace()
+export function parseModelWorkspace(value: unknown): ModelWorkspaceState {
+  if (!value || typeof value !== 'object') return emptyModelWorkspace()
   const candidate = value as Partial<ModelWorkspaceState>
   const drafts = Object.fromEntries(Object.entries(candidate.drafts ?? {}).filter((entry): entry is [string, ModelPresetDraft] => isDraft(entry[1])))
   const userPresets = Array.isArray(candidate.userPresets) ? candidate.userPresets.filter(isGraph) : []
@@ -120,11 +120,11 @@ export function cloneArchitectureGraph(graph: ArchitectureGraph): ArchitectureGr
 }
 
 export function loadModelWorkspace(storage: Storage | undefined = browserStorage()): ModelWorkspaceState {
-  if (!storage) return emptyWorkspace()
+  if (!storage) return emptyModelWorkspace()
   try {
-    return parseWorkspace(JSON.parse(storage.getItem(MODEL_WORKSPACE_STORAGE_KEY) ?? 'null') as unknown)
+    return parseModelWorkspace(JSON.parse(storage.getItem(MODEL_WORKSPACE_STORAGE_KEY) ?? 'null') as unknown)
   } catch {
-    return emptyWorkspace()
+    return emptyModelWorkspace()
   }
 }
 
@@ -154,7 +154,7 @@ export async function loadModelWorkspaceFromDatabase(): Promise<ModelWorkspaceSt
     request.onerror = () => resolve(undefined)
   })
   database.close()
-  const workspace = parseWorkspace(value)
+  const workspace = parseModelWorkspace(value)
   return workspace.updatedAt > 0 ? workspace : undefined
 }
 

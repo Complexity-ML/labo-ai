@@ -32,6 +32,8 @@ interface Window {
     saveOpenAIKey?(apiKey: string): Promise<OpenAISettingsStatus>
     deleteOpenAIKey?(): Promise<OpenAISettingsStatus>
     testOpenAIKey?(): Promise<{ ok: true }>
+    loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; updatedAt?: number; warning?: string }>
+    saveWebWorkspace?(payload: { workspace: unknown; customCards: unknown[] }): Promise<{ saved: true; updatedAt: number }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
     getWindowState?(): Promise<{ fullScreen: boolean }>
     onWindowStateChange?(callback: (state: { fullScreen: boolean }) => void): () => void

@@ -28,7 +28,7 @@
   "build": {
     "appId": "ai.labo.desktop",
     "productName": "LABO AI",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "LABO-AI-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -45,6 +45,7 @@
     ],
     "mac": {
       "icon": "build/icon.icns",
+      "artifactName": "LABO-AI-${version}-${arch}-mac.${ext}",
       "target": [
         "dmg",
         "zip"
@@ -53,18 +54,21 @@
     },
     "win": {
       "icon": "build/icon.png",
+      "artifactName": "LABO-AI-${version}-${arch}-win.${ext}",
       "target": [
         "nsis",
         "zip"
       ]
     },
     "nsis": {
+      "artifactName": "LABO-AI-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
     "dmg": {
+      "artifactName": "LABO-AI-${version}-${arch}.${ext}",
       "title": "LABO AI ${version}",
       "backgroundColor": "#0d0f15",
       "iconSize": 112,

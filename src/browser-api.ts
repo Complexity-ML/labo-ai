@@ -45,5 +45,10 @@ export function installBrowserApi(): void {
     }),
     deleteOpenAIKey: () => requestJson('/api/labo/key', { method: 'DELETE' }),
     testOpenAIKey: () => requestJson('/api/labo/key/test', { method: 'POST' }),
+    loadWebWorkspace: () => requestJson('/api/labo/workspace'),
+    saveWebWorkspace: (payload) => requestJson('/api/labo/workspace', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   }
 }

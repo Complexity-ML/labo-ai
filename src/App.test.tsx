@@ -57,6 +57,44 @@ describe('LABO AI workspace', () => {
     expect(screen.getByText('desktop only')).toBeInTheDocument()
   })
 
+  it('keeps an authenticated web workspace on the user-scoped server without browser storage', async () => {
+    const saveWebWorkspace = vi.fn(async () => ({ saved: true as const, updatedAt: Date.now() }))
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    window.labo = {
+      platform: 'web',
+      runtime: 'web',
+      loadWebWorkspace: async () => ({ authenticated: true, workspace: null, customCards: [] }),
+      saveWebWorkspace,
+    }
+
+    render(<App />)
+    fireEvent.click(screen.getByText('My workspaces'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
+
+    await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalled(), { timeout: 2_000 })
+    expect(setItem).not.toHaveBeenCalled()
+    delete window.labo
+    setItem.mockRestore()
+  })
+
+  it('keeps a guest web workspace ephemeral', async () => {
+    const saveWebWorkspace = vi.fn(async () => ({ saved: true as const, updatedAt: Date.now() }))
+    window.labo = {
+      platform: 'web',
+      runtime: 'web',
+      loadWebWorkspace: async () => ({ authenticated: false, workspace: null, customCards: [] }),
+      saveWebWorkspace,
+    }
+
+    render(<App />)
+    fireEvent.click(screen.getByText('My workspaces'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
+    await new Promise((resolve) => setTimeout(resolve, 850))
+
+    expect(saveWebWorkspace).not.toHaveBeenCalled()
+    delete window.labo
+  })
+
   it('shows the canonical TR 300M GQA-attention and deterministic routed-MLP workspace', () => {
     render(<App />)
 

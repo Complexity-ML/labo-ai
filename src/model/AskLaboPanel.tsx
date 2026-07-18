@@ -17,6 +17,7 @@ interface AskLaboPanelProps {
 const AGENT_AUTO_APPLY_STORAGE_KEY = 'labo.ask.auto-apply.v1'
 
 function loadAutoApply(): boolean {
+  if (window.labo?.runtime === 'web') return false
   try {
     return window.localStorage.getItem(AGENT_AUTO_APPLY_STORAGE_KEY) === 'true'
   } catch {
@@ -75,7 +76,7 @@ export function AskLaboPanel({ graph, customCards, open, onApply, onClose }: Ask
   }, [open])
 
   useEffect(() => {
-    window.localStorage.setItem(AGENT_AUTO_APPLY_STORAGE_KEY, String(autoApply))
+    if (window.labo?.runtime !== 'web') window.localStorage.setItem(AGENT_AUTO_APPLY_STORAGE_KEY, String(autoApply))
   }, [autoApply])
 
   if (!open) return null
