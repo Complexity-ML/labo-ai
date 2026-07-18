@@ -18,7 +18,7 @@
 .ask-labo-panel {
   position: relative;
   inset: auto;
-  width: min(620px, calc(100vw - 40px));
+  width: min(660px, calc(100vw - 40px));
   max-height: none;
   display: flex;
   flex-direction: column;
@@ -88,6 +88,9 @@
 }
 
 .ask-labo-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
   gap: 0;
   padding: 0;
   border-bottom: 0;
@@ -169,6 +172,116 @@
   span { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; }
   small { overflow: hidden; color: #727d79; font: 8px 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+.ask-labo-activity-trigger {
+  position: relative;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  margin-left: 8px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 50%;
+  color: #8f9c97;
+  background: rgb(34 38 38 / 94%);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 36%);
+
+  &:hover { color: #d7eee4; border-color: rgb(112 224 173 / 28%); }
+  &[aria-expanded='true'] { color: #10201a; border-color: #d7eee4; background: #d7eee4; }
+  b { position: absolute; top: -5px; right: -4px; min-width: 15px; height: 15px; display: grid; place-items: center; padding: 0 3px; border: 2px solid #111516; border-radius: 8px; color: #10201a; background: #70e0ad; font: 7px 'JetBrains Mono', monospace; }
+}
+
+.ask-labo-activity {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: 64px;
+  left: 0;
+  max-height: min(430px, calc(100vh - 150px));
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 12px;
+  color: #d9e0dd;
+  background: rgb(12 17 18 / 98%);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 65%), inset 0 1px 0 rgb(255 255 255 / 4%);
+  backdrop-filter: blur(18px);
+
+  > header {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px 8px 13px;
+    border-bottom: 1px solid var(--labo-line-soft);
+    background: rgb(14 20 21 / 94%);
+
+    > span { display: flex; align-items: center; gap: 7px; }
+    strong { font-size: 11px; }
+    small { color: #697571; font: 8px 'JetBrains Mono', monospace; }
+    div { display: flex; gap: 3px; }
+    button { min-height: 26px; padding: 0 8px; border: 0; color: #7f8a86; background: transparent; font-size: 9px; }
+    button:hover { color: #d9e0dd; background: rgb(255 255 255 / 5%); }
+  }
+
+  ol { margin: 0; padding: 0; list-style: none; }
+
+  li {
+    position: relative;
+    padding: 11px 70px 11px 13px;
+    border-bottom: 1px solid var(--labo-line-soft);
+
+    &:last-child { border-bottom: 0; }
+    > strong { display: block; overflow: hidden; color: #e6eeeb; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    > p { margin: 4px 0 0; color: #84908c; font-size: 9px; line-height: 1.45; }
+    > button { position: absolute; right: 11px; bottom: 11px; min-height: 25px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-color: var(--labo-line); color: #aeb9b5; background: rgb(255 255 255 / 2%); font-size: 8px; }
+    &[data-status='failed'] { box-shadow: inset 2px 0 #f09a9a; }
+    &[data-status='running'] { box-shadow: inset 2px 0 #7dd3fc; }
+    &[data-status='review'] { box-shadow: inset 2px 0 #c4b5fd; }
+    &[data-status='applied'] { box-shadow: inset 2px 0 #70e0ad; }
+  }
+}
+
+.ask-labo-activity-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: #7f8b87;
+  font: 8px 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+
+  span { display: inline-flex; align-items: center; gap: 5px; }
+  time { color: #56615d; }
+}
+
+.ask-labo-activity-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+
+  span { padding: 2px 5px; border-radius: 4px; color: #77837f; background: rgb(255 255 255 / 4%); font: 7px 'JetBrains Mono', monospace; }
+}
+
+.ask-labo-activity-tools {
+  display: block;
+  overflow: hidden;
+  margin-top: 6px;
+  color: #687570;
+  font: 7px 'JetBrains Mono', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-labo-activity-empty { margin: 0; padding: 20px; color: #74807c; font-size: 10px; text-align: center; }
 
 .ask-labo-settings {
   margin: 0 18px 16px;

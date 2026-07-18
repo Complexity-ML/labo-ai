@@ -753,6 +753,40 @@ describe('LABO AI workspace', () => {
     delete window.labo
   })
 
+  it('tracks running, validated and applied agent tasks in the footer activity center', async () => {
+    let resolveAsk: ((plan: {
+      summary: string
+      addedBlocks: { atomId: string; nodeId: string; reason: string }[]
+      createdBlocks: never[]
+      connections: never[]
+      missingBlocks: never[]
+      warnings: never[]
+    }) => void) | undefined
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: () => new Promise((resolve) => { resolveAsk = resolve }),
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Auto apply' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Ask LABO' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add one ReLU card' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('Inspecting cards and validating graph changes')
+    resolveAsk?.({ summary: 'ReLU added and graph validated.', addedBlocks: [{ atomId: 'relu', nodeId: 'agent-relu-activity', reason: 'Requested activation.' }], createdBlocks: [], connections: [], missingBlocks: [], warnings: [] })
+
+    expect(await screen.findByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('applied')
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('1 accepted')
+    expect(screen.getByRole('button', { name: 'Retry agent task: Add one ReLU card' })).toBeInTheDocument()
+    delete window.labo
+  })
+
   it('previews and applies an agent-added atomic with its elastic', async () => {
     window.labo = {
       platform: 'darwin',
