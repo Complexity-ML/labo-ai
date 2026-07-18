@@ -45,6 +45,8 @@ jobs:
       - run: npm ci
       - name: Build Apple silicon DMG and ZIP
         run: npm run package:mac -- --arm64
+      - name: Verify the packaged macOS signature
+        run: codesign --verify --deep --strict --verbose=4 "release/mac-arm64/LABO AI.app"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos-arm64
