@@ -1,0 +1,636 @@
+// @vitest-environment jsdom
+
+import '@testing-library/jest-dom/vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import App from './App'
+
+afterEach(() => {
+  cleanup()
+  window.localStorage.clear()
+})
+
+describe('LABO AI workspace', () => {
+  it('reserves the native macOS titlebar area only inside Electron', () => {
+    window.labo = { platform: 'darwin', runtime: 'electron', runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }) }
+
+    render(<App />)
+
+    expect(document.querySelector('.app-shell')).toHaveClass('runtime-electron')
+    delete window.labo
+  })
+
+  it('disables native PyTorch execution in a browser renderer', () => {
+    delete window.labo
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Play model atoms' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Step one model atom' })).toBeDisabled()
+    expect(screen.getByText('desktop only')).toBeInTheDocument()
+  })
+
+  it('shows the canonical TR 300M GQA-attention and deterministic routed-MLP workspace', () => {
+    render(<App />)
+
+    expect(screen.getByText('LABO AI')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Blocks' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PyTorch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Split' })).toHaveAttribute('aria-pressed', 'true')
+    for (const label of ['Tied token embedding', 'GQA QKV projection', '16 Q / 4 KV heads', 'QK-Norm', 'Causal SDPA / Flash', 'Fixed lexical top-2 lookup', 'Shared dense SwiGLU', '4 × routed SwiGLU']) {
+      expect(screen.getByRole('button', { name: `Select ${label}` })).not.toHaveAttribute('draggable')
+    }
+    expect(document.querySelectorAll('[data-edge-id]')).toHaveLength(31)
+    expect(document.querySelector('[data-port-id="qkv-q-output"]')).toHaveAttribute('data-port-role', 'query')
+    expect(document.querySelector('[data-port-id="sdpa-output-output"]')).toHaveAttribute('data-port-role', 'attention')
+    expect(document.querySelector('[data-port-id="fixed-routes-expertIndices-output"]')).toHaveAttribute('data-port-role', 'expert-indices')
+    expect(document.querySelector('[data-port-id="routed-expertWeights-input"]')).toHaveAttribute('data-port-role', 'routing-weights')
+    const pytorch = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(pytorch).toContain('class GeneratedModel')
+    expect(pytorch).toContain('self.embedding = nn.Embedding(32000, 1024)')
+    expect(pytorch).toContain('# labo:edge=rope-q-sdpa source=rope target=sdpa')
+    expect(pytorch).toContain('self.head.weight = self.embedding.weight')
+    expect(document.querySelector('.python-syntax-layer')).toHaveAttribute('aria-hidden', 'true')
+    expect(document.querySelector('.python-token.keyword')).toHaveTextContent('import')
+    expect(document.querySelector('.python-token.class-name')).toHaveTextContent('GeneratedModel')
+    expect(screen.queryByRole('button', { name: 'Run checks' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play model atoms' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Step one model atom' })).toBeInTheDocument()
+    expect(screen.getByText('20 atoms')).toBeInTheDocument()
+    expect(screen.getByText('PyTorch graph executable')).toBeInTheDocument()
+    expect(screen.queryByText('368.64K params')).not.toBeInTheDocument()
+    expect(screen.queryByText('98.18M params')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Learned Hidden-State Router' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Top-K Routing' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Routed Residual Experts' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Shared Dense Expert' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add DeepSeek-style MoE' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /dispatch|gather|scatter/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText(/Activations/))
+    expect(screen.getByRole('button', { name: 'Add ReLU' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add GELU' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add SiLU / Swish' })).toBeInTheDocument()
+  })
+
+  it('exposes the 100+ native card catalog by useful atomic families', () => {
+    render(<App />)
+
+    for (const family of ['Normalization variants', 'Attention variants', 'Position variants', 'Composition variants', 'MLP variants', 'Output variants']) {
+      fireEvent.click(screen.getByText(new RegExp(family)))
+    }
+    for (const card of ['ScaleNorm', 'Bidirectional SDPA', 'Sinusoidal position encoding', 'Learned gated blend', 'Squared-ReLU MLP', 'Softmax output']) {
+      expect(screen.getByRole('button', { name: `Add ${card}` })).toBeInTheDocument()
+    }
+  })
+
+  it('switches to a focused TR Basic module graph without changing the full TR 300M preset', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'TR Basic' }))
+
+    for (const label of ['Token IDs', 'Contextual hidden state', 'Fixed Token-ID Router', 'Shared Dense Expert', '4 × Routed Residual Experts', 'Shared + Routed Merge']) {
+      expect(screen.getByRole('button', { name: `Select ${label}` })).toBeInTheDocument()
+    }
+    expect(screen.getByText('6 atoms')).toBeInTheDocument()
+    expect(screen.getByText(/6 nodes · 7 links/)).toBeInTheDocument()
+    const trCode = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(trCode).toContain('def forward(self, token_ids: torch.Tensor, hidden_states: torch.Tensor):')
+    expect(trCode).not.toContain('atom=moe-router')
+
+    fireEvent.click(screen.getByRole('button', { name: 'TR 300M' }))
+    expect(screen.getByRole('button', { name: 'Select GQA QKV projection' })).toBeInTheDocument()
+    expect(screen.getByText('20 atoms')).toBeInTheDocument()
+  })
+
+  it('offers a blank starter and focused architecture presets without a static contracts panel', () => {
+    render(<App />)
+
+    expect(screen.queryByText('Architecture contracts')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    expect(screen.getByText('Blank canvas ready')).toBeInTheDocument()
+    expect(screen.getByText('0 atoms')).toBeInTheDocument()
+    expect(screen.getByText(/0 nodes · 0 links/)).toBeInTheDocument()
+    expect(screen.getByText('Neural IR blank')).toBeInTheDocument()
+    expect(screen.getByText(/Add an atomic block from the library/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play model atoms' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Model generation prompt' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Model generation output')).toHaveTextContent('waiting for blocks')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Learned MoE' }))
+    expect(screen.getByRole('button', { name: 'Select Learned Hidden-State Router' })).toBeInTheDocument()
+    expect(screen.getByText('9 atoms')).toBeInTheDocument()
+  })
+
+  it('loads an executable dense GPT-like starter', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'GPT-like' }))
+
+    for (const label of ['Tied token embedding', '12-head QKV projection', 'Causal self-attention', 'Dense SwiGLU MLP', 'Tied language-model head']) {
+      expect(screen.getByRole('button', { name: `Select ${label}` })).toBeInTheDocument()
+    }
+    expect(screen.getByText('15 atoms')).toBeInTheDocument()
+    expect(screen.getByText('PyTorch graph executable')).toBeInTheDocument()
+    const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(code).toContain('F.scaled_dot_product_attention')
+    expect(code).toContain('self.mlp_gate = nn.Linear(768, 3072, bias=False)')
+    expect(code).toContain('self.head.weight = self.embedding.weight')
+  })
+
+  it('keeps the prompt and output module on every built-in model starter', () => {
+    render(<App />)
+
+    for (const preset of ['Blank starter', 'GPT-like', 'TR Basic', 'Learned MoE', 'TR 300M']) {
+      fireEvent.click(screen.getByRole('button', { name: preset }))
+      expect(screen.getByRole('textbox', { name: 'Model generation prompt' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Model generation output')).toBeInTheDocument()
+    }
+  })
+
+  it('adds graph input cards from the Blockly library to a blank model', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+
+    for (const label of ['Token IDs', 'Hidden State', 'Training Labels']) {
+      expect(screen.getByRole('button', { name: `Add ${label}` })).toHaveAttribute('draggable', 'true')
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Add Token IDs' }))
+
+    expect(screen.getByRole('button', { name: 'Select Token IDs' })).toBeInTheDocument()
+    expect(document.querySelector('[data-port-id="token-ids-tokenIds-output"]')).toHaveAttribute('data-port-role', 'token-ids')
+    expect(screen.getByText('Research BPE')).toBeInTheDocument()
+    expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
+    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('return token_ids')
+  })
+
+  it('creates a reusable custom PyTorch card and keeps its code editable', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My RMSNorm' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create and add card' }))
+
+    expect(screen.getByRole('button', { name: 'Add My RMSNorm' })).toHaveAttribute('draggable', 'true')
+    expect(screen.getByRole('button', { name: 'Select My RMSNorm' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Selected custom card PyTorch code' })).toHaveValue('nn.RMSNorm(768)')
+    expect(screen.getByText('Valid safe nn.Module constructor')).toBeInTheDocument()
+    const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(code).toContain('kind=custom-pytorch')
+    expect(code).toContain('self.custom_my_rmsnorm_1 = nn.RMSNorm(768)')
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Selected custom card PyTorch code' }), { target: { value: 'torch.load("unsafe.pt")' } })
+    expect(screen.getByText('Invalid or unsupported nn.Module constructor')).toBeInTheDocument()
+    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('class GeneratedInvalidGraph')
+    expect(JSON.parse(window.localStorage.getItem('labo.custom-pytorch-cards.v1') ?? '[]')).toEqual([
+      { id: 'my-rmsnorm', label: 'My RMSNorm', code: 'nn.RMSNorm(768)' },
+    ])
+  })
+
+  it('exposes the supervised objective that consumes the Training Labels Y plug', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Training Labels' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Cross-entropy loss' }))
+
+    expect(document.querySelector('[data-port-id="labels-labels-output"]')).toHaveAttribute('data-port-role', 'labels')
+    expect(document.querySelector('[data-port-id="cross-entropy-loss-1-labels-input"]')).toHaveAttribute('data-port-role', 'labels')
+    expect(document.querySelector('[data-port-id="cross-entropy-loss-1-logits-input"]')).toHaveAttribute('data-port-role', 'logits')
+  })
+
+  it('offers an explicit tied language-model head Blockly card', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByText(/Output variants/))
+    const card = screen.getByRole('button', { name: 'Add Tied language-model head' })
+    expect(card).toHaveAttribute('draggable', 'true')
+    fireEvent.click(card)
+
+    expect(screen.getByRole('button', { name: 'Select Tied language-model head' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Tied language-model head tieEmbeddingWeights' })).toBeChecked()
+    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('# labo:node=lm-head-1 atom=lm-head')
+    expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
+  })
+
+  it('preserves each preset draft while switching between model starters', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Token IDs' }))
+    expect(screen.getByText('1 atoms')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'GPT-like' }))
+    expect(screen.getByText('15 atoms')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+
+    expect(screen.getByText('1 atoms')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Token IDs' })).toBeInTheDocument()
+    expect(document.querySelector('[data-port-id="token-ids-tokenIds-output"]')).toBeInTheDocument()
+  })
+
+  it('tokenizes a real prompt before running the GPT-like graph', async () => {
+    const runAtomic = vi.fn(async (payload: { kind: 'model'; graph: unknown; tokenIds?: number[] } | { kind: 'tokenizer'; pipeline: unknown; sample?: string }) => {
+      if (payload.kind === 'tokenizer') {
+        return { engine: 'tokenizers' as const, status: 'completed' as const, tokenIds: [4, 8, 15, 16, 23, 42], results: [] }
+      }
+      const nodes = (payload.graph as { nodes: { id: string }[] }).nodes
+      return {
+        engine: 'pytorch' as const,
+        status: 'completed' as const,
+        modelOutput: { kind: 'logits' as const, tensorShape: [1, 6, 32000], logitsShape: [1, 6, 32000], predictedTokenId: 42, topTokenIds: [42, 23, 16, 15, 8], topProbabilities: [0.4, 0.25, 0.15, 0.12, 0.08] },
+        results: nodes.map((node) => ({ atomId: node.id, status: 'passed' as const, summary: `${node.id} ok` })),
+      }
+    })
+    window.labo = { platform: 'darwin', runtime: 'electron', runAtomic }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'GPT-like' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Model generation prompt' }), { target: { value: 'Salut GPT' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play model atoms' }))
+
+    await waitFor(() => expect(screen.getAllByText('completed')).toHaveLength(2))
+    expect(runAtomic).toHaveBeenCalledTimes(2)
+    expect(runAtomic.mock.calls[0][0]).toMatchObject({ kind: 'tokenizer', sample: 'Salut GPT' })
+    expect(runAtomic.mock.calls[1][0]).toMatchObject({ kind: 'model', tokenIds: [4, 8, 15, 16, 23, 42] })
+    expect(screen.getByText('6 Token IDs')).toBeInTheDocument()
+    expect(screen.getByLabelText('Model generation output')).toHaveTextContent('Predicted Token ID42')
+    expect(screen.getByLabelText('Model generation output')).toHaveTextContent('42 (40.00%)')
+    delete window.labo
+  })
+
+  it('steps one elastic execution level without completing the whole graph', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async (payload) => {
+        if (payload.kind === 'tokenizer') return { engine: 'tokenizers', status: 'completed', tokenIds: [1, 2, 3], results: [] }
+        const nodes = payload.kind === 'model' ? (payload.graph as { nodes: { id: string }[] }).nodes : []
+        return { engine: 'pytorch', status: 'completed', results: nodes.map((node) => ({ atomId: node.id, status: 'passed', summary: `${node.id} ok` })) }
+      },
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step one model atom' }))
+
+    await waitFor(() => expect(screen.getAllByText('paused')).toHaveLength(2))
+    expect(screen.getByText('embedding + fixed-routes')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Token IDs' }).closest('.architecture-node')).toHaveClass('status-passed')
+    expect(screen.getByRole('button', { name: 'Select Tied token embedding' }).closest('.architecture-node')).toHaveClass('status-pending')
+    delete window.labo
+  })
+
+  it('starts a fresh PyTorch trace when replaying or stepping after completion', async () => {
+    const runAtomic = vi.fn(async (payload: { kind: 'model'; graph: unknown; tokenIds?: number[] } | { kind: 'tokenizer'; pipeline: unknown; sample?: string }) => {
+      if (payload.kind === 'tokenizer') return { engine: 'tokenizers' as const, status: 'completed' as const, tokenIds: [1, 2, 3], results: [] }
+      const nodes = payload.kind === 'model' ? (payload.graph as { nodes: { id: string }[] }).nodes : []
+      return { engine: 'pytorch' as const, status: 'completed' as const, results: nodes.map((node) => ({ atomId: node.id, status: 'passed' as const, summary: `${node.id} ok` })) }
+    })
+    window.labo = { platform: 'darwin', runtime: 'electron', runAtomic }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play model atoms' }))
+    await waitFor(() => expect(screen.getAllByText('completed')).toHaveLength(2))
+    expect(runAtomic).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step one model atom' }))
+    await waitFor(() => expect(screen.getAllByText('paused')).toHaveLength(2))
+    expect(runAtomic).toHaveBeenCalledTimes(4)
+    expect(screen.getByText('embedding + fixed-routes')).toBeInTheDocument()
+    delete window.labo
+  })
+
+  it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
+
+    expect(screen.getByRole('button', { name: 'Use AdamW' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use Muon' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use Muon' }))
+    expect(screen.getByRole('spinbutton', { name: 'Muon momentum' })).toHaveValue(0.95)
+    expect(screen.getByText(/torch\.optim\.Muon\(model\.parameters\(\)/)).toBeInTheDocument()
+  })
+
+  it('selects, edits, and adds freely manipulable model atoms', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+    const selectedCard = screen.getByRole('button', { name: 'Select Attention RMSNorm' }).closest('.architecture-node')
+    expect(selectedCard).not.toHaveClass('editing')
+    expect(selectedCard?.querySelector('.block-inline-editor')).not.toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Attention RMSNorm epsilon' }).closest('.inspector')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Attention RMSNorm epsilon' }), { target: { value: '0.00001' } })
+    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('self.attention_norm = nn.RMSNorm(1024, eps=1e-05)')
+
+    fireEvent.click(screen.getByText(/Activations/))
+    fireEvent.click(screen.getByRole('button', { name: 'Add ReLU' }))
+    expect(screen.getByText('21 atoms')).toBeInTheDocument()
+    expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
+    const relu = screen.getByRole('button', { name: 'Select ReLU' })
+    expect(relu.closest('.architecture-node')).toHaveAttribute('data-atom-id', 'relu')
+    const updatedCode = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(updatedCode).toContain('# labo:node=relu-1 atom=relu')
+    expect(updatedCode).toContain('self.relu_1 = nn.ReLU(inplace=False)')
+    expect(updatedCode).not.toContain('relu_1_output = self.relu_1(')
+  })
+
+  it('drags a library card onto the requested graph position', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByText(/Activations/))
+
+    const values = new Map<string, string>()
+    const dataTransfer = {
+      dropEffect: 'none',
+      effectAllowed: 'none',
+      getData: (type: string) => values.get(type) ?? '',
+      setData: (type: string, value: string) => values.set(type, value),
+      get types() { return [...values.keys()] },
+    }
+    const libraryCard = screen.getByRole('button', { name: 'Add ReLU' })
+    const canvas = screen.getByLabelText('Architecture graph canvas')
+
+    expect(libraryCard).toHaveAttribute('draggable', 'true')
+    fireEvent.dragStart(libraryCard, { dataTransfer })
+    fireEvent.dragOver(canvas, { clientX: 740, clientY: 260, dataTransfer })
+    expect(canvas).toHaveClass('accepts-library-drop')
+    const dropEvent = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperties(dropEvent, {
+      clientX: { value: 740 },
+      clientY: { value: 260 },
+      dataTransfer: { value: dataTransfer },
+    })
+    fireEvent(canvas, dropEvent)
+
+    const droppedCard = screen.getByRole('button', { name: 'Select ReLU' }).closest('.architecture-node')
+    expect(droppedCard).toHaveStyle({ left: '666px', top: '222px' })
+    expect(canvas).not.toHaveClass('accepts-library-drop')
+    expect(screen.getByText('1 atoms')).toBeInTheDocument()
+  })
+
+  it('exposes distinct semantic ports for routing and expert merging', () => {
+    render(<App />)
+    expect(document.querySelector('[data-port-id="fixed-routes-expertIndices-output"]')).toHaveAttribute('data-port-key', 'expertIndices')
+    expect(document.querySelector('[data-port-id="fixed-routes-expertWeights-output"]')).toHaveAttribute('data-port-key', 'expertWeights')
+    expect(document.querySelector('[data-port-id="branch-gates-routed-input"]')).toHaveAttribute('data-port-key', 'routed')
+    expect(document.querySelector('[data-port-id="branch-gates-shared-input"]')).toHaveAttribute('data-port-key', 'shared')
+  })
+
+  it('unplugs an elastic cable by dragging its connected input into empty canvas', () => {
+    render(<App />)
+
+    const qkvInput = screen.getByRole('button', { name: 'qkv input H' })
+    const elementFromPoint = document.elementFromPoint
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => null })
+    fireEvent.pointerDown(qkvInput, { clientX: 80, clientY: 160 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 300 })
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 300 })
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: elementFromPoint })
+
+    expect(screen.getByText(/20 nodes · 30 links/)).toBeInTheDocument()
+    expect(screen.getByText('Cable disconnected')).toBeInTheDocument()
+    expect(screen.getByText('Neural IR invalid')).toBeInTheDocument()
+    expect(screen.getByText(/Graph incomplete · 1 wiring issue/)).toBeInTheDocument()
+    const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(code).toContain('class GeneratedModel(nn.Module):')
+    expect(code).not.toContain('class GeneratedInvalidGraph')
+    expect(code).toContain('self.attention_norm = nn.RMSNorm')
+    expect(code).toContain('self.qkv_q =')
+    expect(code).not.toContain('qkv_q = self.qkv_q(')
+    expect(code).not.toContain('# labo:edge=attention-norm-qkv')
+    expect(code).not.toContain('qkv_hidden: torch.Tensor')
+  })
+
+  it('previews and confirms Ask LABO elastics between existing blocks', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Reconnect the attention path.',
+        addedBlocks: [],
+        connections: [{
+          sourceId: 'attention-norm', sourcePortId: 'output', targetId: 'qkv', targetPortId: 'hidden', reason: 'QKV needs normalized hidden states.',
+        }],
+        missingBlocks: [],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+
+    const elementFromPoint = document.elementFromPoint
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => null })
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'qkv input H' }), { clientX: 80, clientY: 160 })
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 300 })
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: elementFromPoint })
+    expect(screen.getByText(/20 nodes · 30 links/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Reconnect the attention blocks' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('1 elastic ready')).toBeInTheDocument()
+    expect(screen.getByText('attention-norm.output')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    expect(screen.getByText(/20 nodes · 31 links/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Ask LABO' })).not.toBeInTheDocument()
+    delete window.labo
+  })
+
+  it('previews and applies an agent-added atomic with its elastic', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Add a ReLU branch after the final normalization.',
+        addedBlocks: [{ atomId: 'relu', nodeId: 'agent-relu', reason: 'The activation is not on the canvas.' }],
+        connections: [{
+          sourceId: 'final-norm', sourcePortId: 'output', targetId: 'agent-relu', targetPortId: 'hidden', reason: 'Feed normalized states into the new activation.',
+        }],
+        missingBlocks: [],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Add a ReLU after the final normalization' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('1 atomic block ready')).toBeInTheDocument()
+    expect(screen.getByText('agent-relu')).toBeInTheDocument()
+    expect(screen.getByText('1 elastic ready')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Select ReLU' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
+    expect(screen.getByText(/21 nodes · 32 links/)).toBeInTheDocument()
+    delete window.labo
+  })
+
+  it('lets each desktop user save, verify, and remove their own API key', async () => {
+    const saveOpenAIKey = vi.fn(async () => ({ configured: true, source: 'secure-storage' as const, encryptionAvailable: true }))
+    const deleteOpenAIKey = vi.fn(async () => ({ configured: false, source: 'none' as const, encryptionAvailable: true }))
+    const testOpenAIKey = vi.fn(async () => ({ ok: true as const }))
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: false, source: 'none', encryptionAvailable: true }),
+      saveOpenAIKey,
+      deleteOpenAIKey,
+      testOpenAIKey,
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask LABO' }))
+
+    expect(await screen.findByText('No API key configured for this user.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('OpenAI API key'), { target: { value: 'sk-project-user-secret-123456789' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and verify key' }))
+    expect(await screen.findByText('Key saved and verified with OpenAI.')).toBeInTheDocument()
+    expect(saveOpenAIKey).toHaveBeenCalledWith('sk-project-user-secret-123456789')
+    expect(testOpenAIKey).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm removal' }))
+    expect(await screen.findByText('API key removed from this user account.')).toBeInTheDocument()
+    expect(deleteOpenAIKey).toHaveBeenCalledOnce()
+    delete window.labo
+  })
+
+  it('pans and zooms the graph viewport without changing graph coordinates', () => {
+    render(<App />)
+    const canvas = screen.getByLabelText('Architecture graph canvas')
+    const world = screen.getByTestId('graph-world')
+
+    expect(world).toHaveStyle({ transform: 'translate(0px, 0px) scale(1)' })
+    fireEvent.wheel(canvas, { deltaX: 45, deltaY: 30 })
+    expect(world).toHaveStyle({ transform: 'translate(-45px, -30px) scale(1)' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('110%')
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('100%')
+    expect(screen.getByRole('button', { name: 'Fit graph' })).toBeInTheDocument()
+  })
+
+  it('moves a stacked model card with a direct pointer drag', () => {
+    render(<App />)
+    const canvas = screen.getByLabelText('Architecture graph canvas')
+    const handle = screen.getByRole('button', { name: 'Select Attention RMSNorm' })
+    const card = handle.closest('.architecture-node') as HTMLElement
+    const initialLeft = Number.parseFloat(card.style.left)
+    const initialTop = Number.parseFloat(card.style.top)
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 7, clientX: 120, clientY: 180 })
+    fireEvent.pointerMove(canvas, { pointerId: 7, clientX: 320, clientY: 275 })
+
+    expect(card).toHaveClass('dragging')
+    expect(Number.parseFloat(card.style.left)).toBe(initialLeft + 200)
+    expect(Number.parseFloat(card.style.top)).toBe(initialTop + 95)
+
+    fireEvent.pointerUp(canvas, { pointerId: 7, clientX: 320, clientY: 275 })
+    expect(card).not.toHaveClass('dragging')
+    expect(Number.parseFloat(card.style.left)).toBe(initialLeft + 200)
+    expect(Number.parseFloat(card.style.top)).toBe(initialTop + 95)
+  })
+
+  it('keeps elastic endpoints stable when selecting a fixed-size card', () => {
+    const originalRect = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      const portId = this.getAttribute?.('data-port-id') ?? ''
+      const x = portId.includes('qkv-') ? 220 : 160
+      const y = portId.includes('qkv-') ? 320 : 160
+      return { x, y, left: x, top: y, right: x + 16, bottom: y + 16, width: 16, height: 16, toJSON: () => ({}) } as DOMRect
+    }
+    try {
+      render(<App />)
+      const qkvCable = document.querySelector('[data-edge-id="attention-norm-qkv"]')
+      const before = qkvCable?.getAttribute('d')
+      fireEvent.click(screen.getByRole('button', { name: 'Select GQA QKV projection' }))
+      expect(screen.getByRole('button', { name: 'Select GQA QKV projection' }).closest('.architecture-node')).not.toHaveClass('editing')
+      expect(qkvCable?.getAttribute('d')).toBe(before)
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect
+    }
+  })
+
+  it('never clips circular plugs at atom boundaries', () => {
+    render(<App />)
+    const embeddingCard = screen.getByRole('button', { name: 'Select Tied token embedding' }).closest('.architecture-node')
+    const routedCard = screen.getByRole('button', { name: 'Select 4 × routed SwiGLU' }).closest('.architecture-node')
+    expect(embeddingCard).toHaveStyle({ overflow: 'visible' })
+    expect(routedCard).toHaveStyle({ overflow: 'visible' })
+  })
+
+  it('deletes a model atom without recreating it in PyTorch', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select GQA QKV projection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected model atom' }))
+
+    const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
+    expect(code).not.toContain('self.qkv_q =')
+    expect(code).toContain('class GeneratedModel(nn.Module):')
+    expect(code).not.toContain('class GeneratedInvalidGraph')
+    expect(code).not.toContain('self.head_layout')
+    expect(code).not.toContain('head_layout_q: torch.Tensor')
+    expect(screen.getByText('Neural IR invalid')).toBeInTheDocument()
+    expect(screen.getByText(/Graph incomplete · \d+ wiring issues?/)).toBeInTheDocument()
+  })
+
+  it('applies supported PyTorch edits back to the same model atom', () => {
+    render(<App />)
+
+    const editor = screen.getByRole('textbox', { name: 'PyTorch editor' })
+    fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace('self.attention_norm = nn.RMSNorm(1024, eps=1e-06)', 'self.attention_norm = nn.RMSNorm(1024, eps=1e-05)') } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply PyTorch to blocks' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Attention RMSNorm epsilon' })).toHaveValue(0.00001)
+  })
+
+  it('opens the atomic Tokenizer Studio and compiles its IR to Python or Rust', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tokenizer Studio' }))
+
+    expect(screen.getByText('Research BPE')).toBeInTheDocument()
+    expect(screen.getAllByText('Unicode normalization').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('Byte-level pre-tokenizer').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('BPE trainer').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByRole('button', { name: 'Python' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Rust' })).toBeInTheDocument()
+    expect(screen.getByText(/vocab_size=32768/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select BPE trainer' }))
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'vocabSize' }), { target: { value: '4096' } })
+    expect(screen.getByText(/vocab_size=4096/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select Unicode normalization' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected tokenizer atom' }))
+    expect(screen.queryByText(/tokenizer\.normalizer/)).not.toBeInTheDocument()
+    expect(screen.getByText(/^4 atoms/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play atomic pipeline' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Step one atom' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop atomic pipeline' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rust' }))
+    expect(screen.getByText(/vocab_size\(4096\)/)).toBeInTheDocument()
+  })
+
+  it('can delete every tokenizer step and add a real atom from the permanent library', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Tokenizer Studio' }))
+
+    for (const label of ['Unicode normalization', 'Byte-level pre-tokenizer', 'BPE model', 'BPE trainer', 'Byte-level decoder']) {
+      fireEvent.click(screen.getByRole('button', { name: `Select ${label}` }))
+      fireEvent.click(screen.getByRole('button', { name: 'Delete selected tokenizer atom' }))
+    }
+
+    expect(screen.getByText(/^0 atoms/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add BPE model' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add BPE model' }))
+    expect(screen.getByRole('button', { name: 'Select BPE model' })).toBeInTheDocument()
+    expect(screen.getByText(/^1 atoms/)).toBeInTheDocument()
+  })
+})
