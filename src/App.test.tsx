@@ -354,9 +354,11 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('GPT-like Starter')
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR Basic · Shared + Residual Top-2')
 
-    const clear = screen.getByRole('button', { name: 'Clear architecture' })
+    const clear = screen.getByRole('button', { name: 'Clear architecture TR Basic · Shared + Residual Top-2' })
+    expect(clear).toHaveTextContent('6 cards')
+    expect(document.querySelectorAll('.architecture-node.architecture-target')).toHaveLength(6)
     fireEvent.click(clear)
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm clear' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm clearing TR Basic · Shared + Residual Top-2' }))
     expect(screen.getByText('15 atoms')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Select Shared Dense Expert' })).not.toBeInTheDocument()
   })

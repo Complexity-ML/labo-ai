@@ -111,6 +111,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   latestUserPresetsRef.current = userPresets
   const graphArchitectures = useMemo(() => architectureComponents(graph, [...builtInModelPresets, ...userPresets]), [graph, userPresets])
   const selectedArchitecture = graphArchitectures.find((component) => component.id === selectedArchitectureId) ?? graphArchitectures[0]
+  const selectedArchitectureNodeIds = useMemo(() => graphArchitectures.length > 1 && selectedArchitecture ? new Set(selectedArchitecture.nodeIds) : undefined, [graphArchitectures.length, selectedArchitecture])
   const codeGraph = selectedArchitecture?.graph ?? graph
   const code = useMemo(() => compileToPyTorch(codeGraph), [codeGraph])
   const [codeDraft, setCodeDraft] = useState(code)
@@ -146,6 +147,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     const containingArchitecture = graphArchitectures.find((architecture) => architecture.nodeIds.includes(selectedNodeId))
     if (containingArchitecture && containingArchitecture.id !== selectedArchitectureId) setSelectedArchitectureId(containingArchitecture.id)
   }, [graphArchitectures, selectedArchitectureId, selectedNodeId])
+
+  useEffect(() => setConfirmArchitectureDelete(false), [selectedArchitecture?.id])
 
   useEffect(() => {
     window.localStorage.setItem(CUSTOM_CARDS_STORAGE_KEY, JSON.stringify(customCards))
@@ -606,7 +609,12 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
             <button aria-pressed={interactionMode === 'add'} onClick={() => setInteractionMode('add')}><Blocks size={13} />Add blocks</button>
             <button aria-pressed={interactionMode === 'edit'} onClick={() => setInteractionMode('edit')}><Pencil size={13} />Edit cards</button>
             <button aria-haspopup="dialog" onClick={openCardCreator}><Code2 size={13} />Create card</button>
-            {interactionMode === 'edit' && selectedArchitecture && <button className={confirmArchitectureDelete ? 'confirm-delete' : ''} onClick={deleteSelectedArchitecture} title="Delete every card and elastic in the selected architecture"><Trash2 size={13} />{confirmArchitectureDelete ? 'Confirm clear' : 'Clear architecture'}</button>}
+            {interactionMode === 'edit' && selectedArchitecture && <button
+              aria-label={confirmArchitectureDelete ? `Confirm clearing ${selectedArchitecture.label}` : `Clear architecture ${selectedArchitecture.label}`}
+              className={confirmArchitectureDelete ? 'confirm-delete architecture-clear-button' : 'architecture-clear-button'}
+              onClick={deleteSelectedArchitecture}
+              title={`Delete all ${selectedArchitecture.nodeIds.length} cards and elastics from ${selectedArchitecture.label}`}
+            ><Trash2 size={13} /><span>{confirmArchitectureDelete ? `Confirm ${selectedArchitecture.label}` : `Clear ${selectedArchitecture.label}`}</span><small>{selectedArchitecture.nodeIds.length} cards</small></button>}
           </div>
           <details className="preset-menu"><summary>{presetMenuLabels[graph.id] ?? graph.name}</summary><div aria-label="Model preset">{builtInModelPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{presetMenuLabels[preset.id] ?? preset.name}</button>)}{userPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{preset.name}</button>)}</div></details>
           <details className="model-prompt-menu"><summary>Prompt</summary><label className="model-prompt-control"><span>Generation prompt</span><input aria-label="Model generation prompt" onChange={(event) => { setSampleText(event.target.value); setPromptTokenCount(undefined); setModelOutput(undefined) }} value={sampleText} /><small>{acceptsTokenIds ? (promptTokenCount === undefined ? 'Research BPE' : `${promptTokenCount} Token IDs`) : 'Add a Token IDs input'}</small></label></details>
@@ -733,7 +741,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </aside>}
 
         <section className={`editor-grid view-${view}`}>
-          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
+          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} highlightedNodeIds={interactionMode === 'edit' ? selectedArchitectureNodeIds : undefined} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
             const card = customCards.find((candidate) => candidate.id === cardId)
             if (card) addCustomCard(card, position)
           }} onDropInput={(role, position) => addGraphInput(role, position)} playerSnapshot={modelPlayerSnapshot} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}

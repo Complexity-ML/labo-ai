@@ -34,13 +34,15 @@ export function architectureComponents(graph: ArchitectureGraph, knownArchitectu
     const nodes = graph.nodes.filter((node) => ids.has(node.id))
     const edges = graph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target))
     const source = nodes.find((node) => !edges.some((edge) => edge.target === node.id)) ?? nodes[0]
+    const sink = [...nodes].reverse().find((node) => !edges.some((edge) => edge.source === node.id)) ?? nodes.at(-1)
     const exactGroup = graph.groups?.find((group) => group.nodeIds.length === nodeIds.length && group.nodeIds.every((nodeId) => ids.has(nodeId)))
     const known = knownArchitectures
       .filter((candidate) => candidate.nodes.length > 0 && candidate.nodes.every((node) => ids.has(node.id)))
       .sort((left, right) => right.nodes.length - left.nodes.length)[0]
     const metadataName = typeof source?.attributes?.laboArchitectureName === 'string' ? source.attributes.laboArchitectureName : undefined
     const metadataNumber = (key: string) => typeof source?.attributes?.[key] === 'number' ? source.attributes[key] as number : undefined
-    const label = exactGroup?.label ?? metadataName ?? known?.name ?? (graph.nodes.length === nodes.length ? graph.name : `Architecture ${components.length + 1}`)
+    const inferredRoute = source?.id === sink?.id ? source?.label : `${source?.label ?? 'Input'} → ${sink?.label ?? 'Output'}`
+    const label = exactGroup?.label ?? metadataName ?? known?.name ?? (graph.nodes.length === nodes.length ? graph.name : `Architecture ${components.length + 1} · ${inferredRoute}`)
     const id = `architecture-${components.length + 1}-${source?.id ?? 'graph'}`
     components.push({
       id,

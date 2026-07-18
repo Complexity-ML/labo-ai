@@ -9,7 +9,7 @@ describe('architecture components', () => {
       nodes: [...gptLikeStarterPreset.nodes, { id: 'other-input', kind: 'input' as const, label: 'Other input', role: 'hidden' as const, position: { x: 900, y: 10 } }],
     }
     const components = architectureComponents(graph, [gptLikeStarterPreset])
-    expect(components.map((component) => component.label)).toEqual(['GPT-like Starter', 'Architecture 2'])
+    expect(components.map((component) => component.label)).toEqual(['GPT-like Starter', 'Architecture 2 · Other input'])
     expect(components[0]?.graph.nodes).toHaveLength(gptLikeStarterPreset.nodes.length)
     expect(components[1]?.nodeIds).toEqual(['other-input'])
   })

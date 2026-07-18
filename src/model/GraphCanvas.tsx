@@ -68,9 +68,9 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
   </>
 }
 
-function ArchitectureNodeCard({ editMode = false, graph, node, selected, status, grouped = false, dragging = false, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; status: string; grouped?: boolean; dragging?: boolean; onEdit?(): void; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
+function ArchitectureNodeCard({ editMode = false, graph, node, selected, highlighted = false, status, grouped = false, dragging = false, onEdit, onSelect, onPortPointerDown, onDragPointerDown }: { editMode?: boolean; graph: ArchitectureGraph; node: ArchitectureNode; selected: boolean; highlighted?: boolean; status: string; grouped?: boolean; dragging?: boolean; onEdit?(): void; onSelect(): void; onPortPointerDown: PortHandler; onDragPointerDown?: NodeDragHandler }) {
   const editability = node.kind === 'custom-pytorch' ? 'CODE' : node.kind === 'input' ? 'LABEL' : 'SETTINGS'
-  return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
+  return <div className={`architecture-node node-${node.role} ${selected ? 'selected' : ''} ${highlighted ? 'architecture-target' : ''} status-${status} ${grouped ? 'grouped-node' : ''} ${dragging ? 'dragging' : ''}`} data-graph-node="true" data-atom-id={node.atomId} style={grouped ? { overflow: 'visible' } : { left: node.position.x, top: node.position.y, overflow: 'visible' }}>
     <NodePorts graph={graph} node={node} onPointerDown={onPortPointerDown} />
     <button aria-label={`Select ${node.label}`} className="node-select" onClick={editMode ? onEdit : onSelect} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEdit?.() }} onPointerDown={(event) => {
       if (editMode || event.detail > 1) {
@@ -85,7 +85,7 @@ function ArchitectureNodeCard({ editMode = false, graph, node, selected, status,
   </div>
 }
 
-export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onEditNode }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onEditNode?(nodeId: string): void }) {
+export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeIds, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onEditNode }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; highlightedNodeIds?: ReadonlySet<string>; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onEditNode?(nodeId: string): void }) {
   const qkvGroup = graph.groups?.find((group) => group.kind === 'qkv-projection')
   const qkvNodeIds = new Set(qkvGroup?.nodeIds ?? [])
   const canvasRef = useRef<HTMLDivElement | null>(null)
@@ -238,7 +238,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     <div className="panel-tab"><Blocks size={13} /> Architecture.graph <span className="cable-help"><Cable size={11} />{cables.message}</span></div>
     <div
       aria-label="Architecture graph canvas"
-      className={`architecture-canvas ${editMode ? 'edit-mode' : ''} ${camera.isPanning ? 'is-panning' : ''} ${acceptsLibraryDrop ? 'accepts-library-drop' : ''}`}
+      className={`architecture-canvas ${editMode ? 'edit-mode' : ''} ${highlightedNodeIds?.size ? 'has-architecture-target' : ''} ${camera.isPanning ? 'is-panning' : ''} ${acceptsLibraryDrop ? 'accepts-library-drop' : ''}`}
 
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAcceptsLibraryDrop(false)
@@ -268,12 +268,12 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
 
         <button aria-label="Expand QKV projections" className="group-transform-button" onClick={() => setQkvExpanded(true)}>Décomposer en Q / K / V</button>
       </div>}
-      {qkvGroup?.expanded && <section className={`qkv-expanded-group ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} aria-label="QKV projection group" data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}><div className="qkv-group-header" onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><div><span className="node-type">COMPOSITE · EXPANDED</span><strong>QKV projections</strong></div><button aria-label="Collapse QKV projections" onClick={() => setQkvExpanded(false)}>Regrouper en QKV</button></div><div className="qkv-child-grid">{graph.nodes.filter((node) => qkvNodeIds.has(node.id)).map((node) => <ArchitectureNodeCard editMode={editMode} graph={graph} grouped key={node.id} node={node} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />)}</div></section>}
+      {qkvGroup?.expanded && <section className={`qkv-expanded-group ${groupPreview?.groupId === qkvGroup.id ? 'dragging' : ''}`} aria-label="QKV projection group" data-graph-node="true" style={{ left: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.x : qkvGroup.position.x, top: groupPreview?.groupId === qkvGroup.id ? groupPreview.position.y : qkvGroup.position.y }}><div className="qkv-group-header" onPointerDown={(event) => beginGroupDrag(event, qkvGroup.id, qkvGroup.position)}><div><span className="node-type">COMPOSITE · EXPANDED</span><strong>QKV projections</strong></div><button aria-label="Collapse QKV projections" onClick={() => setQkvExpanded(false)}>Regrouper en QKV</button></div><div className="qkv-child-grid">{graph.nodes.filter((node) => qkvNodeIds.has(node.id)).map((node) => <ArchitectureNodeCard editMode={editMode} graph={graph} grouped highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={node} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />)}</div></section>}
       {graph.nodes.filter((node) => !qkvNodeIds.has(node.id)).map((node) => {
         const shift = qkvGroup ? (qkvGroup.expanded ? 140 : 55) : 0
         const previewPosition = dragPreview?.nodeId === node.id ? dragPreview.position : node.position
         const displayed = previewPosition.y >= 300 ? { ...node, position: { ...previewPosition, y: previewPosition.y + shift } } : { ...node, position: previewPosition }
-        return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} editMode={editMode} graph={graph} key={node.id} node={displayed} onDragPointerDown={beginNodeDrag} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />
+        return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} editMode={editMode} graph={graph} highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={displayed} onDragPointerDown={beginNodeDrag} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={() => setSelectedNodeId(node.id)} selected={selectedNodeId === node.id} status={status(node.id)} />
       })}
       </div>
       <div className="graph-viewport-controls" aria-label="Graph viewport controls">
