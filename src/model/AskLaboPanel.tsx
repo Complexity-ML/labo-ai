@@ -46,6 +46,7 @@ interface AgentActivity {
   missing?: number
   tools?: string[]
   error?: string
+  plan?: AgentGraphPlan
 }
 
 export function AskLaboPanel({ graph, customCards, dockClassName = '', open, workspaceSettings, onApply, onClose }: AskLaboPanelProps) {
@@ -157,6 +158,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
         rejected,
         missing: response.missingBlocks.length,
         tools: response.toolTrace?.map((item) => item.tool) ?? [],
+        plan: response,
       }
       if (autoApply && hasAcceptedChanges) {
         updateActivity(activityId, { ...activityResult, status: 'applied' })
@@ -192,6 +194,14 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
     setRequest('')
     setActivityOpen(true)
     onClose()
+  }
+
+  const reviewFullPlan = (activity: AgentActivity) => {
+    if (!activity.plan) return
+    activeActivityIdRef.current = activity.id
+    setCardOverrides({})
+    setPlan(activity.plan)
+    setActivityOpen(false)
   }
 
   const openCardEditor = (nodeId: string) => {
@@ -277,6 +287,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
       if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' })
       setPlan(undefined)
       setCardOverrides({})
+      setActivityOpen(true)
     }
     setError('')
     onClose()
@@ -296,12 +307,15 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
       </header>
       {activities.length === 0 ? <p className="ask-labo-activity-empty">Your agent runs, validation results and errors will appear here.</p> : <ol>
         {activities.map((activity) => <li data-status={activity.status} key={activity.id}>
-          <div className="ask-labo-activity-status"><span>{activity.status === 'running' ? <Clock3 size={12} /> : activity.status === 'failed' ? <AlertTriangle size={12} /> : <Check size={12} />}{activity.status === 'review' ? 'Awaiting review' : activity.status}</span><time>{new Date(activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+          <div className="ask-labo-activity-status"><span>{activity.status === 'running' ? <Clock3 size={12} /> : activity.status === 'failed' ? <AlertTriangle size={12} /> : <Check size={12} />}{activity.status === 'review' ? 'Awaiting full-plan review' : activity.status === 'discarded' ? 'Closed — plan saved' : activity.status}</span><time>{new Date(activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
           <strong>{activity.prompt}</strong>
           {activity.status === 'running' ? <p>Inspecting cards and validating graph changes…</p> : activity.error ? <p>{activity.error}</p> : activity.summary && <p>{activity.summary}</p>}
           {activity.status !== 'running' && !activity.error && <div className="ask-labo-activity-metrics"><span>{activity.accepted ?? 0} accepted</span><span>{activity.rejected ?? 0} rejected</span><span>{activity.missing ?? 0} missing</span>{Boolean(activity.tools?.length) && <span>{activity.tools!.length} tools</span>}</div>}
           {Boolean(activity.tools?.length) && <code className="ask-labo-activity-tools">{activity.tools!.join(' → ')}</code>}
-          <button aria-label={`Retry agent task: ${activity.prompt}`} disabled={loading} onClick={() => { setRequest(activity.prompt); setActivityOpen(false); void runAgentRequest(activity.prompt) }} type="button"><RotateCcw size={11} />Retry</button>
+          <div className="ask-labo-activity-actions">
+            {activity.plan && activity.status !== 'applied' && <button aria-label={`Review full agent plan: ${activity.prompt}`} onClick={() => reviewFullPlan(activity)} type="button"><Check size={11} />Review full plan</button>}
+            <button aria-label={`Retry agent task: ${activity.prompt}`} disabled={loading} onClick={() => { setRequest(activity.prompt); setActivityOpen(false); void runAgentRequest(activity.prompt) }} type="button"><RotateCcw size={11} />Retry</button>
+          </div>
         </li>)}
       </ol>}
     </section>}
@@ -488,7 +502,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
 
       <div className="ask-labo-actions">
         <button className="ask-labo-cancel" onClick={() => { if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' }); setPlan(undefined); setCardOverrides({}); setActivityOpen(true) }} type="button">Discard</button>
-        <button className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (plan.updatedBlocks?.length ?? 0) === 0 && (plan.deletedBlocks?.length ?? 0) === 0 && (plan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply graph plan</button>
+        <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (plan.updatedBlocks?.length ?? 0) === 0 && (plan.deletedBlocks?.length ?? 0) === 0 && (plan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
       </div>
     </div>}
 

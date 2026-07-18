@@ -786,7 +786,7 @@ describe('LABO AI workspace', () => {
 
     expect(await screen.findByText('1 elastic ready')).toBeInTheDocument()
     expect(screen.getByText('attention-norm.output')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
     expect(screen.getByText(/20 nodes · 31 links/)).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Ask LABO' })).not.toBeInTheDocument()
     delete window.labo
@@ -826,6 +826,38 @@ describe('LABO AI workspace', () => {
     delete window.labo
   })
 
+  it('restores and applies an entire review plan from agent activity', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'One complete graph plan is ready.',
+        addedBlocks: [{ atomId: 'relu', nodeId: 'agent-full-plan-relu', reason: 'Requested activation.' }],
+        createdBlocks: [],
+        connections: [],
+        missingBlocks: [],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Prepare one full plan' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('1 atomic block ready')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close Ask LABO' }))
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('Closed — plan saved')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review full agent plan: Prepare one full plan' }))
+    expect(screen.getByText('1 atomic block ready')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
+
+    expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('applied')
+    delete window.labo
+  })
+
   it('previews and applies an agent-added atomic with its elastic', async () => {
     window.labo = {
       platform: 'darwin',
@@ -858,7 +890,7 @@ describe('LABO AI workspace', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Agent card name' }), { target: { value: 'Reviewed ReLU' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save card' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
     expect(screen.getByRole('button', { name: 'Select Reviewed ReLU' })).toBeInTheDocument()
     expect(screen.getByText(/21 nodes · 32 links/)).toBeInTheDocument()
     delete window.labo
@@ -896,7 +928,7 @@ describe('LABO AI workspace', () => {
 
     expect(await screen.findByText('2 atomic blocks ready')).toBeInTheDocument()
     expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ operationMode: 'parallel' }) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
     expect(screen.getByText(/22 nodes · 32 links/)).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR 300M')
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('Architecture 2')
@@ -964,7 +996,7 @@ describe('LABO AI workspace', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Agent card name' }), { target: { value: 'Edited projection' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Agent card PyTorch module' }), { target: { value: 'nn.Linear(1024, 1024, bias=True)' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save card' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Apply graph plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
     expect(screen.getByRole('button', { name: 'Select Edited projection' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Edited projection' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))

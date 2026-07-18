@@ -234,18 +234,27 @@
 
   li {
     position: relative;
-    padding: 11px 70px 11px 13px;
+    padding: 11px 13px;
     border-bottom: 1px solid var(--labo-line-soft);
 
     &:last-child { border-bottom: 0; }
     > strong { display: block; overflow: hidden; color: #e6eeeb; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
     > p { margin: 4px 0 0; color: #84908c; font-size: 9px; line-height: 1.45; }
-    > button { position: absolute; right: 11px; bottom: 11px; min-height: 25px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-color: var(--labo-line); color: #aeb9b5; background: rgb(255 255 255 / 2%); font-size: 8px; }
     &[data-status='failed'] { box-shadow: inset 2px 0 #f09a9a; }
     &[data-status='running'] { box-shadow: inset 2px 0 #7dd3fc; }
     &[data-status='review'] { box-shadow: inset 2px 0 #c4b5fd; }
     &[data-status='applied'] { box-shadow: inset 2px 0 #70e0ad; }
   }
+}
+
+.ask-labo-activity-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 8px;
+
+  button { min-height: 25px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-color: var(--labo-line); color: #aeb9b5; background: rgb(255 255 255 / 2%); font-size: 8px; }
+  button:first-child:not(:last-child) { color: #c9f3df; border-color: rgb(112 224 173 / 26%); background: rgb(112 224 173 / 7%); }
 }
 
 .ask-labo-activity-status {
