@@ -310,8 +310,9 @@ describe('LABO AI workspace', () => {
     expect(screen.queryByRole('textbox', { name: 'Custom card name' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
     expect(screen.getByRole('dialog', { name: 'Create model card' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Card destination' })).toHaveTextContent('The reusable definition is always saved in My cards.')
-    expect(screen.getByRole('button', { name: /After selected card/ })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: 'Card destination' })).toHaveValue('new-architecture')
+    expect(screen.getByRole('option', { name: /After selected card/ })).toBeDisabled()
+    fireEvent.click(screen.getByText('Advanced settings'))
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My RMSNorm' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create as new architecture' }))
@@ -341,7 +342,8 @@ describe('LABO AI workspace', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    fireEvent.click(screen.getByRole('button', { name: /Library only/ }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Card destination' }), { target: { value: 'library' } })
+    fireEvent.click(screen.getByText('Advanced settings'))
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'Library RMSNorm' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save to My cards' }))
@@ -354,19 +356,40 @@ describe('LABO AI workspace', () => {
   it('auto-composes category-specific Blockly card construction blocks', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'activation' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Use a SiLU activation for the expert branch' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Auto-compose blocks' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card' }))
 
+    expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU')
+    fireEvent.click(screen.getByText('Advanced settings'))
     expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.SiLU()')
     expect((screen.getByRole('textbox', { name: 'Custom card name' }) as HTMLInputElement).value).toMatch(/^Use a SiLU activation/)
-    expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU')
     expect(screen.queryByText('Create PyTorch card')).not.toBeInTheDocument()
+  })
+
+  it('prompts Ask LABO directly from the Card Builder without mutating the graph', async () => {
+    const askLabo = vi.fn(async () => ({
+      summary: 'One reusable card.', addedBlocks: [],
+      createdBlocks: [{ nodeId: 'builder-gelu', label: 'Expert GELU', pytorchModule: 'nn.GELU()', inputRole: 'hidden' as const, outputRole: 'hidden' as const, reason: 'Requested in Card Builder.' }],
+      connections: [], missingBlocks: [], warnings: [],
+    }))
+    window.labo = { platform: 'web', runtime: 'web', askLabo }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a GELU expert activation' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card' }))
+
+    await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('GELU'))
+    fireEvent.click(screen.getByText('Advanced settings'))
+    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.GELU()')
+    expect(screen.getByRole('textbox', { name: 'Custom card name' })).toHaveValue('Expert GELU')
+    expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ cardBuilderMode: true }) }))
+    expect(screen.queryByRole('button', { name: 'Select Expert GELU' })).not.toBeInTheDocument()
   })
 
   it('changes the available card blocks and plugs with the selected category', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    fireEvent.click(screen.getByText('Advanced settings'))
     const palette = screen.getByLabelText('Card operation palette')
 
     expect(within(palette).getByRole('button', { name: 'Linear' })).toBeInTheDocument()

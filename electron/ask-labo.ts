@@ -185,6 +185,9 @@ class AgentToolSession {
   call(name: string, args: Record<string, unknown>): Record<string, unknown> {
     if (this.finished) return this.reject(name, 'The plan is already finished')
     const text = (key: string) => typeof args[key] === 'string' ? String(args[key]).trim() : ''
+    if (this.context.cardBuilderMode === true && !['search_cards', 'compose_card', 'create_card', 'finish_plan'].includes(name)) {
+      return this.reject(name, 'Card Builder mode can only inspect, compose and finish one reusable card')
+    }
     if (name === 'search_cards') {
       const tokens = text('query').toLowerCase().split(/\W+/).filter(Boolean)
       const candidates = [...this.atomics.map((card) => ({ kind: 'native', id: card.atomId, label: card.label, inputs: card.inputs, outputs: card.outputs, settings: card.settings })), ...this.savedCards.map((card) => ({ kind: 'saved', ...card }))]
@@ -379,6 +382,9 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
             'You are LABO AI, a bounded neural graph agent. Use tools to inspect, search, and construct the requested plan.',
             'Never merely describe a mutation: call its exact tool. Search cards before creating one or reporting it missing.',
             'When search_cards finds no suitable card, use compose_card for supported projection, normalization, activation, regularization or utility capabilities. Use raw create_card only when the deterministic composer cannot express the required safe unary nn.Module.',
+            payload.context.cardBuilderMode === true
+              ? 'Card Builder mode is active. Produce exactly one reusable unary card with compose_card, or create_card only if the composer cannot express it. Do not add native blocks, connect, move, edit, delete, run, save a preset, lay out or export a graph.'
+              : 'Graph Builder mode is active. Construct the requested graph with explicit tools.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
             'Tensor ranks are part of port contracts. QKV projection emits rank-3 Q/K/V and every SDPA consumes rank-4 Q/K/V, so insert Attention head layout between them.',
             'hiddenSize, queryHeads, keyValueHeads and headDim are graph-wide dimensions. Never edit them on individual cards; use the current graph-wide values consistently.',

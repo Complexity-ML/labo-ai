@@ -71,6 +71,15 @@ export function suggestedCardOperation(category: CustomCardCategory, need: strin
   return 'linear'
 }
 
+export function suggestedCardCategory(need: string): CustomCardCategory {
+  const normalized = need.toLowerCase()
+  if (/rms|layer.?norm|normaliz/.test(normalized)) return 'normalization'
+  if (/gelu|silu|swiglu|relu|sigmoid|tanh|mish|activat/.test(normalized)) return 'activation'
+  if (/dropout|regulari/.test(normalized)) return 'regularization'
+  if (/identity|pass.?through|no.?op/.test(normalized)) return 'utility'
+  return 'projection'
+}
+
 export function composeCustomCard({ category, need, inFeatures = 768, outFeatures = 768, probability = 0.1, inputRole, outputRole }: {
   category: CustomCardCategory
   need: string

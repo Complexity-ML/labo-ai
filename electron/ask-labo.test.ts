@@ -55,8 +55,9 @@ describe('Ask LABO OpenAI bridge', () => {
   it('gives the agent the Create card auto-composer for a missing capability', async () => {
     process.env.OPENAI_API_KEY = 'test-secret-key'
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const requestBody = JSON.parse(String(init?.body)) as { tools: Array<{ name: string }>; input: Array<{ type?: string; output?: string }> }
+      const requestBody = JSON.parse(String(init?.body)) as { tools: Array<{ name: string }>; input: Array<{ type?: string; output?: string }>; instructions: string }
       expect(requestBody.tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'compose_card' })]))
+      expect(requestBody.instructions).toContain('Card Builder mode is active')
       if (fetchMock.mock.calls.length === 1) return new Response(JSON.stringify({ output: [functionCall('compose_card', {
         node_id: 'agent-silu', label: null, category: 'activation', need: 'Apply a SiLU activation to hidden states',
         in_features: null, out_features: null, probability: null, input_role: null, output_role: null, reason: 'No existing card matched.',
@@ -67,7 +68,7 @@ describe('Ask LABO OpenAI bridge', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await askLabo({ request: 'Create the missing SiLU card', context: { graph: { nodes: [] }, availableAtomics: [] } })
+    const result = await askLabo({ request: 'Create the missing SiLU card', context: { cardBuilderMode: true, graph: { nodes: [] }, availableAtomics: [] } })
     expect(result.createdBlocks).toEqual([expect.objectContaining({ nodeId: 'agent-silu', pytorchModule: 'nn.SiLU()', inputRole: 'hidden', outputRole: 'hidden' })])
     expect(result.toolTrace).toEqual(expect.arrayContaining([expect.objectContaining({ tool: 'compose_card', status: 'accepted' })]))
   })
