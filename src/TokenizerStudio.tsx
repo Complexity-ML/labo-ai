@@ -8,14 +8,26 @@ import {
   tokenizerAtomDefinitions,
   tokenizerAtomMetadata,
   updateTokenizerStepSettings,
+  type TokenizerPipeline,
   type TokenizerStep,
 } from './core/tokenizer-ir'
 import { builtInTokenizerPresets, researchBpePreset } from './core/tokenizer-presets'
 import { TokenizerCardCreator } from './tokenizer/TokenizerCardCreator'
-import { loadTokenizerCards, saveTokenizerCards, type CustomTokenizerCard } from './tokenizer/custom-tokenizer-card'
+import type { CustomTokenizerCard } from './tokenizer/custom-tokenizer-card'
 
 type TokenizerView = 'blocks' | 'split'
 
+function isTokenizerPipeline(value: unknown): value is TokenizerPipeline {
+  if (!value || typeof value !== 'object') return false
+  const pipeline = value as Partial<TokenizerPipeline>
+  return typeof pipeline.id === 'string' && typeof pipeline.name === 'string' && Array.isArray(pipeline.steps) && Array.isArray(pipeline.links)
+}
+
+function isCustomTokenizerCard(value: unknown): value is CustomTokenizerCard {
+  if (!value || typeof value !== 'object') return false
+  const card = value as Partial<CustomTokenizerCard>
+  return typeof card.id === 'string' && typeof card.label === 'string' && typeof card.category === 'string' && typeof card.pythonCode === 'string'
+}
 
 function formatSetting(value: string | number | boolean | string[]): string {
   return Array.isArray(value) ? value.join(', ') : String(value)
@@ -79,15 +91,29 @@ export function TokenizerStudio() {
   }, [pipeline])
 
   useEffect(() => {
-    void loadTokenizerCards().then((cards) => {
-      setCustomCards(cards)
-      setCustomCardsReady(true)
-    })
+    let cancelled = false
+    const load = async () => {
+      if (window.labo?.runtime === 'electron' && window.labo.loadDesktopState) {
+        const value = await window.labo.loadDesktopState('tokenizer')
+        const stored = value && typeof value === 'object' ? value as { pipeline?: unknown; customCards?: unknown } : undefined
+        if (!cancelled && isTokenizerPipeline(stored?.pipeline)) {
+          setPipeline(stored.pipeline)
+          setSelectedId(stored.pipeline.steps[0]?.id ?? '')
+        }
+        if (!cancelled && Array.isArray(stored?.customCards)) setCustomCards(stored.customCards.filter(isCustomTokenizerCard))
+      }
+      if (!cancelled) setCustomCardsReady(true)
+    }
+    void load()
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
-    if (customCardsReady) void saveTokenizerCards(customCards)
-  }, [customCards, customCardsReady])
+    if (!customCardsReady) return
+    if (window.labo?.runtime === 'electron' && window.labo.saveDesktopState) {
+      void window.labo.saveDesktopState('tokenizer', { pipeline, customCards, updatedAt: Date.now() })
+    }
+  }, [customCards, customCardsReady, pipeline])
 
   useEffect(() => {
     if (!cardMenu) return

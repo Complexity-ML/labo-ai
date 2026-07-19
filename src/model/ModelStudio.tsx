@@ -23,7 +23,7 @@ import { architectureComponents } from '../core/graph-components'
 import { findOpenGraphPosition, layoutArchitectureGraph, layoutParallelArchitecture } from '../core/graph-placement'
 import { addNode, compileToPyTorch, removeNode, validateGraph, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from '../core/ir'
 import { connectCable } from '../core/cables'
-import { cloneArchitectureGraph, emptyModelWorkspace, loadModelWorkspace, loadModelWorkspaceFromDatabase, parseModelWorkspace, saveModelWorkspace, saveModelWorkspaceCache, syncModelPresetDatabase, type ModelPresetDraft } from '../core/model-workspace'
+import { cloneArchitectureGraph, emptyModelWorkspace, loadModelWorkspace, parseModelWorkspace, saveModelWorkspace, saveModelWorkspaceCache, type ModelPresetDraft } from '../core/model-workspace'
 import { modelAtomRegistry, type ModelAtomDefinition } from '../core/model-atoms'
 import { blankStarterPreset, complexityDeepPreset, gptLikeStarterPreset, tokenMoePreset, trBasicPreset } from '../core/presets'
 import { multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../core/media-presets'
@@ -92,7 +92,8 @@ const graphInputDefinitions: Array<{ role: TensorRole; label: string }> = [
 
 export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, requestedCard, onRequestedCardHandled = () => undefined }: { askOpen?: boolean; onCloseAsk?: () => void; requestedCard?: { atomId: string; requestId: number }; onRequestedCardHandled?: () => void }) {
   const webRuntime = window.labo?.runtime === 'web'
-  const [initialWorkspace] = useState(() => webRuntime ? emptyModelWorkspace() : loadModelWorkspace())
+  const desktopRuntime = window.labo?.runtime === 'electron'
+  const [initialWorkspace] = useState(() => webRuntime || desktopRuntime ? emptyModelWorkspace() : loadModelWorkspace())
   const initialPreset = initialWorkspace.userPresets.find((preset) => preset.id === initialWorkspace.activePresetId)
     ?? builtInModelPresets.find((preset) => preset.id === initialWorkspace.activePresetId)
     ?? complexityDeepPreset
@@ -137,7 +138,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [sampleText, setSampleText] = useState('Hello LABO AI')
   const [promptTokenCount, setPromptTokenCount] = useState<number>()
   const [modelOutput, setModelOutput] = useState<LaboRuntimeTrace['modelOutput']>()
-  const [customCards, setCustomCards] = useState<CustomPyTorchCard[]>(() => webRuntime ? [] : loadCustomCards())
+  const [customCards, setCustomCards] = useState<CustomPyTorchCard[]>(() => webRuntime || desktopRuntime ? [] : loadCustomCards())
   const [createCardOpen, setCreateCardOpen] = useState(false)
   const [editingNodeId, setEditingNodeId] = useState<string>()
   const [cardEditDraft, setCardEditDraft] = useState<CardEditDraft>()
@@ -170,8 +171,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   useEffect(() => setConfirmPresetReset(false), [graph.id])
 
   useEffect(() => {
-    if (!webRuntime) window.localStorage.setItem(CUSTOM_CARDS_STORAGE_KEY, JSON.stringify(customCards))
-  }, [customCards, webRuntime])
+    if (!webRuntime && !desktopRuntime) window.localStorage.setItem(CUSTOM_CARDS_STORAGE_KEY, JSON.stringify(customCards))
+  }, [customCards, desktopRuntime, webRuntime])
 
   useEffect(() => {
     let cancelled = false
@@ -224,26 +225,36 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       })
       return () => { cancelled = true }
     }
-    void loadModelWorkspaceFromDatabase().then((databaseWorkspace) => {
-      if (cancelled) return
-      const untouchedSinceStartup = latestGraphRef.current === startupGraphRef.current
-        && latestSelectionRef.current === startupSelectionRef.current
-        && latestUserPresetsRef.current === startupUserPresetsRef.current
-      if (initialWorkspace.updatedAt === 0 && databaseWorkspace && untouchedSinceStartup) {
-        const storedPreset = databaseWorkspace.userPresets.find((preset) => preset.id === databaseWorkspace.activePresetId)
-          ?? builtInModelPresets.find((preset) => preset.id === databaseWorkspace.activePresetId)
-          ?? complexityDeepPreset
-        const storedDraft = databaseWorkspace.drafts[storedPreset.id]
-        const storedGraph = cloneArchitectureGraph(storedDraft?.graph ?? storedPreset)
-        presetDraftsRef.current = new Map(Object.entries(databaseWorkspace.drafts))
-        setUserPresets(databaseWorkspace.userPresets.map(cloneArchitectureGraph))
-        setGraph(storedGraph)
-        setSelectedNodeId(storedDraft?.selectedNodeId ?? storedGraph.nodes[0]?.id ?? '')
-      }
-      setDatabaseReady(true)
-    })
+    if (desktopRuntime && window.labo?.loadDesktopState) {
+      const loadDesktopState = window.labo.loadDesktopState
+      void (async () => {
+        const nativePayload = await loadDesktopState('model')
+        const payload = nativePayload && typeof nativePayload === 'object' ? nativePayload as { workspace?: unknown; customCards?: unknown } : undefined
+        const nativeWorkspace = parseModelWorkspace(payload?.workspace)
+        const storedWorkspace = nativeWorkspace.updatedAt > 0 ? nativeWorkspace : undefined
+        if (cancelled) return
+        const untouchedSinceStartup = latestGraphRef.current === startupGraphRef.current
+          && latestSelectionRef.current === startupSelectionRef.current
+          && latestUserPresetsRef.current === startupUserPresetsRef.current
+        if (storedWorkspace && untouchedSinceStartup) {
+          const storedPreset = storedWorkspace.userPresets.find((preset) => preset.id === storedWorkspace.activePresetId)
+            ?? builtInModelPresets.find((preset) => preset.id === storedWorkspace.activePresetId)
+            ?? complexityDeepPreset
+          const storedDraft = storedWorkspace.drafts[storedPreset.id]
+          const storedGraph = cloneArchitectureGraph(storedDraft?.graph ?? storedPreset)
+          presetDraftsRef.current = new Map(Object.entries(storedWorkspace.drafts))
+          setUserPresets(storedWorkspace.userPresets.map(cloneArchitectureGraph))
+          setGraph(storedGraph)
+          setSelectedNodeId(storedDraft?.selectedNodeId ?? storedGraph.nodes[0]?.id ?? '')
+        }
+        if (Array.isArray(payload?.customCards) && untouchedSinceStartup) setCustomCards(payload.customCards.filter(isCustomCard))
+        setDatabaseReady(true)
+      })().catch(() => { if (!cancelled) setDatabaseReady(true) })
+      return () => { cancelled = true }
+    }
+    setDatabaseReady(true)
     return () => { cancelled = true }
-  }, [initialWorkspace, webRuntime])
+  }, [desktopRuntime, initialWorkspace, webRuntime])
 
   useEffect(() => {
     const selected = graph.nodes.some((node) => node.id === selectedNodeId) || graph.groups?.some((group) => group.id === selectedNodeId)
@@ -268,24 +279,22 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
             })
           }, 700)
         }
+      } else if (desktopRuntime && window.labo?.saveDesktopState) {
+        void window.labo.saveDesktopState('model', { workspace, customCards })
       } else saveModelWorkspace(workspace)
-    } else if (!webRuntime && (graph !== startupGraphRef.current || selectedNodeId !== startupSelectionRef.current || userPresets !== startupUserPresetsRef.current)) {
+    } else if (!webRuntime && !desktopRuntime && (graph !== startupGraphRef.current || selectedNodeId !== startupSelectionRef.current || userPresets !== startupUserPresetsRef.current)) {
       saveModelWorkspaceCache(workspace)
     }
     return () => {
       if (webSaveTimerRef.current) clearTimeout(webSaveTimerRef.current)
     }
-  }, [customCards, databaseReady, graph, selectedNodeId, userPresets, webAuthenticated, webRuntime])
+  }, [customCards, databaseReady, desktopRuntime, graph, selectedNodeId, userPresets, webAuthenticated, webRuntime])
 
   useEffect(() => () => {
     if (webSaveTimerRef.current) clearTimeout(webSaveTimerRef.current)
     const pending = webPendingSaveRef.current
     if (webRuntime && webAuthenticatedRef.current && pending && window.labo?.saveWebWorkspace) void window.labo.saveWebWorkspace(pending)
   }, [webRuntime])
-
-  useEffect(() => {
-    if (databaseReady && !webRuntime) syncModelPresetDatabase(builtInModelPresets, userPresets)
-  }, [databaseReady, userPresets, webRuntime])
 
   useEffect(() => {
     let tracePromise: Promise<LaboRuntimeTrace> | undefined

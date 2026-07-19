@@ -649,8 +649,39 @@ describe('LABO AI workspace', () => {
     expect(screen.queryByRole('dialog', { name: 'Create optimizer' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Use Research AdamW' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Research AdamW lr' })).toHaveValue(0.0002)
-    expect(screen.getByText('torch.optim.AdamW')).toBeInTheDocument()
+    expect(screen.getAllByText('torch.optim.AdamW').length).toBeGreaterThan(0)
     expect(screen.getByText(/optimizer = torch\.optim\.AdamW\(model\.parameters\(\), lr=0\.0002, weight_decay=0\.05, fused=True\)/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    expect(screen.getByRole('button', { name: 'Training Studio' })).toHaveAttribute('aria-pressed', 'true')
+    const settings = screen.getByRole('dialog', { name: 'Training Studio settings' })
+    expect(within(settings).getByText('Research AdamW')).toBeInTheDocument()
+    fireEvent.click(within(settings).getByRole('button', { name: 'Delete optimizer preset Research AdamW' }))
+    expect(screen.queryByRole('button', { name: 'Use Research AdamW' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('torch.optim.AdamW').length).toBeGreaterThan(0)
+    fireEvent.pointerDown(document.querySelector('.model-card-modal-backdrop')!)
+    expect(screen.queryByRole('dialog', { name: 'Training Studio settings' })).not.toBeInTheDocument()
+  })
+
+  it('restores custom optimizers from the persistent desktop workspace database', async () => {
+    const saveDesktopState = vi.fn(async () => ({ saved: true as const }))
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      loadDesktopState: async (scope) => scope === 'training' ? {
+        config: { id: 'custom-persistent-muon-1', kind: 'custom-persistent-muon', settings: { lr: 0.002, momentum: 0.9 } },
+        customOptimizers: [{ id: 'custom-persistent-muon', label: 'Persistent Muon', torchClass: 'Muon', defaults: { lr: 0.002, momentum: 0.9 } }],
+        updatedAt: 1,
+      } : undefined,
+      saveDesktopState,
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
+
+    expect(await screen.findByRole('button', { name: 'Use Persistent Muon' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Persistent Muon lr' })).toHaveValue(0.002)
+    await waitFor(() => expect(saveDesktopState).toHaveBeenCalledWith('training', expect.objectContaining({ customOptimizers: expect.arrayContaining([expect.objectContaining({ label: 'Persistent Muon' })]) })))
   })
 
   it('selects, edits, and adds freely manipulable model atoms', () => {

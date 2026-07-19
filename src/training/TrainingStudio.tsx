@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
-import { Blocks, Braces, Cpu, Play, Plus, Settings2, SplitSquareHorizontal } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Blocks, Braces, Cpu, Play, Plus, Settings2, SplitSquareHorizontal, Trash2, X } from 'lucide-react'
 import { compileOptimizer, createOptimizerConfig, optimizerRegistry, type OptimizerConfig, type OptimizerDefinition, type OptimizerValue } from '../core/optimizer-ir'
 import { OptimizerCreator } from './OptimizerCreator'
+import { parseTrainingWorkspace } from './training-workspace'
 
 function formatValue(value: OptimizerValue): string {
   if (Array.isArray(value)) return value.map((item) => item === null ? 'None' : String(item)).join(', ')
@@ -9,22 +10,71 @@ function formatValue(value: OptimizerValue): string {
   return String(value)
 }
 
-export function TrainingStudio() {
+export function TrainingStudio({ settingsOpen = false, onCloseSettings = () => undefined }: { settingsOpen?: boolean; onCloseSettings?: () => void }) {
   const [config, setConfig] = useState<OptimizerConfig>(() => createOptimizerConfig('adamw'))
   const [view, setView] = useState<'graph' | 'pytorch' | 'split'>('split')
   const [customOptimizers, setCustomOptimizers] = useState<OptimizerDefinition[]>([])
   const [creatorOpen, setCreatorOpen] = useState(false)
+  const [storageReady, setStorageReady] = useState(false)
+  const [optimizerMenu, setOptimizerMenu] = useState<{ optimizerId: string; x: number; y: number }>()
+  const interactedRef = useRef(false)
   const definitions = useMemo(() => ({ ...optimizerRegistry, ...Object.fromEntries(customOptimizers.map((optimizer) => [optimizer.id, optimizer])) }), [customOptimizers])
   const definition = definitions[config.kind]
   const code = useMemo(() => ['import torch', '', compileOptimizer(config, 'model.parameters()', definitions), ''].join('\n'), [config, definitions])
 
-  const selectOptimizer = (kind: string) => setConfig(createOptimizerConfig(kind, {}, definitions))
-  const updateSetting = (key: string, value: OptimizerValue) => setConfig((current) => ({ ...current, settings: { ...current.settings, [key]: value } }))
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const stored = window.labo?.runtime === 'electron' && window.labo.loadDesktopState
+        ? parseTrainingWorkspace(await window.labo.loadDesktopState('training'))
+        : undefined
+      if (!cancelled && stored && !interactedRef.current) {
+        setCustomOptimizers(stored.customOptimizers)
+        setConfig(stored.config)
+      }
+      if (!cancelled) setStorageReady(true)
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!storageReady) return
+    const workspace = { config, customOptimizers, updatedAt: Date.now() }
+    if (window.labo?.runtime === 'electron' && window.labo.saveDesktopState) {
+      void window.labo.saveDesktopState('training', workspace)
+    }
+  }, [config, customOptimizers, storageReady])
+
+  useEffect(() => {
+    if (!optimizerMenu) return
+    const dismiss = (event: PointerEvent) => { if (!(event.target as HTMLElement | null)?.closest('.optimizer-context-menu')) setOptimizerMenu(undefined) }
+    const dismissOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOptimizerMenu(undefined) }
+    window.addEventListener('pointerdown', dismiss)
+    window.addEventListener('keydown', dismissOnEscape)
+    return () => { window.removeEventListener('pointerdown', dismiss); window.removeEventListener('keydown', dismissOnEscape) }
+  }, [optimizerMenu])
+
+  const selectOptimizer = (kind: string) => {
+    interactedRef.current = true
+    setConfig(createOptimizerConfig(kind, {}, definitions))
+  }
+  const updateSetting = (key: string, value: OptimizerValue) => {
+    interactedRef.current = true
+    setConfig((current) => ({ ...current, settings: { ...current.settings, [key]: value } }))
+  }
   const createOptimizer = (optimizer: OptimizerDefinition) => {
+    interactedRef.current = true
     const nextDefinitions = { ...definitions, [optimizer.id]: optimizer }
     setCustomOptimizers((current) => [...current, optimizer])
     setConfig(createOptimizerConfig(optimizer.id, {}, nextDefinitions))
     setCreatorOpen(false)
+  }
+  const deleteOptimizer = (optimizerId: string) => {
+    interactedRef.current = true
+    setCustomOptimizers((current) => current.filter((optimizer) => optimizer.id !== optimizerId))
+    if (config.kind === optimizerId) setConfig(createOptimizerConfig('adamw'))
+    setOptimizerMenu(undefined)
   }
 
   return <>
@@ -47,7 +97,7 @@ export function TrainingStudio() {
           </button>)}
           <button aria-label="Create optimizer" className="library-block optimizer-create-button" onClick={() => setCreatorOpen(true)} type="button"><Plus size={13} />Create optimizer</button>
           {customOptimizers.length > 0 && <h3>Created</h3>}
-          {customOptimizers.map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)}>
+          {customOptimizers.map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)} onContextMenu={(event) => { event.preventDefault(); setOptimizerMenu({ optimizerId: optimizer.id, x: event.clientX, y: event.clientY }) }} title="Right-click to delete">
             <span className="block-glyph glyph-objective" />{optimizer.label}
           </button>)}
         </section>
@@ -87,5 +137,26 @@ export function TrainingStudio() {
     </div>
     <footer className="statusbar"><span><span className="status-dot" /> Training IR valid</span><span>optimizer · {Object.keys(config.settings).length} settings</span><span className="status-spacer" /><span>PyTorch 2.13</span></footer>
     {creatorOpen && <OptimizerCreator onCancel={() => setCreatorOpen(false)} onCreate={createOptimizer} />}
+    {optimizerMenu && (() => {
+      const optimizer = customOptimizers.find((candidate) => candidate.id === optimizerMenu.optimizerId)
+      if (!optimizer) return null
+      return <div className="card-context-menu optimizer-context-menu" role="menu" style={{ left: optimizerMenu.x, top: optimizerMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+        <button onClick={() => deleteOptimizer(optimizer.id)} role="menuitem" type="button"><Trash2 size={12} />Delete {optimizer.label}</button>
+      </div>
+    })()}
+    {settingsOpen && <div className="model-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onCloseSettings() }}>
+      <section aria-label="Training Studio settings" aria-modal="true" className="model-card-modal training-settings-modal" onPointerDown={(event) => event.stopPropagation()} role="dialog">
+        <header><div><span>TRAINING STUDIO</span><strong>Settings</strong></div><button aria-label="Close Training Studio settings" onClick={onCloseSettings} type="button"><X size={14} /></button></header>
+        <p className="model-card-modal-hint">Optimizer presets and the active training graph are saved automatically in the persistent LABO AI profile.</p>
+        <section className="training-settings-presets">
+          <strong>Optimizer presets</strong>
+          {customOptimizers.length === 0 ? <p>No custom optimizer yet.</p> : customOptimizers.map((optimizer) => <div key={`setting-${optimizer.id}`}>
+            <button onClick={() => selectOptimizer(optimizer.id)} type="button"><span>{optimizer.label}</span><small>torch.optim.{optimizer.torchClass}</small></button>
+            <button aria-label={`Delete optimizer preset ${optimizer.label}`} onClick={() => deleteOptimizer(optimizer.id)} title="Delete optimizer" type="button"><Trash2 size={12} /></button>
+          </div>)}
+        </section>
+        <footer><span /><button onClick={onCloseSettings} type="button">Done</button></footer>
+      </section>
+    </div>}
   </>
 }

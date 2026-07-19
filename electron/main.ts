@@ -4,8 +4,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rendererWebPreferences } from './security.js'
 import { runAtomicRuntime, type AtomicRuntimePayload } from './atomic-runtime.js'
-import { askLaboChannel, atomicRuntimeChannel, deleteOpenAIKeyChannel, exportFileChannel, openAISettingsChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract.js'
+import { askLaboChannel, atomicRuntimeChannel, deleteOpenAIKeyChannel, exportFileChannel, loadDesktopStateChannel, openAISettingsChannel, saveDesktopStateChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract.js'
 import { askLabo } from './ask-labo.js'
+import { loadDesktopState, saveDesktopState } from './desktop-state.js'
 import { deleteOpenAIApiKey, getOpenAISettingsStatus, saveOpenAIApiKey, testOpenAIConnection } from './openai-credentials.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
@@ -50,6 +51,8 @@ app.whenReady().then(() => {
   ipcMain.handle(deleteOpenAIKeyChannel, () => deleteOpenAIApiKey())
   ipcMain.handle(testOpenAIKeyChannel, () => testOpenAIConnection())
   ipcMain.handle(windowStateChannel, (event) => ({ fullScreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
+  ipcMain.handle(loadDesktopStateChannel, (_event, payload: { scope?: unknown }) => loadDesktopState(app.getPath('userData'), payload?.scope))
+  ipcMain.handle(saveDesktopStateChannel, (_event, payload: { scope?: unknown; data?: unknown }) => saveDesktopState(app.getPath('userData'), payload?.scope, payload?.data))
   ipcMain.handle(exportFileChannel, async (event, payload: { filename?: unknown; content?: unknown; kind?: unknown }) => {
     if (typeof payload?.filename !== 'string' || typeof payload.content !== 'string' || !['svg', 'python'].includes(String(payload.kind)) || payload.content.length > 10_000_000) throw new Error('Invalid LABO export payload')
     const extension = payload.kind === 'svg' ? 'svg' : 'py'

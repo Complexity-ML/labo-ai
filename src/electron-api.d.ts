@@ -35,6 +35,8 @@ interface Window {
     loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; updatedAt?: number; warning?: string }>
     saveWebWorkspace?(payload: { workspace: unknown; customCards: unknown[] }): Promise<{ saved: true; updatedAt: number }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
+    loadDesktopState?(scope: 'model' | 'training' | 'tokenizer'): Promise<unknown>
+    saveDesktopState?(scope: 'model' | 'training' | 'tokenizer', data: unknown): Promise<{ saved: true }>
     getWindowState?(): Promise<{ fullScreen: boolean }>
     onWindowStateChange?(callback: (state: { fullScreen: boolean }) => void): () => void
   }

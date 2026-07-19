@@ -1,11 +1,6 @@
 import type { ArchitectureGraph } from './ir'
 
 export const MODEL_WORKSPACE_STORAGE_KEY = 'labo.model-workspace.v1'
-export const MODEL_DATABASE_NAME = 'labo-ai'
-
-const MODEL_DATABASE_VERSION = 1
-const workspaceStoreName = 'model-workspaces'
-const presetStoreName = 'model-presets'
 
 export interface ModelPresetDraft {
   graph: ArchitectureGraph
@@ -25,13 +20,6 @@ export const emptyModelWorkspace = (): ModelWorkspaceState => ({
   userPresets: [],
   updatedAt: 0,
 })
-
-interface StoredPresetRecord {
-  id: string
-  source: 'default' | 'user'
-  graph: ArchitectureGraph
-  updatedAt: number
-}
 
 function isGraph(value: unknown): value is ArchitectureGraph {
   if (!value || typeof value !== 'object') return false
@@ -88,40 +76,6 @@ export function parseModelWorkspace(value: unknown): ModelWorkspaceState {
   }
 }
 
-function openModelDatabase(): Promise<IDBDatabase | undefined> {
-  if (typeof indexedDB === 'undefined') return Promise.resolve(undefined)
-  return new Promise((resolve) => {
-    const request = indexedDB.open(MODEL_DATABASE_NAME, MODEL_DATABASE_VERSION)
-    request.onupgradeneeded = () => {
-      const database = request.result
-      if (!database.objectStoreNames.contains(workspaceStoreName)) database.createObjectStore(workspaceStoreName)
-      if (!database.objectStoreNames.contains(presetStoreName)) database.createObjectStore(presetStoreName, { keyPath: 'id' })
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => resolve(undefined)
-    request.onblocked = () => resolve(undefined)
-  })
-}
-
-let databaseWriteQueue: Promise<void> = Promise.resolve()
-
-function enqueueDatabaseWrite(operation: () => Promise<void>): void {
-  databaseWriteQueue = databaseWriteQueue.then(operation, operation)
-}
-
-async function writeWorkspaceToDatabase(workspace: ModelWorkspaceState): Promise<void> {
-  const database = await openModelDatabase()
-  if (!database) return
-  await new Promise<void>((resolve) => {
-    const transaction = database.transaction(workspaceStoreName, 'readwrite')
-    transaction.objectStore(workspaceStoreName).put(workspace, 'current')
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => resolve()
-    transaction.onabort = () => resolve()
-  })
-  database.close()
-}
-
 export function cloneArchitectureGraph(graph: ArchitectureGraph): ArchitectureGraph {
   return JSON.parse(JSON.stringify(graph)) as ArchitectureGraph
 }
@@ -147,42 +101,5 @@ export function saveModelWorkspaceCache(workspace: ModelWorkspaceState, storage:
 }
 
 export function saveModelWorkspace(workspace: ModelWorkspaceState, storage: Storage | undefined = browserStorage()): boolean {
-  const snapshot = { ...workspace, updatedAt: workspace.updatedAt || Date.now() }
-  enqueueDatabaseWrite(() => writeWorkspaceToDatabase(snapshot))
-  return saveModelWorkspaceCache(snapshot, storage)
-}
-
-export async function loadModelWorkspaceFromDatabase(): Promise<ModelWorkspaceState | undefined> {
-  const database = await openModelDatabase()
-  if (!database) return undefined
-  const value = await new Promise<unknown>((resolve) => {
-    const request = database.transaction(workspaceStoreName, 'readonly').objectStore(workspaceStoreName).get('current')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => resolve(undefined)
-  })
-  database.close()
-  const workspace = parseModelWorkspace(value)
-  return workspace.updatedAt > 0 ? workspace : undefined
-}
-
-export function syncModelPresetDatabase(defaultPresets: ArchitectureGraph[], userPresets: ArchitectureGraph[]): void {
-  const updatedAt = Date.now()
-  const records: StoredPresetRecord[] = [
-    ...defaultPresets.map((graph) => ({ id: graph.id, source: 'default' as const, graph, updatedAt })),
-    ...userPresets.map((graph) => ({ id: graph.id, source: 'user' as const, graph, updatedAt })),
-  ]
-  enqueueDatabaseWrite(async () => {
-    const database = await openModelDatabase()
-    if (!database) return
-    await new Promise<void>((resolve) => {
-      const transaction = database.transaction(presetStoreName, 'readwrite')
-      const store = transaction.objectStore(presetStoreName)
-      store.clear()
-      for (const record of records) store.put(record)
-      transaction.oncomplete = () => resolve()
-      transaction.onerror = () => resolve()
-      transaction.onabort = () => resolve()
-    })
-    database.close()
-  })
+  return saveModelWorkspaceCache(workspace, storage)
 }

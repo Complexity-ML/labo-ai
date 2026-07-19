@@ -6,7 +6,7 @@ LABO AI is a desktop laboratory for composing neural architectures from executab
 
 LABO AI was created during OpenAI Build Week with Codex as the primary engineering environment and GPT-5.6 as the reasoning model used for the core build. The repository's dated commit history records the implementation during the submission period.
 
-Codex accelerated the project across the Electron, React, TypeScript and Python boundaries. It was used to inspect and refactor the evolving graph editor, implement typed card contracts and graph/PyTorch synchronization, diagnose the packaged Python runtime, build IndexedDB workspace persistence, harden encrypted API-key handling, create macOS and Windows packages, and repeatedly run the desktop validation suite. Codex also drove the automated demo workflow and helped identify cross-architecture failures that were difficult to reproduce manually.
+Codex accelerated the project across the Electron, React, TypeScript and Python boundaries. It was used to inspect and refactor the evolving graph editor, implement typed card contracts and graph/PyTorch synchronization, diagnose the packaged Python runtime, build SQLite workspace persistence, harden encrypted API-key handling, create macOS and Windows packages, and repeatedly run the desktop validation suite. Codex also drove the automated demo workflow and helped identify cross-architecture failures that were difficult to reproduce manually.
 
 GPT-5.6 was used inside Codex for the cross-cutting implementation and debugging work, and it is also the default model behind Ask LABO (`gpt-5.6-terra`). Ask LABO receives a bounded view of the card catalog and current graph, then uses strict tools to inspect, search, add, connect, create, arrange, execute, save and export. Its output is validated locally before it can mutate the graph.
 
@@ -28,7 +28,7 @@ The key product decisions remained human-directed: use atomic typed cards instea
 - Tokenizer and training studios.
 - Ask LABO planner that can add available blocks, connect compatible ports, or report missing capabilities.
 - Parallel-aware automatic graph layout and multi-architecture composition without overwriting the current canvas.
-- IndexedDB-backed graph drafts and user presets, preserved while switching starters.
+- SQLite-backed graph drafts, cards, optimizer configurations and user presets, preserved across application updates.
 - Per-user OpenAI API key management through Electron encrypted storage; keys can be tested and deleted from the UI.
 
 ## Judge quick start
