@@ -183,7 +183,7 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
     })()}
     {settingsOpen && <StudioSettingsModal onClose={onCloseSettings} sections={[
       {
-        id: 'training', label: 'Training', icon: <Settings2 size={13} />, content: <section className="training-settings-presets">
+        id: 'studio', label: 'Studio', icon: <Settings2 size={13} />, content: <section className="training-settings-presets">
           <strong>Optimizer presets</strong>
           {customOptimizers.length === 0 ? <p>No custom optimizer yet.</p> : customOptimizers.map((optimizer) => <div key={`setting-${optimizer.id}`}>
             <button onClick={() => selectOptimizer(optimizer.id)} type="button"><span>{optimizer.label}</span><small>torch.optim.{optimizer.torchClass}</small></button>

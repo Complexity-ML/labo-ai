@@ -708,7 +708,7 @@ describe('LABO AI workspace', () => {
     expect(screen.getByRole('button', { name: 'Training Studio' })).toHaveAttribute('aria-pressed', 'true')
     const settings = screen.getByRole('dialog', { name: 'LABO AI settings' })
     expect(within(settings).getByRole('button', { name: 'General' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(within(settings).getByRole('button', { name: 'Training' }))
+    fireEvent.click(within(settings).getByRole('button', { name: 'Studio' }))
     expect(within(settings).getByText('Updated AdamW')).toBeInTheDocument()
     fireEvent.click(within(settings).getByRole('button', { name: 'Delete optimizer preset Updated AdamW' }))
     expect(screen.queryByRole('button', { name: 'Edit Updated AdamW' })).not.toBeInTheDocument()

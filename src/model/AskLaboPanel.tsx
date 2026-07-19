@@ -363,6 +363,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
           {credentialMessage && <p className="ask-labo-key-message">{credentialMessage}</p>}
         </section>
       </div> },
+      { id: 'studio', label: 'Studio', icon: <Settings2 size={13} />, content: <div className="studio-settings-empty"><strong>Model Studio</strong><p>Model graphs, reusable cards and generated PyTorch are saved automatically for the current private profile.</p></div> },
       { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="ask-labo-tips">
         <article><span><MousePointer2 size={14} />Select & delete</span><strong>Delete several cards or a full graph</strong><p>Switch to <b>Edit cards</b>, then drag on empty canvas around the cards. Hold Shift, Cmd or Ctrl while clicking to adjust the selection, then choose <b>Delete selection</b>. Connected elastics are removed with the cards.</p></article>
         <article><span><Settings2 size={14} />Edit a card</span><strong>Open card settings</strong><p>In <b>Edit cards</b>, click a card to open its settings. You can also right-click a card for the Edit and Delete actions.</p></article>

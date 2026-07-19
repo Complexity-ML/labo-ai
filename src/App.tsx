@@ -77,7 +77,7 @@ function App() {
     {workspace === 'tokenizer' && <TokenizerStudio onCatalogChange={setCustomTokenizerCards} onRequestedCardHandled={() => setRequestedTokenizerCard(undefined)} requestedCard={requestedTokenizerCard} />}
 
     {workspace === 'tokenizer' && studioSettingsOpen && <StudioSettingsModal onClose={() => setStudioSettingsOpen(false)} sections={[
-      { id: 'tokenizer', label: 'Tokenizer', icon: <Settings2 size={13} />, content: <p>Tokenizer pipelines and reusable tokenizer cards are auto-saved for the current private profile.</p> },
+      { id: 'studio', label: 'Studio', icon: <Settings2 size={13} />, content: <p>Tokenizer pipelines and reusable tokenizer cards are auto-saved for the current private profile.</p> },
       { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="studio-settings-tips"><p>Right-click a custom tokenizer card to edit or delete it. Built-in tokenizer cards remain read-only.</p></div> },
     ]} />}
 
