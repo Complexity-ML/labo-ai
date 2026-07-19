@@ -507,6 +507,36 @@ fn launch_application(destination: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn prepare_application_handoff(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .hide()
+            .map_err(|error| format!("Unable to hide LABO AI Setup: {error}"))?;
+    }
+    app.set_activation_policy(tauri::ActivationPolicy::Accessory)
+        .map_err(|error| format!("Unable to remove LABO AI Setup from the Dock: {error}"))?;
+    thread::sleep(Duration::from_millis(250));
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn prepare_application_handoff(_app: &AppHandle) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn restore_setup_after_handoff_failure(app: &AppHandle) {
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn restore_setup_after_handoff_failure(_app: &AppHandle) {}
+
 fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
     fs::create_dir_all(install_root()?).map_err(|error| error.to_string())?;
     emit(app, "Release", "Checking the latest LABO AI release…", 5);
@@ -638,7 +668,11 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
         "LABO AI is ready. Launching the application…",
         100,
     );
-    launch_application(&destination)?;
+    prepare_application_handoff(app)?;
+    if let Err(error) = launch_application(&destination) {
+        restore_setup_after_handoff_failure(app);
+        return Err(error);
+    }
     Ok(InstallResult {
         tag: release.tag_name,
         path: destination.display().to_string(),
@@ -656,7 +690,7 @@ async fn install_latest(app: AppHandle) -> Result<InstallResult, String> {
         let _ = window.close();
     }
     thread::spawn(move || {
-        thread::sleep(Duration::from_millis(150));
+        thread::sleep(Duration::from_millis(50));
         app.exit(0);
     });
     Ok(result)
@@ -679,6 +713,15 @@ pub fn run() {
     let automatic_install = env::args().any(|argument| argument == "--auto-install");
     tauri::Builder::default()
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            app.handle()
+                .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
+
+            if let Some(window) = app.get_webview_window("main") {
+                window.show()?;
+                window.set_focus()?;
+            }
+
             if automatic_install {
                 let handle = app.handle().clone();
                 thread::spawn(move || {
@@ -690,7 +733,7 @@ pub fn run() {
                     if let Some(window) = handle.get_webview_window("main") {
                         let _ = window.close();
                     }
-                    thread::sleep(Duration::from_millis(150));
+                    thread::sleep(Duration::from_millis(50));
                     handle.exit(0);
                 });
             }
