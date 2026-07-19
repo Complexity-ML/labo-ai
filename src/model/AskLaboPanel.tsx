@@ -66,7 +66,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
   const [editingCard, setEditingCard] = useState<ArchitectureNode>()
   const [editorDraft, setEditorDraft] = useState<AgentCardOverride>()
   const [editorError, setEditorError] = useState('')
-  const [settingsSection, setSettingsSection] = useState<'workspaces' | 'agent' | 'tips'>('workspaces')
+  const [settingsSection, setSettingsSection] = useState<'general' | 'workspaces' | 'agent' | 'tips'>('workspaces')
   const [activityOpen, setActivityOpen] = useState(false)
   const [activities, setActivities] = useState<AgentActivity[]>([])
   const activeActivityIdRef = useRef<string | undefined>(undefined)
@@ -353,11 +353,16 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
 
     <div className="ask-labo-settings">
       <nav aria-label="Settings sections" className="ask-labo-settings-tabs">
+        <button aria-pressed={settingsSection === 'general'} onClick={() => setSettingsSection('general')} type="button"><Settings2 size={13} />General</button>
         <button aria-pressed={settingsSection === 'workspaces'} onClick={() => setSettingsSection('workspaces')} type="button"><FolderKanban size={13} />Workspaces</button>
         <button aria-pressed={settingsSection === 'agent'} onClick={() => setSettingsSection('agent')} type="button"><Sparkles size={13} />Agent</button>
         <button aria-pressed={settingsSection === 'tips'} onClick={() => setSettingsSection('tips')} type="button"><Lightbulb size={13} />Tips</button>
       </nav>
-      {settingsSection === 'workspaces' ? <div className="ask-labo-workspace-settings">{workspaceSettings}</div> : settingsSection === 'tips' ? <div className="ask-labo-tips">
+      {settingsSection === 'general' ? <div className="studio-settings-general ask-labo-general-settings">
+        <article><ShieldCheck size={15} /><div><strong>Private automatic save</strong><p>{window.labo?.runtime === 'web' ? 'Signed-in workspaces are stored in the account-scoped server database. Guest work is temporary.' : 'Workspaces and cards are stored in the persistent local profile.'}</p></div></article>
+        <article><Settings2 size={15} /><div><strong>Shared defaults, private creations</strong><p>Built-in cards are read-only. User cards and presets remain private to this profile.</p></div></article>
+        {window.labo?.runtime === 'web' && <a className="studio-settings-account-link" href="/dashboard/settings" target="_top">Manage account and private data</a>}
+      </div> : settingsSection === 'workspaces' ? <div className="ask-labo-workspace-settings">{workspaceSettings}</div> : settingsSection === 'tips' ? <div className="ask-labo-tips">
         <article>
           <span><MousePointer2 size={14} />Select & delete</span>
           <strong>Delete several cards or a full graph</strong>

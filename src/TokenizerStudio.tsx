@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Blocks, Check, Code2, Cpu, PackageCheck, Pause, Pencil, Play, Plus, Square, StepForward, Trash2 } from 'lucide-react'
 import { AtomicPlayer, type AtomicPlayerSnapshot, type AtomExecutionResult } from './core/atomic-player'
 import {
@@ -61,7 +61,7 @@ async function executeTokenizerIrAtom(step: TokenizerStep): Promise<{ summary: s
   return { summary: `Byte-level round-trip: ${new TextDecoder().decode(new TextEncoder().encode('LABO AI'))}` }
 }
 
-export function TokenizerStudio() {
+export function TokenizerStudio({ onCatalogChange = () => undefined, onRequestedCardHandled = () => undefined, requestedCard }: { onCatalogChange?: (cards: CustomTokenizerCard[]) => void; onRequestedCardHandled?: () => void; requestedCard?: { cardId: string; kind: 'atom' | 'custom'; requestId: number } }) {
   const [pipeline, setPipeline] = useState(researchBpePreset)
   const [view, setView] = useState<TokenizerView>('split')
   const [selectedId, setSelectedId] = useState(pipeline.steps[0]?.id ?? '')
@@ -104,17 +104,18 @@ export function TokenizerStudio() {
         if (!cancelled && Array.isArray(stored?.customCards)) setCustomCards(stored.customCards.filter(isCustomTokenizerCard))
       } else if (window.labo?.runtime === 'web' && window.labo.loadWebWorkspace) {
         const result = await window.labo.loadWebWorkspace()
-        if (!cancelled) setWebAuthenticated(result.authenticated)
-        const stored = result.tokenizer && typeof result.tokenizer === 'object' ? result.tokenizer as { pipeline?: unknown; customCards?: unknown } : undefined
-        if (!cancelled && result.authenticated && isTokenizerPipeline(stored?.pipeline)) {
+        const authenticated = Boolean(result && typeof result === 'object' && result.authenticated)
+        if (!cancelled) setWebAuthenticated(authenticated)
+        const stored = result && typeof result === 'object' && result.tokenizer && typeof result.tokenizer === 'object' ? result.tokenizer as { pipeline?: unknown; customCards?: unknown } : undefined
+        if (!cancelled && authenticated && isTokenizerPipeline(stored?.pipeline)) {
           setPipeline(stored.pipeline)
           setSelectedId(stored.pipeline.steps[0]?.id ?? '')
         }
-        if (!cancelled && result.authenticated && Array.isArray(stored?.customCards)) setCustomCards(stored.customCards.filter(isCustomTokenizerCard))
+        if (!cancelled && authenticated && Array.isArray(stored?.customCards)) setCustomCards(stored.customCards.filter(isCustomTokenizerCard))
       }
       if (!cancelled) setCustomCardsReady(true)
     }
-    void load()
+    void load().catch(() => { if (!cancelled) setCustomCardsReady(true) })
     return () => { cancelled = true }
   }, [])
 
@@ -148,22 +149,38 @@ export function TokenizerStudio() {
     setSelectedId(next.steps[0]?.id ?? '')
   }
 
-  const addAtom = (atom: TokenizerStep['atom']) => {
-    const next = addTokenizerStep(pipeline, atom)
-    setPipeline(next)
-    setSelectedId(next.steps.at(-1)!.id)
-  }
+  const addAtom = useCallback((atom: TokenizerStep['atom']) => {
+    setPipeline((current) => {
+      const next = addTokenizerStep(current, atom)
+      setSelectedId(next.steps.at(-1)!.id)
+      return next
+    })
+  }, [])
 
-  const addCustomTokenizerCard = (card: CustomTokenizerCard) => {
-    const sequence = pipeline.steps.filter((step) => step.id.startsWith(`${card.id}-`)).length + 1
-    const step: TokenizerStep = {
-      id: `${card.id}-${sequence}`,
-      atom: 'custom-tokenizer',
-      settings: { label: card.label, category: card.category, pythonCode: card.pythonCode },
+  const addCustomTokenizerCard = useCallback((card: CustomTokenizerCard) => {
+    setPipeline((current) => {
+      const sequence = current.steps.filter((step) => step.id.startsWith(`${card.id}-`)).length + 1
+      const step: TokenizerStep = {
+        id: `${card.id}-${sequence}`,
+        atom: 'custom-tokenizer',
+        settings: { label: card.label, category: card.category, pythonCode: card.pythonCode },
+      }
+      setSelectedId(step.id)
+      return { ...current, steps: [...current.steps, step] }
+    })
+  }, [])
+
+  useEffect(() => onCatalogChange(customCards), [customCards, onCatalogChange])
+
+  useEffect(() => {
+    if (!requestedCard || !customCardsReady) return
+    if (requestedCard.kind === 'atom' && requestedCard.cardId in tokenizerAtomDefinitions) addAtom(requestedCard.cardId as TokenizerStep['atom'])
+    if (requestedCard.kind === 'custom') {
+      const card = customCards.find((candidate) => candidate.id === requestedCard.cardId)
+      if (card) addCustomTokenizerCard(card)
     }
-    setPipeline((current) => ({ ...current, steps: [...current.steps, step] }))
-    setSelectedId(step.id)
-  }
+    onRequestedCardHandled()
+  }, [addAtom, addCustomTokenizerCard, customCards, customCardsReady, onRequestedCardHandled, requestedCard])
 
   return (
     <>

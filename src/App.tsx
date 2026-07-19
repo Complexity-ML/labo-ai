@@ -5,7 +5,11 @@ import './App.css'
 import { ModelStudio } from './model/ModelStudio'
 import { TokenizerStudio } from './TokenizerStudio'
 import { TrainingStudio } from './training/TrainingStudio'
+import { StudioSettingsModal } from './StudioSettingsModal'
 import { searchModelCards } from './model/card-search'
+import { searchOptimizers, searchTokenizerCards } from './studio-search'
+import type { OptimizerDefinition } from './core/optimizer-ir'
+import type { CustomTokenizerCard } from './tokenizer/custom-tokenizer-card'
 import './styles/desktop.scss'
 
 type Workspace = 'model' | 'training' | 'tokenizer'
@@ -17,8 +21,14 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [requestedCard, setRequestedCard] = useState<{ atomId: string; requestId: number }>()
+  const [requestedOptimizer, setRequestedOptimizer] = useState<{ optimizerId: string; requestId: number }>()
+  const [requestedTokenizerCard, setRequestedTokenizerCard] = useState<{ cardId: string; kind: 'atom' | 'custom'; requestId: number }>()
+  const [customOptimizers, setCustomOptimizers] = useState<OptimizerDefinition[]>([])
+  const [customTokenizerCards, setCustomTokenizerCards] = useState<CustomTokenizerCard[]>([])
   const [nativeFullScreen, setNativeFullScreen] = useState(false)
-  const searchResults = useMemo(() => searchModelCards(searchQuery), [searchQuery])
+  const searchResults = useMemo(() => workspace === 'model'
+    ? searchModelCards(searchQuery).map((result) => ({ ...result, id: result.atomId, kind: 'model' as const }))
+    : workspace === 'training' ? searchOptimizers(searchQuery, customOptimizers) : searchTokenizerCards(searchQuery, customTokenizerCards), [customOptimizers, customTokenizerCards, searchQuery, workspace])
   const platform = window.labo?.platform
   const runtimeClass = window.labo?.runtime === 'electron' ? ` runtime-electron runtime-${platform ?? 'desktop'}` : ''
   const searchShortcut = platform === 'darwin' ? '⌘K' : 'Ctrl+K'
@@ -54,7 +64,7 @@ function App() {
         <button aria-pressed={workspace === 'tokenizer'} onClick={() => { setWorkspace('tokenizer'); setAskOpen(false); setStudioSettingsOpen(false) }}>Tokenizer Studio</button>
       </nav>
       <div className="header-actions">
-        <button aria-label="Search model cards" className="ghost-button" onClick={() => setSearchOpen(true)}><Search size={14} /> Search <kbd>{searchShortcut}</kbd></button>
+        <button aria-label={`Search ${workspace === 'model' ? 'model cards' : workspace === 'training' ? 'optimizers' : 'tokenizer cards'}`} className="ghost-button" onClick={() => setSearchOpen(true)}><Search size={14} /> Search <kbd>{searchShortcut}</kbd></button>
         <button aria-label="Open LABO settings" aria-pressed={askOpen || studioSettingsOpen} className="codex-button" onClick={() => {
           if (workspace === 'model') setAskOpen((current) => !current)
           else setStudioSettingsOpen((current) => !current)
@@ -63,26 +73,23 @@ function App() {
     </header>
 
     {workspace === 'model' && <ModelStudio askOpen={askOpen} onCloseAsk={() => setAskOpen(false)} onRequestedCardHandled={() => setRequestedCard(undefined)} requestedCard={requestedCard} />}
-    {workspace === 'training' && <TrainingStudio onCloseSettings={() => setStudioSettingsOpen(false)} settingsOpen={studioSettingsOpen} />}
-    {workspace === 'tokenizer' && <TokenizerStudio />}
+    {workspace === 'training' && <TrainingStudio onCatalogChange={setCustomOptimizers} onCloseSettings={() => setStudioSettingsOpen(false)} onRequestedOptimizerHandled={() => setRequestedOptimizer(undefined)} requestedOptimizer={requestedOptimizer} settingsOpen={studioSettingsOpen} />}
+    {workspace === 'tokenizer' && <TokenizerStudio onCatalogChange={setCustomTokenizerCards} onRequestedCardHandled={() => setRequestedTokenizerCard(undefined)} requestedCard={requestedTokenizerCard} />}
 
-    {workspace === 'tokenizer' && studioSettingsOpen && <div className="model-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setStudioSettingsOpen(false) }}>
-      <section aria-label="Tokenizer Studio settings" aria-modal="true" className="model-card-modal studio-settings-modal" onPointerDown={(event) => event.stopPropagation()} role="dialog">
-        <header><div><span>TOKENIZER STUDIO</span><strong>Settings</strong></div><button aria-label="Close Tokenizer Studio settings" onClick={() => setStudioSettingsOpen(false)} type="button"><X size={14} /></button></header>
-        <p className="model-card-modal-hint">Tokenizer cards are saved automatically for this LABO AI profile.</p>
-        <footer><span /><button onClick={() => setStudioSettingsOpen(false)} type="button">Done</button></footer>
-      </section>
-    </div>}
+    {workspace === 'tokenizer' && studioSettingsOpen && <StudioSettingsModal onClose={() => setStudioSettingsOpen(false)} studio="Tokenizer" tips={<p>Right-click a custom tokenizer card to edit or delete it. Built-in tokenizer cards remain read-only.</p>}>
+      <p>Tokenizer pipelines and reusable tokenizer cards are auto-saved for the current private profile.</p>
+    </StudioSettingsModal>}
 
     {searchOpen && <div className="card-search-backdrop">
       <section aria-label="Search cards" aria-modal="true" className="card-search-modal" role="dialog">
         <header><span><Search size={14} />Find a card</span><button aria-label="Close card search" onClick={() => setSearchOpen(false)}><X size={14} /></button></header>
-        <input autoFocus aria-label="Natural language card search" onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ex. convertir des logits en token généré…" value={searchQuery} />
+        <input autoFocus aria-label="Natural language card search" onChange={(event) => setSearchQuery(event.target.value)} placeholder={workspace === 'model' ? 'Ex. decode generated logits into a token…' : workspace === 'training' ? 'Ex. optimizer with momentum and weight decay…' : 'Ex. image tokenizer or byte-level decoder…'} value={searchQuery} />
         <div className="card-search-results">
           {searchQuery && searchResults.length === 0 && <p>No matching native card.</p>}
-          {searchResults.map((result) => <button key={result.atomId} onClick={() => {
-            setWorkspace('model')
-            setRequestedCard({ atomId: result.atomId, requestId: Date.now() })
+          {searchResults.map((result) => <button key={`${result.kind}-${result.id}`} onClick={() => {
+            if (result.kind === 'model') setRequestedCard({ atomId: result.id, requestId: Date.now() })
+            else if (result.kind === 'optimizer') setRequestedOptimizer({ optimizerId: result.id, requestId: Date.now() })
+            else setRequestedTokenizerCard({ cardId: result.id, kind: result.kind === 'tokenizer-atom' ? 'atom' : 'custom', requestId: Date.now() })
             setSearchOpen(false)
             setSearchQuery('')
           }}><strong>{result.label}</strong><small>{result.description}</small></button>)}
