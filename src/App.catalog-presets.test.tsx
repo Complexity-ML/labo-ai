@@ -12,7 +12,7 @@ describe('LABO AI catalog presets', () => {
     expect(screen.getByText('LABO AI')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Blocks' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'PyTorch' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Split' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Blocks' })).toHaveAttribute('aria-pressed', 'true')
     for (const label of ['Tied token embedding', 'GQA QKV projection', '16 Q / 4 KV heads', 'QK-Norm', 'Causal SDPA / Flash', 'Fixed lexical top-2 lookup', 'Shared dense SwiGLU', '4 × routed SwiGLU']) {
       expect(screen.getByRole('button', { name: `Select ${label}` })).not.toHaveAttribute('draggable')
     }
@@ -21,6 +21,7 @@ describe('LABO AI catalog presets', () => {
     expect(document.querySelector('[data-port-id="sdpa-output-output"]')).toHaveAttribute('data-port-role', 'attention')
     expect(document.querySelector('[data-port-id="fixed-routes-expertIndices-output"]')).toHaveAttribute('data-port-role', 'expert-indices')
     expect(document.querySelector('[data-port-id="routed-expertWeights-input"]')).toHaveAttribute('data-port-role', 'routing-weights')
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
     const pytorch = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
     expect(pytorch).toContain('class GeneratedModel')
     expect(pytorch).toContain('self.embedding = nn.Embedding(32000, 1024)')
@@ -51,8 +52,8 @@ describe('LABO AI catalog presets', () => {
   it('exposes the 100+ native card catalog by useful atomic families', () => {
     render(<App />)
   
-    for (const family of ['Normalization variants', 'Attention variants', 'Position variants', 'Composition variants', 'MLP variants', 'Output variants']) {
-      fireEvent.click(screen.getByText(new RegExp(family)))
+    for (const family of ['Normalization', 'Attention', 'Position & sequence', 'Tensor composition', 'MLP blocks', 'Output heads']) {
+      fireEvent.click(screen.getByText(family, { selector: 'summary' }))
     }
     for (const card of ['ScaleNorm', 'Bidirectional SDPA', 'Sinusoidal position encoding', 'Learned gated blend', 'Squared-ReLU MLP', 'Softmax output']) {
       expect(screen.getByRole('button', { name: `Add ${card}` })).toBeInTheDocument()
@@ -65,8 +66,9 @@ describe('LABO AI catalog presets', () => {
     fireEvent.click(screen.getByText('Graph inputs'))
     expect(screen.getByRole('button', { name: 'Add Image Tensor' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Video Tensor' })).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Specialized variants'))
-    fireEvent.click(screen.getByText('Image, video & multimodal'))
+    for (const family of ['Image inputs & tokenization', 'Vision & spatial processing', 'Video inputs & tokenization', 'Video & temporal processing', 'Multimodal fusion & conditioning']) {
+      fireEvent.click(screen.getByText(family))
+    }
     expect(screen.getByRole('button', { name: 'Add Image VQ tokenizer' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Image codebook embedding' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Video VQ tokenizer' })).toBeInTheDocument()
@@ -74,6 +76,8 @@ describe('LABO AI catalog presets', () => {
     expect(screen.getByRole('button', { name: 'Add Vision patch projection' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Adaptive multimodal conditioning' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Temporal depthwise convolution' })).toBeInTheDocument()
+    expect(screen.queryByText('Specialized variants')).not.toBeInTheDocument()
+    expect(screen.queryByText('Image, video & multimodal')).not.toBeInTheDocument()
   
     fireEvent.click(document.querySelector('.preset-menu > summary')!)
     for (const preset of ['Vision', 'Image edit', 'Video']) expect(screen.getByRole('button', { name: preset })).toBeInTheDocument()
@@ -94,11 +98,13 @@ describe('LABO AI catalog presets', () => {
     }
     expect(screen.getByText('6 atoms')).toBeInTheDocument()
     expect(screen.getByText(/6 nodes · 7 links/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
     const trCode = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
     expect(trCode).toContain('def forward(self, token_ids: torch.Tensor, hidden_states: torch.Tensor):')
     expect(trCode).not.toContain('atom=moe-router')
   
     fireEvent.click(screen.getByRole('button', { name: 'TR 300M' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks' }))
     expect(screen.getByRole('button', { name: 'Select GQA QKV projection' })).toBeInTheDocument()
     expect(screen.getByText('20 atoms')).toBeInTheDocument()
   })
@@ -132,6 +138,7 @@ describe('LABO AI catalog presets', () => {
     }
     expect(screen.getByText('15 atoms')).toBeInTheDocument()
     expect(screen.getByText('PyTorch graph executable')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
     const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
     expect(code).toContain('F.scaled_dot_product_attention')
     expect(code).toContain('self.mlp_gate = nn.Linear(768, 3072, bias=False)')
@@ -160,6 +167,7 @@ describe('LABO AI catalog presets', () => {
     expect(screen.getByRole('button', { name: 'Select Token IDs' })).toBeInTheDocument()
     expect(document.querySelector('[data-port-id="token-ids-tokenIds-output"]')).toHaveAttribute('data-port-role', 'token-ids')
     expect(screen.getByText('Atomic PyTorch draft')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
     expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('return token_ids')
   })
   

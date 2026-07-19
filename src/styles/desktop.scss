@@ -4,3 +4,5 @@
 @use 'sidebars';
 @use 'empty-states';
 @use 'agent-spotlight';
+
+@include tokens.pastel-palette;

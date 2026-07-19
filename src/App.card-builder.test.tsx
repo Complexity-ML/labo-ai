@@ -32,6 +32,7 @@ describe('LABO AI card builder', () => {
   
   it('creates a reusable custom PyTorch card and keeps its code editable', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     expect(screen.queryByRole('textbox', { name: 'Custom card name' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
@@ -165,8 +166,9 @@ describe('LABO AI card builder', () => {
   
   it('offers an explicit tied language-model head Blockly card', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
-    fireEvent.click(screen.getByText(/Output variants/))
+    fireEvent.click(screen.getByText(/Tied output head/))
     const card = screen.getByRole('button', { name: 'Add Tied language-model head' })
     expect(card).toHaveAttribute('draggable', 'true')
     fireEvent.click(card)

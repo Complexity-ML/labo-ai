@@ -56,6 +56,17 @@ describe('LABO AI shell web', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Step one model atom' }))
     await waitFor(() => expect(screen.getByText('preview · paused')).toBeInTheDocument())
   })
+
+  it('closes card search when its backdrop is clicked', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Search model cards' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Search cards' })
+    expect(dialog).toBeInTheDocument()
+    fireEvent.pointerDown(dialog.parentElement!)
+
+    expect(screen.queryByRole('dialog', { name: 'Search cards' })).not.toBeInTheDocument()
+  })
   
   it('keeps an authenticated web workspace on the user-scoped server without browser storage', async () => {
     const saveWebWorkspace = vi.fn(async () => ({ saved: true as const, updatedAt: Date.now() }))

@@ -66,6 +66,8 @@ describe('LABO AI workspaces player', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add GPT-like beside current graph' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add TR Basic beside current graph' }))
     expect(screen.getByText('21 atoms')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('GPT-like Starter')
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR Basic · Shared + Residual Top-2')
   

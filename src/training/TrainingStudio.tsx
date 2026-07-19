@@ -13,7 +13,7 @@ function formatValue(value: OptimizerValue): string {
 
 export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => undefined, onCloseSettings = () => undefined, onRequestedOptimizerHandled = () => undefined, requestedOptimizer }: { settingsOpen?: boolean; onCatalogChange?: (optimizers: OptimizerDefinition[]) => void; onCloseSettings?: () => void; onRequestedOptimizerHandled?: () => void; requestedOptimizer?: { optimizerId: string; requestId: number } }) {
   const [config, setConfig] = useState<OptimizerConfig>(() => createOptimizerConfig('adamw'))
-  const [view, setView] = useState<'graph' | 'pytorch' | 'split'>('split')
+  const [view, setView] = useState<'graph' | 'pytorch' | 'split'>('graph')
   const [interactionMode, setInteractionMode] = useState<'use' | 'edit'>('use')
   const [customOptimizers, setCustomOptimizers] = useState<OptimizerDefinition[]>([])
   const [creatorOpen, setCreatorOpen] = useState(false)

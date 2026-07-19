@@ -27,6 +27,8 @@ describe('LABO AI studios', () => {
     expect(screen.getByText('Installed v0.1.26 · latest v0.1.27. Updates are built locally from the tagged source.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Update and restart' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+    expect(await screen.findByText('v0.1.27 is ready to install.')).toBeInTheDocument()
     delete window.labo
   })
 
@@ -38,10 +40,10 @@ describe('LABO AI studios', () => {
     expect(screen.getByRole('button', { name: 'Use Muon' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Use Muon' }))
     expect(screen.getByRole('spinbutton', { name: 'Muon momentum' })).toHaveValue(0.95)
-    expect(screen.getByText(/torch\.optim\.Muon\(model\.parameters\(\)/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Split' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Training graph' })).toHaveAttribute('aria-pressed', 'true')
   
     fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
+    expect(screen.getByText(/torch\.optim\.Muon\(model\.parameters\(\)/)).toBeInTheDocument()
     expect(screen.queryByText('training.optimizer')).not.toBeInTheDocument()
     expect(screen.getByText('optimizer.py')).toBeInTheDocument()
   
@@ -65,7 +67,9 @@ describe('LABO AI studios', () => {
     expect(screen.getByRole('button', { name: 'Use Research AdamW' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Research AdamW lr' })).toHaveValue(0.0002)
     expect(screen.getAllByText('torch.optim.AdamW').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
     expect(screen.getByText(/optimizer = torch\.optim\.AdamW\(model\.parameters\(\), lr=0\.0002, weight_decay=0\.05, fused=True\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Training graph' }))
   
     fireEvent.click(screen.getByRole('button', { name: 'Edit optimizers' }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit Research AdamW' }))
@@ -83,13 +87,18 @@ describe('LABO AI studios', () => {
     expect(screen.getByRole('button', { name: 'Training Studio' })).toHaveAttribute('aria-pressed', 'true')
     const settings = screen.getByRole('dialog', { name: 'LABO AI settings' })
     expect(within(settings).getByRole('button', { name: 'General' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(within(settings).getByRole('button', { name: 'Studio' }))
-    expect(within(settings).getByText('Updated AdamW')).toBeInTheDocument()
-    fireEvent.click(within(settings).getByRole('button', { name: 'Delete optimizer preset Updated AdamW' }))
-    expect(screen.queryByRole('button', { name: 'Edit Updated AdamW' })).not.toBeInTheDocument()
-    expect(screen.getAllByText('torch.optim.AdamW').length).toBeGreaterThan(0)
+    for (const section of ['General', 'Workspaces', 'Agent', 'Application', 'Tips']) expect(within(settings).getByRole('button', { name: section })).toBeInTheDocument()
+    fireEvent.click(within(settings).getByRole('button', { name: 'Application' }))
+    expect(within(settings).getByText('One LABO AI workspace')).toBeInTheDocument()
     fireEvent.pointerDown(document.querySelector('.model-card-modal-backdrop')!)
     expect(screen.queryByRole('dialog', { name: 'LABO AI settings' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tokenizer Studio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    const tokenizerSettings = screen.getByRole('dialog', { name: 'LABO AI settings' })
+    for (const section of ['General', 'Workspaces', 'Agent', 'Application', 'Tips']) expect(within(tokenizerSettings).getByRole('button', { name: section })).toBeInTheDocument()
+    fireEvent.click(within(tokenizerSettings).getByRole('button', { name: 'Application' }))
+    expect(within(tokenizerSettings).getByText('One LABO AI workspace')).toBeInTheDocument()
   })
   
   it('keeps natural-language search inside the active studio', async () => {
@@ -141,6 +150,7 @@ describe('LABO AI studios', () => {
     expect(screen.getAllByText('Byte-level pre-tokenizer').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('BPE trainer').length).toBeGreaterThanOrEqual(2)
     expect(screen.queryByRole('button', { name: 'Rust' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     expect(screen.getByText(/vocab_size=32768/)).toBeInTheDocument()
   
     fireEvent.click(screen.getByRole('button', { name: 'Select BPE trainer' }))

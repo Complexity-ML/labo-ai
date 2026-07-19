@@ -13,6 +13,7 @@ export interface DesktopUpdateStatus {
 }
 
 export const desktopSetupReleaseUrl = 'https://github.com/Complexity-ML/labo-ai/releases/latest'
+export const desktopUpdateArguments = ['--auto-install'] as const
 
 export function desktopUpdateHelperPath(userData: string, platform = process.platform): string {
   return join(userData, 'installer', platform === 'win32' ? 'labo-ai-setup.exe' : 'labo-ai-setup')
@@ -81,7 +82,7 @@ export async function getDesktopUpdateStatus(userData: string, currentVersion: s
 export async function launchDesktopUpdate(userData: string, platform = process.platform): Promise<{ launched: true }> {
   const helper = desktopUpdateHelperPath(userData, platform)
   if (!(await helperExists(helper))) throw new Error('LABO AI Setup is not installed yet')
-  const child = spawn(helper, ['--update', '--parent-pid', String(process.pid)], {
+  const child = spawn(helper, [...desktopUpdateArguments], {
     detached: true,
     stdio: 'ignore',
     windowsHide: false,

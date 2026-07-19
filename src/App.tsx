@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Lightbulb, Search, Settings2, X } from 'lucide-react'
+import { Search, Settings2, X } from 'lucide-react'
 import { LaboMark } from './LaboMark'
 import './App.scss'
 import { ModelStudio } from './model/ModelStudio'
 import { TokenizerStudio } from './TokenizerStudio'
 import { TrainingStudio } from './training/TrainingStudio'
-import { StudioSettingsModal } from './StudioSettingsModal'
 import { searchModelCards } from './model/card-search'
 import { searchOptimizers, searchTokenizerCards } from './studio-search'
 import type { OptimizerDefinition } from './core/optimizer-ir'
@@ -17,7 +16,6 @@ type Workspace = 'model' | 'training' | 'tokenizer'
 function App() {
   const [workspace, setWorkspace] = useState<Workspace>('model')
   const [askOpen, setAskOpen] = useState(false)
-  const [studioSettingsOpen, setStudioSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [requestedCard, setRequestedCard] = useState<{ atomId: string; requestId: number }>()
@@ -59,30 +57,26 @@ function App() {
         <span className="alpha-pill">ALPHA</span>
       </div>
       <nav className="studio-navigation" aria-label="LABO studios">
-        <button aria-pressed={workspace === 'model'} onClick={() => { setWorkspace('model'); setStudioSettingsOpen(false) }}>Model Studio</button>
-        <button aria-pressed={workspace === 'training'} onClick={() => { setWorkspace('training'); setAskOpen(false); setStudioSettingsOpen(false) }}>Training Studio</button>
-        <button aria-pressed={workspace === 'tokenizer'} onClick={() => { setWorkspace('tokenizer'); setAskOpen(false); setStudioSettingsOpen(false) }}>Tokenizer Studio</button>
+        <button aria-pressed={workspace === 'model'} onClick={() => { setWorkspace('model'); setAskOpen(false) }}>Model Studio</button>
+        <button aria-pressed={workspace === 'training'} onClick={() => { setWorkspace('training'); setAskOpen(false) }}>Training Studio</button>
+        <button aria-pressed={workspace === 'tokenizer'} onClick={() => { setWorkspace('tokenizer'); setAskOpen(false) }}>Tokenizer Studio</button>
       </nav>
       <div className="header-actions">
         <button aria-label={`Search ${workspace === 'model' ? 'model cards' : workspace === 'training' ? 'optimizers' : 'tokenizer cards'}`} className="ghost-button" onClick={() => setSearchOpen(true)}><Search size={14} /> Search <kbd>{searchShortcut}</kbd></button>
-        <button aria-label="Open LABO settings" aria-pressed={askOpen || studioSettingsOpen} className="codex-button" onClick={() => {
-          if (workspace === 'model') setAskOpen((current) => !current)
-          else setStudioSettingsOpen((current) => !current)
-        }}><Settings2 size={14} /> Settings</button>
+        <button aria-label="Open LABO settings" aria-pressed={askOpen} className="codex-button" onClick={() => setAskOpen((current) => !current)}><Settings2 size={14} /> Settings</button>
       </div>
     </header>
 
-    {workspace === 'model' && <ModelStudio askOpen={askOpen} onCloseAsk={() => setAskOpen(false)} onRequestedCardHandled={() => setRequestedCard(undefined)} requestedCard={requestedCard} />}
-    {workspace === 'training' && <TrainingStudio onCatalogChange={setCustomOptimizers} onCloseSettings={() => setStudioSettingsOpen(false)} onRequestedOptimizerHandled={() => setRequestedOptimizer(undefined)} requestedOptimizer={requestedOptimizer} settingsOpen={studioSettingsOpen} />}
+    <div className="studio-host" hidden={workspace !== 'model'}><ModelStudio askOpen={askOpen} onCloseAsk={() => setAskOpen(false)} onRequestedCardHandled={() => setRequestedCard(undefined)} requestedCard={requestedCard} /></div>
+    {workspace === 'training' && <TrainingStudio onCatalogChange={setCustomOptimizers} onRequestedOptimizerHandled={() => setRequestedOptimizer(undefined)} requestedOptimizer={requestedOptimizer} />}
     {workspace === 'tokenizer' && <TokenizerStudio onCatalogChange={setCustomTokenizerCards} onRequestedCardHandled={() => setRequestedTokenizerCard(undefined)} requestedCard={requestedTokenizerCard} />}
 
-    {workspace === 'tokenizer' && studioSettingsOpen && <StudioSettingsModal onClose={() => setStudioSettingsOpen(false)} sections={[
-      { id: 'studio', label: 'Studio', icon: <Settings2 size={13} />, content: <p>Tokenizer pipelines and reusable tokenizer cards are auto-saved for the current private profile.</p> },
-      { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="studio-settings-tips"><p>Right-click a custom tokenizer card to edit or delete it. Built-in tokenizer cards remain read-only.</p></div> },
-    ]} />}
-
-    {searchOpen && <div className="card-search-backdrop">
-      <section aria-label="Search cards" aria-modal="true" className="card-search-modal" role="dialog">
+    {searchOpen && <div className="card-search-backdrop" onPointerDown={(event) => {
+      if (event.target !== event.currentTarget) return
+      setSearchOpen(false)
+      setSearchQuery('')
+    }}>
+      <section aria-label="Search cards" aria-modal="true" className="card-search-modal" onPointerDown={(event) => event.stopPropagation()} role="dialog">
         <header><span><Search size={14} />Find a card</span><button aria-label="Close card search" onClick={() => setSearchOpen(false)}><X size={14} /></button></header>
         <input autoFocus aria-label="Natural language card search" onChange={(event) => setSearchQuery(event.target.value)} placeholder={workspace === 'model' ? 'Ex. decode generated logits into a token…' : workspace === 'training' ? 'Ex. optimizer with momentum and weight decay…' : 'Ex. image tokenizer or byte-level decoder…'} value={searchQuery} />
         <div className="card-search-results">

@@ -190,6 +190,7 @@ describe('LABO AI agent', () => {
     expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ operationMode: 'parallel' }) }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
     expect(screen.getByText(/22 nodes · 32 links/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('TR 300M')
     expect(screen.getByRole('combobox', { name: 'PyTorch architecture' })).toHaveTextContent('Architecture 2')
     expect({ left: originalCard.style.left, top: originalCard.style.top }).toEqual(originalPosition)

@@ -8,6 +8,7 @@ import App from './App'
 describe('LABO AI graph editing', () => {
   it('selects, edits, and adds freely manipulable model atoms', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
   
     fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
     const selectedCard = screen.getByRole('button', { name: 'Select Attention RMSNorm' }).closest('.architecture-node')
@@ -105,6 +106,7 @@ describe('LABO AI graph editing', () => {
   
   it('unplugs an elastic cable by dragging its connected input into empty canvas', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
   
     const qkvInput = screen.getByRole('button', { name: 'qkv input H' })
     const elementFromPoint = document.elementFromPoint
@@ -251,6 +253,7 @@ describe('LABO AI graph editing', () => {
   
   it('deletes a model atom without recreating it in PyTorch', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
   
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
     fireEvent.doubleClick(screen.getByRole('button', { name: 'Select GQA QKV projection' }))
@@ -290,6 +293,7 @@ describe('LABO AI graph editing', () => {
   
   it('applies supported PyTorch edits back to the same model atom', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
   
     const editor = screen.getByRole('textbox', { name: 'PyTorch editor' })
     fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace('self.attention_norm = nn.RMSNorm(1024, eps=1e-06)', 'self.attention_norm = nn.RMSNorm(1024, eps=1e-05)') } })

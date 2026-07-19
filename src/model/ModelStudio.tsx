@@ -101,7 +101,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const initialGraph = initialDraft?.graph ?? initialPreset
   const [graph, setGraph] = useState(() => cloneArchitectureGraph(initialGraph))
   const [selectedNodeId, setSelectedNodeId] = useState(initialDraft?.selectedNodeId ?? initialGraph.nodes[0]?.id ?? '')
-  const [view, setView] = useState<ViewMode>('split')
+  const [view, setView] = useState<ViewMode>('blocks')
   const [selectedArchitectureId, setSelectedArchitectureId] = useState('')
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('add')
   const [libraryOpen, setLibraryOpen] = useState(true)
@@ -698,16 +698,49 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const genericAtomIds = new Set(['token-embedding', 'qkv-projection', 'attention-head-layout', 'causal-sdpa', 'merge-attention-heads', 'attention-output-projection', 'residual-add', 'linear-projection', 'dropout', 'scale', 'hadamard-product', 'identity', 'lm-head'])
   const genericAtoms = modelAtoms.filter((definition) => genericAtomIds.has(definition.id))
   const specializedAtom = (definition: ModelAtomDefinition) => !genericAtomIds.has(definition.id) && definition.category !== 'routing' && definition.category !== 'objective' && definition.category !== 'activation' && !definition.composite
-  const specializedFamilies = [
-    { label: 'Embedding variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'embedding') },
-    { label: 'Normalization variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'normalization') },
-    { label: 'Attention variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'attention') },
-    { label: 'Position variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'position') },
-    { label: 'Composition variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'composition') },
-    { label: 'MLP variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'mlp') },
-    { label: 'Output variants', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'output') },
-    { label: 'Image, video & multimodal', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'media') },
+  const mediaAtoms = modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'media')
+  const mediaFamilyRules: Array<{ label: string; matches: (id: string) => boolean }> = [
+    {
+      label: 'Image inputs & tokenization',
+      matches: (id) => /^(image-(channel-normalization|resize|patch-embedding|vq-tokenizer|codebook-embedding)|global-image-embedding)$/.test(id),
+    },
+    {
+      label: 'Video inputs & tokenization',
+      matches: (id) => /^(video-(channel-normalization|spatial-resize|tubelet-embedding|vq-tokenizer|codebook-embedding))$/.test(id),
+    },
+    {
+      label: 'Media generation & outputs',
+      matches: (id) => /(decoder|reconstruction|denoiser|diffusion|classifier-free-guidance)/.test(id),
+    },
+    {
+      label: 'Vision & spatial processing',
+      matches: (id) => /^(vision-|image-|patch-|spatial-|global-patch-|masked-patch-)/.test(id),
+    },
+    {
+      label: 'Video & temporal processing',
+      matches: (id) => /^(video-|tubelet-|temporal-|frame-)/.test(id),
+    },
+    { label: 'Multimodal fusion & conditioning', matches: () => true },
   ]
+  const assignedMediaAtoms = new Set<string>()
+  const mediaFamilies = mediaFamilyRules.map((family) => ({
+    label: family.label,
+    atoms: mediaAtoms.filter((definition) => {
+      if (assignedMediaAtoms.has(definition.id) || !family.matches(definition.id)) return false
+      assignedMediaAtoms.add(definition.id)
+      return true
+    }),
+  }))
+  const libraryFamilies = [
+    { label: 'Embeddings', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'embedding') },
+    { label: 'Normalization', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'normalization') },
+    { label: 'Attention', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'attention') },
+    { label: 'Position & sequence', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'position') },
+    { label: 'Tensor composition', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'composition') },
+    { label: 'MLP blocks', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'mlp') },
+    { label: 'Output heads', atoms: modelAtoms.filter((definition) => specializedAtom(definition) && definition.category === 'output') },
+    ...mediaFamilies,
+  ].filter((family) => family.atoms.length > 0)
   const trBasicIds = new Set(['deterministic-token-routing', 'routed-expert-bank', 'shared-expert-bank', 'branch-gated-merge'])
   const learnedRouterIds = new Set(['moe-router', 'top-k-routing', 'load-balancing-loss', 'router-entropy-loss'])
   const trBasicAtoms = modelAtoms.filter((definition) => trBasicIds.has(definition.id))
@@ -835,18 +868,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
               <summary>Generic atomics <span>{genericAtoms.length}</span></summary>
               {genericAtoms.map(atomButton)}
             </details>
-            <details className="library-family specialized-variants-family">
-              <summary>Specialized variants <span>{specializedFamilies.reduce((count, family) => count + family.atoms.length, 1)}</span></summary>
-              <div className="library-subfamilies">
-                {specializedFamilies.map((family) => <details className="library-subfamily" key={family.label}>
-                  <summary>{family.label} <span>{family.atoms.length}</span></summary>
-                  {family.atoms.map(atomButton)}
-                </details>)}
-                <details className="library-subfamily">
-                  <summary>Tied output variant <span>1</span></summary>
-                  {tiedLmHeadButton}
-                </details>
-              </div>
+            {libraryFamilies.map((family) => <details className="library-family catalog-family" key={family.label}>
+              <summary>{family.label} <span>{family.atoms.length}</span></summary>
+              {family.atoms.map(atomButton)}
+            </details>)}
+            <details className="library-family catalog-family">
+              <summary>Tied output head <span>1</span></summary>
+              {tiedLmHeadButton}
             </details>
             <details className="library-family">
               <summary>Training objectives <span>{objectiveAtoms.length}</span></summary>

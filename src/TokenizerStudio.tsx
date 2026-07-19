@@ -63,7 +63,7 @@ async function executeTokenizerIrAtom(step: TokenizerStep): Promise<{ summary: s
 
 export function TokenizerStudio({ onCatalogChange = () => undefined, onRequestedCardHandled = () => undefined, requestedCard }: { onCatalogChange?: (cards: CustomTokenizerCard[]) => void; onRequestedCardHandled?: () => void; requestedCard?: { cardId: string; kind: 'atom' | 'custom'; requestId: number } }) {
   const [pipeline, setPipeline] = useState(researchBpePreset)
-  const [view, setView] = useState<TokenizerView>('split')
+  const [view, setView] = useState<TokenizerView>('blocks')
   const [selectedId, setSelectedId] = useState(pipeline.steps[0]?.id ?? '')
   const [customCards, setCustomCards] = useState<CustomTokenizerCard[]>([])
   const [customCardsReady, setCustomCardsReady] = useState(false)
