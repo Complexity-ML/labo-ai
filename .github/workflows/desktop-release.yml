@@ -54,6 +54,9 @@ jobs:
         run: |
           npm run build:ui --prefix apps/bootstrap-installer
           npm run tauri --prefix apps/bootstrap-installer -- build --bundles dmg --target aarch64-apple-darwin
+          setup_dmg="$(find apps/bootstrap-installer/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
+          test -n "${setup_dmg}"
+          bash apps/bootstrap-installer/macos/finalize-dmg.sh "${setup_dmg}"
       - name: Prepare stable latest-download filename
         shell: bash
         run: |
@@ -63,6 +66,7 @@ jobs:
           cp "${setup_dmg}" release-assets/LABO-AI-Setup-arm64.dmg
           cp apps/bootstrap-installer/src-tauri/target/aarch64-apple-darwin/release/labo-ai-setup release-assets/LABO-AI-Setup-arm64-helper
           shasum -a 256 release-assets/LABO-AI-Setup-arm64-helper > release-assets/LABO-AI-Setup-arm64-helper.sha256
+          cp scripts/install-labo-ai-macos.sh release-assets/install-labo-ai-macos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-setup-macos-arm64
@@ -70,6 +74,7 @@ jobs:
             release-assets/LABO-AI-Setup-arm64.dmg
             release-assets/LABO-AI-Setup-arm64-helper
             release-assets/LABO-AI-Setup-arm64-helper.sha256
+            release-assets/install-labo-ai-macos.sh
           if-no-files-found: error
           retention-days: 14
 

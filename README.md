@@ -37,7 +37,13 @@ The key product decisions remained human-directed: use atomic typed cards instea
 
 ## Judge quick start
 
-Download the latest lightweight installer from the [LABO AI product page](https://www.complexity-ai.fr/labo-ai) or [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest). **LABO AI Setup** fetches the latest tagged source, verifies and provisions its own Node.js runtime, then builds and installs the Electron app locally.
+On macOS, use the same source-first Terminal flow as Hermes Agent. It downloads the small Setup helper, verifies its published SHA-256 digest, and opens the installer without relying on an unnotarized app downloaded by the browser:
+
+```bash
+curl -fsSL https://github.com/Complexity-ML/labo-ai/releases/latest/download/install-labo-ai-macos.sh | bash
+```
+
+Windows users can download the latest lightweight Setup from the [LABO AI product page](https://www.complexity-ai.fr/labo-ai) or [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest). **LABO AI Setup** fetches the latest tagged source, verifies and provisions its own Node.js runtime, then builds and installs the Electron app locally.
 
 Supported packages:
 
