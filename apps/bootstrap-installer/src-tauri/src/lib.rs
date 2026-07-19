@@ -71,7 +71,7 @@ fn client() -> Result<Client, String> {
 }
 
 fn latest_release() -> Result<GitHubRelease, String> {
-    client()?
+    let api_result = client()?
         .get(format!(
             "https://api.github.com/repos/{REPOSITORY}/releases/latest"
         ))
@@ -79,7 +79,38 @@ fn latest_release() -> Result<GitHubRelease, String> {
         .and_then(|response| response.error_for_status())
         .map_err(|error| format!("Unable to check GitHub: {error}"))?
         .json::<GitHubRelease>()
-        .map_err(|error| format!("Invalid GitHub release response: {error}"))
+        .map_err(|error| format!("Invalid GitHub release response: {error}"));
+    api_result.or_else(|api_error| {
+        let response = client()?
+            .get(format!("https://github.com/{REPOSITORY}/releases/latest"))
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|fallback_error| format!("Unable to check GitHub: {api_error}; fallback failed: {fallback_error}"))?;
+        let tag_name = response
+            .url()
+            .path_segments()
+            .and_then(|segments| segments.last())
+            .filter(|tag| tag.starts_with('v'))
+            .ok_or_else(|| format!("Unable to resolve the latest GitHub tag after: {api_error}"))?
+            .to_string();
+        let asset_names = [
+            "LABO-AI-Setup-arm64-helper",
+            "LABO-AI-Setup-arm64-helper.sha256",
+            "LABO-AI-Setup-x64-helper.exe",
+            "LABO-AI-Setup-x64-helper.exe.sha256",
+        ];
+        Ok(GitHubRelease {
+            tarball_url: format!("https://github.com/{REPOSITORY}/archive/refs/tags/{tag_name}.tar.gz"),
+            assets: asset_names
+                .iter()
+                .map(|name| GitHubAsset {
+                    name: (*name).to_string(),
+                    browser_download_url: format!("https://github.com/{REPOSITORY}/releases/download/{tag_name}/{name}"),
+                })
+                .collect(),
+            tag_name,
+        })
+    })
 }
 
 fn install_root() -> Result<PathBuf, String> {
@@ -92,13 +123,13 @@ fn electron_user_data() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
         return dirs::home_dir()
-            .map(|path| path.join("Library/Application Support/labo-ai"))
+            .map(|path| path.join("Library/Application Support/LABO AI"))
             .ok_or_else(|| "No home directory is available".to_string());
     }
     #[cfg(target_os = "windows")]
     {
         return dirs::config_dir()
-            .map(|path| path.join("labo-ai"))
+            .map(|path| path.join("LABO AI"))
             .ok_or_else(|| "No roaming application-data directory is available".to_string());
     }
     #[allow(unreachable_code)]

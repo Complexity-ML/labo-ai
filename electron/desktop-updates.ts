@@ -1,5 +1,6 @@
 import { access } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 export interface DesktopUpdateStatus {
@@ -19,6 +20,17 @@ export function desktopUpdateHelperPath(userData: string, platform = process.pla
   return join(userData, 'installer', platform === 'win32' ? 'labo-ai-setup.exe' : 'labo-ai-setup')
 }
 
+export function desktopUpdateHelperPaths(userData: string, platform = process.platform, home = homedir(), appData = process.env.APPDATA): string[] {
+  const filename = platform === 'win32' ? 'labo-ai-setup.exe' : 'labo-ai-setup'
+  const primary = desktopUpdateHelperPath(userData, platform)
+  const legacyRoot = platform === 'darwin'
+    ? join(home, 'Library', 'Application Support', 'labo-ai')
+    : platform === 'win32'
+      ? join(appData || join(home, 'AppData', 'Roaming'), 'labo-ai')
+      : userData
+  return [...new Set([primary, join(legacyRoot, 'installer', filename)])]
+}
+
 async function helperExists(path: string): Promise<boolean> {
   try {
     await access(path)
@@ -26,6 +38,11 @@ async function helperExists(path: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function findDesktopUpdateHelper(userData: string, platform = process.platform, home = homedir(), appData = process.env.APPDATA): Promise<string | undefined> {
+  for (const candidate of desktopUpdateHelperPaths(userData, platform, home, appData)) if (await helperExists(candidate)) return candidate
+  return undefined
 }
 
 function readHelperStatus(helper: string): Promise<{ installedTag?: string; latestTag?: string }> {
@@ -44,7 +61,11 @@ function readHelperStatus(helper: string): Promise<{ installedTag?: string; late
       clearTimeout(timeout)
       if (code !== 0) return reject(new Error(stderr.trim() || `LABO AI Setup exited with ${code}`))
       try {
-        resolve(JSON.parse(stdout.trim()))
+        const parsed = JSON.parse(stdout.trim()) as { installedTag?: unknown; latestTag?: unknown }
+        resolve({
+          ...(typeof parsed.installedTag === 'string' ? { installedTag: parsed.installedTag } : {}),
+          ...(typeof parsed.latestTag === 'string' ? { latestTag: parsed.latestTag } : {}),
+        })
       } catch {
         reject(new Error('LABO AI Setup returned an invalid status'))
       }
@@ -52,10 +73,9 @@ function readHelperStatus(helper: string): Promise<{ installedTag?: string; late
   })
 }
 
-export async function getDesktopUpdateStatus(userData: string, currentVersion: string, platform = process.platform): Promise<DesktopUpdateStatus> {
-  const helper = desktopUpdateHelperPath(userData, platform)
-  const installed = await helperExists(helper)
-  if (!installed) {
+export async function getDesktopUpdateStatus(userData: string, currentVersion: string, platform = process.platform, home = homedir(), appData = process.env.APPDATA): Promise<DesktopUpdateStatus> {
+  const helper = await findDesktopUpdateHelper(userData, platform, home, appData)
+  if (!helper) {
     return { currentVersion, helperInstalled: false, updateAvailable: false, setupUrl: desktopSetupReleaseUrl }
   }
   try {
@@ -80,8 +100,8 @@ export async function getDesktopUpdateStatus(userData: string, currentVersion: s
 }
 
 export async function launchDesktopUpdate(userData: string, platform = process.platform): Promise<{ launched: true }> {
-  const helper = desktopUpdateHelperPath(userData, platform)
-  if (!(await helperExists(helper))) throw new Error('LABO AI Setup is not installed yet')
+  const helper = await findDesktopUpdateHelper(userData, platform)
+  if (!helper) throw new Error('LABO AI Setup is not installed yet')
   const child = spawn(helper, [...desktopUpdateArguments], {
     detached: true,
     stdio: 'ignore',

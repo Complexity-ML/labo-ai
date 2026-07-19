@@ -41,7 +41,7 @@ describe('Ask LABO OpenAI bridge', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await askLabo({ request: 'Wire my blocks', context: { graph: { nodes: [] }, availableAtomics: [{ atomId: 'relu', label: 'ReLU', inputs: [{ id: 'hidden', tensor: 'hidden' }], outputs: [{ id: 'output', tensor: 'hidden' }] }] } })
+    const result = await askLabo({ request: 'Wire my blocks', context: { graph: { nodes: [] }, availableAtomics: [{ atomId: 'relu', label: 'ReLU', inputs: [], outputs: [{ id: 'output', tensor: 'hidden' }] }] } })
     expect(result).toMatchObject({ summary: 'Build it', addedBlocks: [{ atomId: 'relu', nodeId: 'agent-relu', reason: 'Activation' }] })
     expect(result.toolTrace.map((item) => item.tool)).toEqual(['add_block', 'finish_plan'])
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -113,5 +113,61 @@ describe('Ask LABO OpenAI bridge', () => {
     const result = await askLabo({ request: 'Delete the first architecture', context: { graph: { nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }, architectures: [{ id: 'architecture-1', label: 'First', nodeIds: ['a', 'b'] }] } })
     expect(result.deletedBlocks).toEqual([{ nodeId: 'a', reason: 'Clean comparison (First)' }, { nodeId: 'b', reason: 'Clean comparison (First)' }])
     expect(result.toolTrace).toEqual(expect.arrayContaining([expect.objectContaining({ tool: 'delete_architecture', summary: expect.stringContaining('2 cards') })]))
+  })
+
+  it('discovers and wires every compatible typed port without guessing port ids', async () => {
+    process.env.OPENAI_API_KEY = 'test-secret-key'
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) return new Response(JSON.stringify({ output: [
+        functionCall('add_block', { atom_id: 'head-layout', node_id: 'heads', reason: 'Prepare QKV heads' }, 'call-heads'),
+        functionCall('add_block', { atom_id: 'causal-attention', node_id: 'attention', reason: 'Compute attention' }, 'call-attention'),
+      ] }), { status: 200 })
+      if (fetchMock.mock.calls.length === 2) return new Response(JSON.stringify({ output: [functionCall('connect_compatible', { source_id: 'heads', target_id: 'attention', connect_all: true, reason: 'Wire QKV safely' }, 'call-connect')] }), { status: 200 })
+      if (fetchMock.mock.calls.length === 3) return new Response(JSON.stringify({ output: [functionCall('validate_graph', {}, 'call-validate')] }), { status: 200 })
+      return new Response(JSON.stringify({ output: [functionCall('finish_plan', { summary: 'Typed attention graph ready', missing_blocks: [], warnings: [] }, 'call-finish')] }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await askLabo({ request: 'Build typed attention', context: { graph: { nodes: [], connections: [] }, availableAtomics: [
+      { atomId: 'head-layout', label: 'Head layout', inputs: [], outputs: [{ id: 'query', tensor: 'query', rank: 4 }, { id: 'key', tensor: 'key', rank: 4 }, { id: 'value', tensor: 'value', rank: 4 }] },
+      { atomId: 'causal-attention', label: 'Causal attention', inputs: [{ id: 'query', tensor: 'query', rank: 4 }, { id: 'key', tensor: 'key', rank: 4 }, { id: 'value', tensor: 'value', rank: 4 }], outputs: [{ id: 'attention', tensor: 'attention', rank: 4 }] },
+    ] } })
+
+    expect(result.connections).toHaveLength(3)
+    expect(result.connections.map((connection) => `${connection.sourcePortId}:${connection.targetPortId}`)).toEqual(['query:query', 'key:key', 'value:value'])
+    expect(result.toolTrace).toEqual(expect.arrayContaining([
+      expect.objectContaining({ tool: 'connect_compatible', status: 'accepted', summary: expect.stringContaining('3 compatible elastics') }),
+      expect.objectContaining({ tool: 'validate_graph', status: 'read', summary: expect.stringContaining('Virtual graph valid') }),
+    ]))
+  })
+
+  it('rejects an incomplete finish and lets the model repair the virtual graph', async () => {
+    process.env.OPENAI_API_KEY = 'test-secret-key'
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as { input: Array<{ type?: string; output?: string }> }
+      if (fetchMock.mock.calls.length === 1) return new Response(JSON.stringify({ output: [
+        functionCall('add_block', { atom_id: 'hidden-input', node_id: 'input', reason: 'Provide hidden states' }, 'call-input'),
+        functionCall('add_block', { atom_id: 'relu', node_id: 'activation', reason: 'Apply activation' }, 'call-relu'),
+      ] }), { status: 200 })
+      if (fetchMock.mock.calls.length === 2) return new Response(JSON.stringify({ output: [functionCall('finish_plan', { summary: 'Premature plan', missing_blocks: [], warnings: [] }, 'call-premature')] }), { status: 200 })
+      if (fetchMock.mock.calls.length === 3) {
+        expect(requestBody.input.find((item) => item.type === 'function_call_output' && item.output?.includes('activation.hidden requires hidden'))).toBeTruthy()
+        return new Response(JSON.stringify({ output: [functionCall('connect_compatible', { source_id: 'input', target_id: 'activation', connect_all: false, reason: 'Repair the missing input' }, 'call-repair')] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ output: [functionCall('finish_plan', { summary: 'Repaired plan', missing_blocks: [], warnings: [] }, 'call-finish')] }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await askLabo({ request: 'Build and repair an activation graph', context: { graph: { nodes: [], connections: [] }, availableAtomics: [
+      { atomId: 'hidden-input', label: 'Hidden input', inputs: [], outputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }] },
+      { atomId: 'relu', label: 'ReLU', inputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }], outputs: [{ id: 'output', tensor: 'hidden', rank: 3 }] },
+    ] } })
+
+    expect(result.summary).toBe('Repaired plan')
+    expect(result.connections).toEqual([expect.objectContaining({ sourceId: 'input', targetId: 'activation' })])
+    expect(result.toolTrace).toEqual(expect.arrayContaining([
+      expect.objectContaining({ tool: 'finish_plan', status: 'rejected', summary: expect.stringContaining('activation.hidden') }),
+      expect.objectContaining({ tool: 'connect_compatible', status: 'accepted' }),
+    ]))
   })
 })

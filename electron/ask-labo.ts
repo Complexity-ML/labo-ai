@@ -40,6 +40,13 @@ interface NodeSnapshot {
   outputs?: Array<{ id: string; tensor: string; rank?: number }>
 }
 
+interface ConnectionSnapshot {
+  sourceId: string
+  sourcePortId: string
+  targetId: string
+  targetPortId: string
+}
+
 interface FunctionCallItem {
   type: 'function_call'
   name: string
@@ -71,6 +78,9 @@ const tools = [
   { type: 'function', name: 'compose_card', description: 'Use the same deterministic Auto-compose engine as Create card to build and queue a safe unary card from a capability. Prefer this after search_cards finds no suitable native or saved card.', strict: true, parameters: objectSchema({ node_id: string, label: nullableString, category: { type: 'string', enum: cardCategories }, need: string, in_features: nullableNumber, out_features: nullableNumber, probability: nullableNumber, input_role: nullableTensorRole, output_role: nullableTensorRole, reason: string }) },
   { type: 'function', name: 'create_card', description: 'Queue a new safe custom card when no existing card fits. PyTorch must be one safe nn.Module constructor with literal arguments.', strict: true, parameters: objectSchema({ node_id: string, label: string, pytorch_module: string, input_role: string, output_role: string, reason: string }) },
   { type: 'function', name: 'connect_blocks', description: 'Queue an elastic between two exact compatible ports.', strict: true, parameters: objectSchema({ source_id: string, source_port_id: string, target_id: string, target_port_id: string, reason: string }) },
+  { type: 'function', name: 'connect_compatible', description: 'Safely discover and queue compatible typed ports between two cards. Use connect_all for multi-port Q/K/V or other parallel port groups.', strict: true, parameters: objectSchema({ source_id: string, target_id: string, connect_all: { type: 'boolean' }, reason: string }) },
+  { type: 'function', name: 'remove_queued_connection', description: 'Remove one connection queued during this planning turn so a rejected or suboptimal wiring choice can be corrected.', strict: true, parameters: objectSchema({ source_id: string, source_port_id: string, target_id: string, target_port_id: string, reason: string }) },
+  { type: 'function', name: 'validate_graph', description: 'Validate the current virtual graph including all queued changes. Returns exact missing inputs, occupied ports, rank/type errors and cycles so the plan can be repaired before finish_plan.', strict: true, parameters: objectSchema({}, []) },
   { type: 'function', name: 'edit_card', description: 'Queue edits to an existing card. settings_json is a JSON object of setting names to number, string, or boolean values. In parallel mode existing cards are read-only.', strict: true, parameters: objectSchema({ node_id: string, label: nullableString, settings_json: nullableString, pytorch_module: nullableString, reason: string }) },
   { type: 'function', name: 'delete_card', description: 'Queue deletion of a card and its connected elastics. In parallel mode existing cards are read-only.', strict: true, parameters: objectSchema({ node_id: string, reason: string }) },
   { type: 'function', name: 'delete_architecture', description: 'Queue deletion of every card and elastic in one architecture at once. Use context.architectures ids. Existing architectures are read-only in parallel mode.', strict: true, parameters: objectSchema({ architecture_id: string, reason: string }) },
@@ -149,6 +159,7 @@ class AgentToolSession {
   private readonly atomics: AtomicSnapshot[]
   private readonly savedCards: Array<{ id: string; label: string; code: string; inputRole?: string; outputRole?: string }>
   private readonly nodes: NodeSnapshot[]
+  private readonly connections: ConnectionSnapshot[]
   private readonly architectures: Array<{ id: string; label: string; nodeIds: string[] }>
   private finished = false
 
@@ -157,6 +168,7 @@ class AgentToolSession {
     this.savedCards = Array.isArray(context.availableCustomCards) ? context.availableCustomCards.map((item) => record(item) as unknown as typeof this.savedCards[number]) : []
     const graph = record(context.graph)
     this.nodes = Array.isArray(graph.nodes) ? graph.nodes.map((item) => record(item) as unknown as NodeSnapshot) : []
+    this.connections = Array.isArray(graph.connections) ? graph.connections.map((item) => record(item) as unknown as ConnectionSnapshot) : []
     this.initialNodeIds = new Set(this.nodes.map((node) => node.id))
     this.architectures = Array.isArray(context.architectures) ? context.architectures.map((item) => record(item) as unknown as typeof this.architectures[number]) : []
   }
@@ -165,6 +177,10 @@ class AgentToolSession {
   get hasWork() {
     return this.plan.addedBlocks.length + this.plan.createdBlocks.length + this.plan.connections.length
       + this.plan.updatedBlocks.length + this.plan.deletedBlocks.length + this.plan.movedBlocks.length + this.plan.actions.length > 0
+  }
+  get hasGraphMutations() {
+    return this.plan.addedBlocks.length + this.plan.createdBlocks.length + this.plan.connections.length
+      + this.plan.updatedBlocks.length + this.plan.deletedBlocks.length + this.plan.movedBlocks.length > 0
   }
   finishFallback(reason: string): AskLaboPlan {
     if (!this.finished) {
@@ -181,6 +197,99 @@ class AgentToolSession {
   private reject(tool: string, summary: string) { return this.trace(tool, 'rejected', summary) }
   private parallelMutation(nodeId: string): boolean { return this.context.operationMode === 'parallel' && this.initialNodeIds.has(nodeId) }
   private node(nodeId: string) { return this.nodes.find((node) => node.id === nodeId) }
+
+  private activeNodeIds(): Set<string> {
+    const deleted = new Set(this.plan.deletedBlocks.map((block) => block.nodeId))
+    return new Set(this.nodes.filter((node) => !deleted.has(node.id)).map((node) => node.id))
+  }
+
+  private activeConnections(): ConnectionSnapshot[] {
+    const active = this.activeNodeIds()
+    return [...this.connections, ...this.plan.connections].filter((connection) => active.has(connection.sourceId) && active.has(connection.targetId))
+  }
+
+  private queueConnection(connection: ConnectionSnapshot & { reason: string }): { ok: boolean; summary: string } {
+    const source = this.node(connection.sourceId), target = this.node(connection.targetId)
+    if (!source || !target) return { ok: false, summary: 'Unknown source or target node' }
+    if (connection.sourceId === connection.targetId) return { ok: false, summary: 'A card cannot connect to itself' }
+    if (this.context.operationMode === 'parallel' && (this.initialNodeIds.has(connection.sourceId) || this.initialNodeIds.has(connection.targetId))) return { ok: false, summary: 'Parallel mode cannot connect existing work' }
+    const sourcePort = source.outputs?.find((port) => port.id === connection.sourcePortId)
+    const targetPort = target.inputs?.find((port) => port.id === connection.targetPortId)
+    if (!sourcePort || !targetPort) return { ok: false, summary: 'Unknown source or target port' }
+    if (sourcePort.tensor !== targetPort.tensor) return { ok: false, summary: `${sourcePort.tensor} cannot plug into ${targetPort.tensor}` }
+    if (sourcePort.rank && targetPort.rank && sourcePort.rank !== targetPort.rank) return { ok: false, summary: `Rank-${sourcePort.rank} output cannot plug into rank-${targetPort.rank} input` }
+    const connections = this.activeConnections()
+    if (connections.some((candidate) => candidate.targetId === connection.targetId && candidate.targetPortId === connection.targetPortId)) return { ok: false, summary: `${connection.targetId}.${connection.targetPortId} already has an incoming elastic` }
+    if (connections.some((candidate) => candidate.sourceId === connection.sourceId && candidate.sourcePortId === connection.sourcePortId && candidate.targetId === connection.targetId && candidate.targetPortId === connection.targetPortId)) return { ok: false, summary: 'That elastic is already present' }
+    const adjacency = new Map<string, string[]>()
+    for (const candidate of connections) adjacency.set(candidate.sourceId, [...(adjacency.get(candidate.sourceId) ?? []), candidate.targetId])
+    const pending = [connection.targetId]
+    const visited = new Set<string>()
+    while (pending.length > 0) {
+      const current = pending.pop()!
+      if (current === connection.sourceId) return { ok: false, summary: 'The elastic would create a graph cycle' }
+      if (visited.has(current)) continue
+      visited.add(current)
+      pending.push(...(adjacency.get(current) ?? []))
+    }
+    this.plan.connections.push(connection)
+    return { ok: true, summary: `Queued ${connection.sourceId}.${connection.sourcePortId} → ${connection.targetId}.${connection.targetPortId}` }
+  }
+
+  private validateVirtualGraph() {
+    const active = this.activeNodeIds()
+    const allConnections = this.activeConnections()
+    const errors: string[] = []
+    const warnings: string[] = []
+    const openInputs: Array<{ nodeId: string; portId: string; tensor: string; rank?: number }> = []
+    const incoming = new Map<string, number>()
+
+    for (const connection of allConnections) incoming.set(`${connection.targetId}:${connection.targetPortId}`, (incoming.get(`${connection.targetId}:${connection.targetPortId}`) ?? 0) + 1)
+    for (const [port, count] of incoming) if (count > 1) errors.push(`${port} has ${count} incoming elastics`)
+
+    for (const connection of this.plan.connections) {
+      const source = this.node(connection.sourceId), target = this.node(connection.targetId)
+      const sourcePort = source?.outputs?.find((port) => port.id === connection.sourcePortId)
+      const targetPort = target?.inputs?.find((port) => port.id === connection.targetPortId)
+      if (!source || !target || !sourcePort || !targetPort) errors.push(`${connection.sourceId} → ${connection.targetId} references an unknown card or port`)
+      else if (sourcePort.tensor !== targetPort.tensor) errors.push(`${connection.sourceId}.${connection.sourcePortId} (${sourcePort.tensor}) is incompatible with ${connection.targetId}.${connection.targetPortId} (${targetPort.tensor})`)
+      else if (sourcePort.rank && targetPort.rank && sourcePort.rank !== targetPort.rank) errors.push(`${connection.sourceId}.${connection.sourcePortId} rank ${sourcePort.rank} is incompatible with ${connection.targetId}.${connection.targetPortId} rank ${targetPort.rank}`)
+    }
+
+    const newNodeIds = new Set([...this.plan.addedBlocks, ...this.plan.createdBlocks].map((block) => block.nodeId).filter((nodeId) => active.has(nodeId)))
+    if (this.context.cardBuilderMode !== true) {
+      for (const nodeId of newNodeIds) {
+        const node = this.node(nodeId)
+        for (const input of node?.inputs ?? []) {
+          if (!allConnections.some((connection) => connection.targetId === nodeId && connection.targetPortId === input.id)) openInputs.push({ nodeId, portId: input.id, tensor: input.tensor, ...(input.rank ? { rank: input.rank } : {}) })
+        }
+      }
+    }
+    for (const input of openInputs) errors.push(`${input.nodeId}.${input.portId} requires ${input.tensor}${input.rank ? ` rank ${input.rank}` : ''}`)
+
+    if (this.plan.connections.length > 0) {
+      const indegree = new Map([...active].map((nodeId) => [nodeId, 0]))
+      const adjacency = new Map<string, string[]>()
+      for (const connection of allConnections) {
+        adjacency.set(connection.sourceId, [...(adjacency.get(connection.sourceId) ?? []), connection.targetId])
+        indegree.set(connection.targetId, (indegree.get(connection.targetId) ?? 0) + 1)
+      }
+      const queue = [...indegree].filter(([, degree]) => degree === 0).map(([nodeId]) => nodeId)
+      let visited = 0
+      while (queue.length > 0) {
+        const nodeId = queue.shift()!
+        visited += 1
+        for (const targetId of adjacency.get(nodeId) ?? []) {
+          const degree = (indegree.get(targetId) ?? 1) - 1
+          indegree.set(targetId, degree)
+          if (degree === 0) queue.push(targetId)
+        }
+      }
+      if (visited !== active.size) errors.push('The queued graph contains a cycle')
+    }
+    if (newNodeIds.size > 0 && this.plan.connections.length === 0 && openInputs.length === 0) warnings.push('The new cards form an unconnected architecture')
+    return { valid: errors.length === 0, errors, warnings, open_inputs: openInputs, node_count: active.size, connection_count: allConnections.length }
+  }
 
   call(name: string, args: Record<string, unknown>): Record<string, unknown> {
     if (this.finished) return this.reject(name, 'The plan is already finished')
@@ -262,14 +371,38 @@ class AgentToolSession {
     }
     if (name === 'connect_blocks') {
       const sourceId = text('source_id'), sourcePortId = text('source_port_id'), targetId = text('target_id'), targetPortId = text('target_port_id'), reason = text('reason')
+      const result = this.queueConnection({ sourceId, sourcePortId, targetId, targetPortId, reason })
+      return result.ok ? this.trace(name, 'accepted', result.summary) : this.reject(name, result.summary)
+    }
+    if (name === 'connect_compatible') {
+      const sourceId = text('source_id'), targetId = text('target_id'), reason = text('reason')
       const source = this.node(sourceId), target = this.node(targetId)
       if (!source || !target) return this.reject(name, 'Unknown source or target node')
-      if (this.context.operationMode === 'parallel' && (this.initialNodeIds.has(sourceId) || this.initialNodeIds.has(targetId))) return this.reject(name, 'Parallel mode cannot connect existing work')
-      const sourcePort = source.outputs?.find((port) => port.id === sourcePortId), targetPort = target.inputs?.find((port) => port.id === targetPortId)
-      if (!sourcePort || !targetPort || sourcePort.tensor !== targetPort.tensor) return this.reject(name, 'Unknown or incompatible typed ports')
-      if (sourcePort.rank && targetPort.rank && sourcePort.rank !== targetPort.rank) return this.reject(name, `Rank-${sourcePort.rank} output cannot plug into rank-${targetPort.rank} input; search for a reshape or head-layout card`)
-      this.plan.connections.push({ sourceId, sourcePortId, targetId, targetPortId, reason })
-      return this.trace(name, 'accepted', `Queued ${sourceId}.${sourcePortId} → ${targetId}.${targetPortId}`)
+      const connectAll = args.connect_all === true
+      const queued: string[] = []
+      const rejected: string[] = []
+      for (const targetPort of target.inputs ?? []) {
+        const sourcePort = (source.outputs ?? []).find((candidate) => candidate.tensor === targetPort.tensor && (!candidate.rank || !targetPort.rank || candidate.rank === targetPort.rank))
+        if (!sourcePort) continue
+        const result = this.queueConnection({ sourceId, sourcePortId: sourcePort.id, targetId, targetPortId: targetPort.id, reason })
+        if (result.ok) queued.push(result.summary)
+        else rejected.push(result.summary)
+        if (result.ok && !connectAll) break
+      }
+      if (queued.length === 0) return { ...this.reject(name, rejected[0] ?? `No compatible free ports between ${sourceId} and ${targetId}`), source_ports: source.outputs ?? [], target_ports: target.inputs ?? [] }
+      return { ...this.trace(name, 'accepted', `Queued ${queued.length} compatible elastic${queued.length === 1 ? '' : 's'} from ${sourceId} to ${targetId}`), connections: queued, rejected }
+    }
+    if (name === 'remove_queued_connection') {
+      const sourceId = text('source_id'), sourcePortId = text('source_port_id'), targetId = text('target_id'), targetPortId = text('target_port_id')
+      const index = this.plan.connections.findIndex((connection) => connection.sourceId === sourceId && connection.sourcePortId === sourcePortId && connection.targetId === targetId && connection.targetPortId === targetPortId)
+      if (index < 0) return this.reject(name, 'That connection was not queued during this planning turn')
+      this.plan.connections.splice(index, 1)
+      return this.trace(name, 'accepted', `Removed queued ${sourceId}.${sourcePortId} → ${targetId}.${targetPortId}`)
+    }
+    if (name === 'validate_graph') {
+      const validation = this.validateVirtualGraph()
+      this.trace(name, 'read', validation.valid ? `Virtual graph valid (${validation.node_count} cards, ${validation.connection_count} elastics)` : `Virtual graph needs ${validation.errors.length} repair${validation.errors.length === 1 ? '' : 's'}`)
+      return { ok: true, ...validation }
     }
     if (name === 'edit_card') {
       const nodeId = text('node_id')
@@ -337,6 +470,8 @@ class AgentToolSession {
       return this.trace(name, 'accepted', `Queued ${kind} export`)
     }
     if (name === 'finish_plan') {
+      const validation = this.validateVirtualGraph()
+      if (this.context.cardBuilderMode !== true && this.hasGraphMutations && !validation.valid) return { ...this.reject(name, `Plan is not ready: ${validation.errors.slice(0, 4).join('; ')}`), validation }
       this.plan.summary = text('summary') || 'LABO agent plan'
       const missing = Array.isArray(args.missing_blocks) ? args.missing_blocks.map(record) : []
       this.plan.missingBlocks = missing.map((item) => ({ atomId: typeof item.atom_id === 'string' ? item.atom_id : null, label: String(item.label ?? ''), reason: String(item.reason ?? '') }))
@@ -386,6 +521,8 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
               ? 'Card Builder mode is active. Produce exactly one reusable unary card with compose_card, or create_card only if the composer cannot express it. Do not add native blocks, connect, move, edit, delete, run, save a preset, lay out or export a graph.'
               : 'Graph Builder mode is active. Construct the requested graph with explicit tools.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
+            'Prefer connect_compatible over guessing port ids. Use connect_all=true for Q/K/V or another multi-port group. If a queued connection is wrong, remove it with remove_queued_connection.',
+            'Call validate_graph after graph mutations and repair every reported error before finish_plan. finish_plan rejects incomplete new cards, occupied inputs, incompatible ranks and cycles.',
             'Tensor ranks are part of port contracts. QKV projection emits rank-3 Q/K/V and every SDPA consumes rank-4 Q/K/V, so insert Attention head layout between them.',
             'hiddenSize, queryHeads, keyValueHeads and headDim are graph-wide dimensions. Never edit them on individual cards; use the current graph-wide values consistently.',
             'A chatbot or QA assistant request normally means a compact GPT-like autoregressive graph. Build that minimal graph unless the user explicitly asks for a rule-based or non-neural dialogue engine.',
