@@ -2,6 +2,10 @@
 
 LABO AI is a desktop laboratory for composing neural architectures from executable atomic blocks. It combines a visual graph editor, generated PyTorch, step-by-step execution, and a constrained AI graph planner.
 
+- [Product page and Setup downloads](https://www.complexity-ai.fr/labo-ai)
+- [Narrated demo](https://youtu.be/ZmLuFFJaXgc)
+- [OpenAI Build Week submission](https://devpost.com/software/labo-ai)
+
 ## OpenAI Build Week: Codex and GPT-5.6
 
 LABO AI was created during OpenAI Build Week with Codex as the primary engineering environment and GPT-5.6 as the reasoning model used for the core build. The repository's dated commit history records the implementation during the submission period.
@@ -40,7 +44,7 @@ Supported packages:
 - macOS 12 or later on Apple silicon: `LABO-AI-Setup-arm64.dmg`.
 - Windows 10/11 x64: `LABO-AI-Setup-x64.exe`.
 
-The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime.
+The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
 
 Suggested test path:
 

@@ -708,8 +708,8 @@ mod tests {
     #[test]
     fn compares_setup_versions_without_downgrading() {
         assert_eq!(version_parts("v1.4.12"), Some(vec![1, 4, 12]));
-        assert!(release_is_newer("v0.1.29"));
-        assert!(!release_is_newer("v0.1.28"));
-        assert!(!release_is_newer("v0.1.27"));
+        assert!(release_is_newer("v999.0.0"));
+        assert!(!release_is_newer(env!("CARGO_PKG_VERSION")));
+        assert!(!release_is_newer("v0.0.1"));
     }
 }
