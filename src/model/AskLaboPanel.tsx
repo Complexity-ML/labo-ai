@@ -336,6 +336,11 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
           aria-label="What should these blocks build?"
           id="ask-labo-request"
           onChange={(event) => setRequest(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+            event.preventDefault()
+            event.currentTarget.form?.requestSubmit()
+          }}
           placeholder="Ask LABO to build or edit your architecture…"
           rows={1}
           value={request}

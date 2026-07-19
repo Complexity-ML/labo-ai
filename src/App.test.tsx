@@ -832,29 +832,34 @@ describe('LABO AI workspace', () => {
   })
 
   it('repairs underscore block IDs before displaying and applying an agent plan', async () => {
+    const askLabo = vi.fn(async () => ({
+      summary: 'Add two cards with model-generated identifiers.',
+      addedBlocks: [
+        { atomId: 'hidden-state-input', nodeId: 'image_input', reason: 'Add an image branch input.' },
+        { atomId: 'relu', nodeId: 'vision_projector', reason: 'Add a vision projection placeholder.' },
+      ],
+      createdBlocks: [],
+      connections: [{ sourceId: 'image_input', sourcePortId: 'hidden', targetId: 'vision_projector', targetPortId: 'hidden', reason: 'Connect the branch.' }],
+      missingBlocks: [],
+      warnings: [],
+    }))
     window.labo = {
       platform: 'darwin',
       runtime: 'electron',
       runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
       getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
-      askLabo: async () => ({
-        summary: 'Add two cards with model-generated identifiers.',
-        addedBlocks: [
-          { atomId: 'hidden-state-input', nodeId: 'image_input', reason: 'Add an image branch input.' },
-          { atomId: 'relu', nodeId: 'vision_projector', reason: 'Add a vision projection placeholder.' },
-        ],
-        createdBlocks: [],
-        connections: [{ sourceId: 'image_input', sourcePortId: 'hidden', targetId: 'vision_projector', targetPortId: 'hidden', reason: 'Connect the branch.' }],
-        missingBlocks: [],
-        warnings: [],
-      }),
+      askLabo,
     }
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Build a multimodal branch' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+    const prompt = screen.getByLabelText('What should these blocks build?')
+    fireEvent.change(prompt, { target: { value: 'Build a multimodal branch' } })
+    fireEvent.keyDown(prompt, { key: 'Enter', shiftKey: true })
+    expect(askLabo).not.toHaveBeenCalled()
+    fireEvent.keyDown(prompt, { key: 'Enter' })
 
     expect(await screen.findByText('2 atomic blocks ready')).toBeInTheDocument()
+    expect(askLabo).toHaveBeenCalledOnce()
     expect(screen.getByText('1 elastic ready')).toBeInTheDocument()
     expect(screen.getByText('Ready · 2 cards · 1 elastic')).toBeInTheDocument()
     expect(screen.queryByText(/Block id must start with a letter/)).not.toBeInTheDocument()
