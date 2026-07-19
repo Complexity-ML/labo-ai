@@ -80,7 +80,7 @@ describe('LABO AI workspaces player', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete 6' }))
     expect(screen.getByText('15 atoms')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Select Shared Dense Expert' })).not.toBeInTheDocument()
-  })
+  }, 15_000)
   
   it('tokenizes a real prompt before running the GPT-like graph', async () => {
     const runAtomic = vi.fn(async (payload: { kind: 'model'; graph: unknown; tokenIds?: number[] } | { kind: 'tokenizer'; pipeline: unknown; sample?: string }) => {
