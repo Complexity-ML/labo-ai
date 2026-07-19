@@ -226,6 +226,10 @@
 .optimizer-inline-editor input { min-width: 0; width: 100%; box-sizing: border-box; border: 1px solid #383d49; border-radius: 4px; padding: 6px; background: #08090c; color: #e0e2e7; font: 9px 'JetBrains Mono'; }
 .optimizer-inline-editor input[type='checkbox'] { width: auto; justify-self: start; }
 .optimizer-library { overflow: auto; min-height: 0; }
+.optimizer-create-button { margin-top: 10px; border-style: dashed; color: #b9e9d1; }
+.optimizer-creator-modal { width: min(620px, calc(100vw - 48px)); }
+.optimizer-creator-form { grid-template-columns: 1fr 1fr; }
+.optimizer-creator-error { grid-column: 1 / -1; margin: 0; color: #ef9292; font: 9px/1.5 var(--mono); }
 .training-workspace .selection-card small { max-width: 220px; white-space: normal; line-height: 1.45; }
 .node-type { color: #7f8490; text-transform: uppercase; letter-spacing: .5px; }
 .node-query { border-left: 2px solid var(--blue); }

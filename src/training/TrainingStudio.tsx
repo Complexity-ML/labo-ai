@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Blocks, Braces, Cpu, Play, Settings2, SplitSquareHorizontal } from 'lucide-react'
-import { compileOptimizer, createOptimizerConfig, optimizerRegistry, type OptimizerConfig, type OptimizerValue } from '../core/optimizer-ir'
+import { Blocks, Braces, Cpu, Play, Plus, Settings2, SplitSquareHorizontal } from 'lucide-react'
+import { compileOptimizer, createOptimizerConfig, optimizerRegistry, type OptimizerConfig, type OptimizerDefinition, type OptimizerValue } from '../core/optimizer-ir'
+import { OptimizerCreator } from './OptimizerCreator'
 
 function formatValue(value: OptimizerValue): string {
   if (Array.isArray(value)) return value.map((item) => item === null ? 'None' : String(item)).join(', ')
@@ -11,11 +12,20 @@ function formatValue(value: OptimizerValue): string {
 export function TrainingStudio() {
   const [config, setConfig] = useState<OptimizerConfig>(() => createOptimizerConfig('adamw'))
   const [view, setView] = useState<'graph' | 'pytorch' | 'split'>('split')
-  const definition = optimizerRegistry[config.kind]
-  const code = useMemo(() => ['import torch', '', compileOptimizer(config), ''].join('\n'), [config])
+  const [customOptimizers, setCustomOptimizers] = useState<OptimizerDefinition[]>([])
+  const [creatorOpen, setCreatorOpen] = useState(false)
+  const definitions = useMemo(() => ({ ...optimizerRegistry, ...Object.fromEntries(customOptimizers.map((optimizer) => [optimizer.id, optimizer])) }), [customOptimizers])
+  const definition = definitions[config.kind]
+  const code = useMemo(() => ['import torch', '', compileOptimizer(config, 'model.parameters()', definitions), ''].join('\n'), [config, definitions])
 
-  const selectOptimizer = (kind: string) => setConfig(createOptimizerConfig(kind))
+  const selectOptimizer = (kind: string) => setConfig(createOptimizerConfig(kind, {}, definitions))
   const updateSetting = (key: string, value: OptimizerValue) => setConfig((current) => ({ ...current, settings: { ...current.settings, [key]: value } }))
+  const createOptimizer = (optimizer: OptimizerDefinition) => {
+    const nextDefinitions = { ...definitions, [optimizer.id]: optimizer }
+    setCustomOptimizers((current) => [...current, optimizer])
+    setConfig(createOptimizerConfig(optimizer.id, {}, nextDefinitions))
+    setCreatorOpen(false)
+  }
 
   return <>
     <section className="workspace-toolbar">
@@ -33,6 +43,11 @@ export function TrainingStudio() {
         <section className="block-group optimizer-library">
           <h3>PyTorch 2.13</h3>
           {Object.values(optimizerRegistry).map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)}>
+            <span className="block-glyph glyph-objective" />{optimizer.label}
+          </button>)}
+          <button aria-label="Create optimizer" className="library-block optimizer-create-button" onClick={() => setCreatorOpen(true)} type="button"><Plus size={13} />Create optimizer</button>
+          {customOptimizers.length > 0 && <h3>Created</h3>}
+          {customOptimizers.map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)}>
             <span className="block-glyph glyph-objective" />{optimizer.label}
           </button>)}
         </section>
@@ -71,5 +86,6 @@ export function TrainingStudio() {
       </aside>
     </div>
     <footer className="statusbar"><span><span className="status-dot" /> Training IR valid</span><span>optimizer · {Object.keys(config.settings).length} settings</span><span className="status-spacer" /><span>PyTorch 2.13</span></footer>
+    {creatorOpen && <OptimizerCreator onCancel={() => setCreatorOpen(false)} onCreate={createOptimizer} />}
   </>
 }

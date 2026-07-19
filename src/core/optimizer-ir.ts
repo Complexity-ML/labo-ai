@@ -34,8 +34,8 @@ function cloneValue(value: OptimizerValue): OptimizerValue {
   return Array.isArray(value) ? [...value] : value
 }
 
-export function createOptimizerConfig(kind: string, overrides: Record<string, OptimizerValue> = {}): OptimizerConfig {
-  const definition = optimizerRegistry[kind]
+export function createOptimizerConfig(kind: string, overrides: Record<string, OptimizerValue> = {}, definitions: Record<string, OptimizerDefinition> = optimizerRegistry): OptimizerConfig {
+  const definition = definitions[kind]
   if (!definition) throw new Error(`Unknown optimizer: ${kind}`)
   for (const key of Object.keys(overrides)) {
     if (!(key in definition.defaults)) throw new Error(`Unknown ${kind} setting: ${key}`)
@@ -55,8 +55,8 @@ function pythonValue(value: OptimizerValue): string {
   return String(value)
 }
 
-export function compileOptimizer(config: OptimizerConfig, parameters = 'model.parameters()'): string {
-  const definition = optimizerRegistry[config.kind]
+export function compileOptimizer(config: OptimizerConfig, parameters = 'model.parameters()', definitions: Record<string, OptimizerDefinition> = optimizerRegistry): string {
+  const definition = definitions[config.kind]
   if (!definition) throw new Error(`Unknown optimizer: ${config.kind}`)
   const settings = Object.entries(config.settings).map(([key, value]) => `${key}=${pythonValue(value)}`).join(', ')
   return `optimizer = torch.optim.${definition.torchClass}(${parameters}, ${settings})`

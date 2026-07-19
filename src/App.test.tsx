@@ -633,6 +633,24 @@ describe('LABO AI workspace', () => {
     expect(screen.queryByText('optimizer.py')).not.toBeInTheDocument()
   })
 
+  it('creates a custom optimizer directly in Training Studio', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create optimizer' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Create optimizer' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer name' }), { target: { value: 'Research AdamW' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer PyTorch class' }), { target: { value: 'AdamW' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer default settings' }), { target: { value: '{"lr": 0.0002, "weight_decay": 0.05, "fused": true}' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create optimizer' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Create optimizer' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use Research AdamW' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Research AdamW lr' })).toHaveValue(0.0002)
+    expect(screen.getByText('torch.optim.AdamW')).toBeInTheDocument()
+    expect(screen.getByText(/optimizer = torch\.optim\.AdamW\(model\.parameters\(\), lr=0\.0002, weight_decay=0\.05, fused=True\)/)).toBeInTheDocument()
+  })
+
   it('selects, edits, and adds freely manipulable model atoms', () => {
     render(<App />)
 
