@@ -33,15 +33,14 @@ The key product decisions remained human-directed: use atomic typed cards instea
 
 ## Judge quick start
 
-No rebuild or account is required. Download the signed-off hackathon alpha from the [LABO AI product page](https://www.complexity-ai.fr/labo-ai) or the [GitHub v0.1.0 release](https://github.com/Complexity-ML/labo-ai/releases/tag/v0.1.0).
+Download the latest lightweight installer from the [LABO AI product page](https://www.complexity-ai.fr/labo-ai) or [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest). **LABO AI Setup** fetches the latest tagged source, verifies and provisions its own Node.js runtime, then builds and installs the Electron app locally.
 
 Supported packages:
 
-- macOS 12 or later on Apple silicon: DMG and portable ZIP.
-- Windows 10/11 x64: NSIS installer and portable ZIP.
-- Windows ARM64: portable ZIP.
+- macOS 12 or later on Apple silicon: `LABO-AI-Setup-arm64.dmg`.
+- Windows 10/11 x64: `LABO-AI-Setup-x64.exe`.
 
-The builds are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch.
+The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime.
 
 Suggested test path:
 
@@ -82,16 +81,24 @@ Build and start Electron locally:
 npm run electron:start
 ```
 
-Create the macOS application, DMG, and ZIP:
+Create an unpacked macOS Electron application for development:
 
 ```bash
-npm run package:mac
+npm run package:mac:dir
 ```
 
-Create the Windows NSIS installer and ZIP on a Windows build host:
+Create an unpacked Windows Electron application for development:
 
 ```bash
-npm run package:win
+npm run package:win:dir
+```
+
+Build the public source-first Tauri Setup package:
+
+```bash
+npm ci --prefix apps/bootstrap-installer
+npm run build:mac --prefix apps/bootstrap-installer # macOS
+npm run build:win --prefix apps/bootstrap-installer # Windows
 ```
 
 Run the guided one-minute agent demo after adding an API key in the app:
@@ -113,7 +120,15 @@ npm version patch
 git push origin main --follow-tags
 ```
 
-The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches `package.json`, validates the project, builds Apple-silicon macOS and Windows x64 packages on their native runners, and publishes them to the matching GitHub release. The Complexity website reads the latest published release automatically, so its download buttons do not require a separate version edit.
+The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches both the application and Setup versions, validates the project, builds the small Apple-silicon DMG and Windows x64 Setup EXE, and publishes them with stable filenames. The Setup then builds Electron locally from that latest tagged release. Existing installations expose the same updater from the shared **Settings → General** page. The Complexity website can use GitHub's `/releases/latest/download/…` URLs, so its download buttons do not require a separate version edit.
+
+### Source-first installation layout
+
+- Setup state and its managed Node.js runtime live in the operating system's local application-data directory.
+- macOS installs LABO AI to `~/Applications/LABO AI.app`; Windows installs it below `%LOCALAPPDATA%/Programs/LABO AI`.
+- One previous application directory is retained for rollback.
+- SQLite workspaces, custom cards and optimizer presets remain in Electron's separate user profile and are never replaced by an application update.
+- The updater accepts no repository or command from the renderer: its source repository and build commands are fixed in the native Setup code.
 
 ## Security model
 

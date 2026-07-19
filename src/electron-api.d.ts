@@ -37,6 +37,9 @@ interface Window {
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
     loadDesktopState?(scope: 'model' | 'training' | 'tokenizer'): Promise<unknown>
     saveDesktopState?(scope: 'model' | 'training' | 'tokenizer', data: unknown): Promise<{ saved: true }>
+    getDesktopUpdateStatus?(): Promise<DesktopUpdateStatus>
+    launchDesktopUpdate?(): Promise<{ launched: true }>
+    openDesktopSetup?(): Promise<void>
     getWindowState?(): Promise<{ fullScreen: boolean }>
     onWindowStateChange?(callback: (state: { fullScreen: boolean }) => void): () => void
   }
@@ -48,4 +51,14 @@ interface OpenAISettingsStatus {
   encryptionAvailable: boolean
   authRequired?: boolean
   prefix?: string
+}
+
+interface DesktopUpdateStatus {
+  currentVersion: string
+  installedTag?: string
+  latestTag?: string
+  helperInstalled: boolean
+  updateAvailable: boolean
+  setupUrl: string
+  error?: string
 }

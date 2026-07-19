@@ -6,6 +6,30 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 describe('LABO AI studios', () => {
+  it('shows the source-first desktop updater in the shared settings', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getDesktopUpdateStatus: async () => ({
+        currentVersion: '0.1.26',
+        installedTag: 'v0.1.26',
+        latestTag: 'v0.1.27',
+        helperInstalled: true,
+        updateAvailable: true,
+        setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+      }),
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+
+    expect(await screen.findByText('Desktop updates')).toBeInTheDocument()
+    expect(screen.getByText('Installed v0.1.26 · latest v0.1.27. Updates are built locally from the tagged source.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Update and restart' })).toBeEnabled()
+    delete window.labo
+  })
+
   it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))

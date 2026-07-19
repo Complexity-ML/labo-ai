@@ -12,6 +12,9 @@ const exportFileChannel = 'labo:export-file'
 const windowStateChannel = 'labo:window-state'
 const loadDesktopStateChannel = 'labo:desktop-state-load'
 const saveDesktopStateChannel = 'labo:desktop-state-save'
+const desktopUpdateStatusChannel = 'labo:desktop-update-status'
+const launchDesktopUpdateChannel = 'labo:desktop-update-launch'
+const openDesktopSetupChannel = 'labo:desktop-setup-open'
 
 contextBridge.exposeInMainWorld('labo', {
   platform: process.platform,
@@ -25,6 +28,9 @@ contextBridge.exposeInMainWorld('labo', {
   exportFile: (payload: { filename: string; content: string; kind: 'svg' | 'python' }) => ipcRenderer.invoke(exportFileChannel, payload),
   loadDesktopState: (scope: 'model' | 'training' | 'tokenizer') => ipcRenderer.invoke(loadDesktopStateChannel, { scope }),
   saveDesktopState: (scope: 'model' | 'training' | 'tokenizer', data: unknown) => ipcRenderer.invoke(saveDesktopStateChannel, { scope, data }),
+  getDesktopUpdateStatus: () => ipcRenderer.invoke(desktopUpdateStatusChannel),
+  launchDesktopUpdate: () => ipcRenderer.invoke(launchDesktopUpdateChannel),
+  openDesktopSetup: () => ipcRenderer.invoke(openDesktopSetupChannel),
   getWindowState: () => ipcRenderer.invoke(windowStateChannel),
   onWindowStateChange: (callback: (state: { fullScreen: boolean }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: { fullScreen: boolean }) => callback(state)

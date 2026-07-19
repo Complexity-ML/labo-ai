@@ -1,6 +1,7 @@
 import { Database, FolderKanban, Lightbulb, Settings2, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useState, type ReactNode } from 'react'
+import { DesktopUpdateSettings } from './DesktopUpdateSettings'
 
 export interface StudioSettingsSection {
   id: string
@@ -31,6 +32,7 @@ export function StudioSettingsModal({ onClose, sections }: { onClose(): void; se
         {sectionId === 'general' ? <div className="studio-settings-general">
           <article><Database size={15} /><div><strong>Private automatic save</strong><p>{runtime === 'web' ? 'Signed-in workspaces are stored in the account-scoped server database. Guest work is temporary.' : runtime === 'electron' ? 'Workspaces, cards and optimizers are stored in the persistent local SQLite profile.' : 'This development preview keeps only temporary browser state.'}</p></div></article>
           <article><Settings2 size={15} /><div><strong>Shared defaults, private creations</strong><p>Built-in cards and presets are read-only defaults. Everything you create belongs only to the current user profile.</p></div></article>
+          <DesktopUpdateSettings />
           {runtime === 'web' && <a className="studio-settings-account-link" href="/dashboard/settings" target="_top">Manage account and private data</a>}
         </div> : <div className={`studio-settings-context studio-settings-section-${sectionId}`}>{sectionContent[sectionId] ?? <div className="studio-settings-empty"><strong>{navigation.find((section) => section.id === sectionId)?.label}</strong><p>These settings use the shared LABO AI defaults in this studio.</p></div>}</div>}
       </div>

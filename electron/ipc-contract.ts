@@ -8,3 +8,6 @@ export const exportFileChannel = 'labo:export-file' as const
 export const windowStateChannel = 'labo:window-state' as const
 export const loadDesktopStateChannel = 'labo:desktop-state-load' as const
 export const saveDesktopStateChannel = 'labo:desktop-state-save' as const
+export const desktopUpdateStatusChannel = 'labo:desktop-update-status' as const
+export const launchDesktopUpdateChannel = 'labo:desktop-update-launch' as const
+export const openDesktopSetupChannel = 'labo:desktop-setup-open' as const
