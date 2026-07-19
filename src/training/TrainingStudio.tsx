@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Blocks, Braces, Cpu, Pencil, Play, Plus, Settings2, SplitSquareHorizontal, Trash2 } from 'lucide-react'
+import { Blocks, Braces, Cpu, Lightbulb, Pencil, Play, Plus, Settings2, SplitSquareHorizontal, Trash2 } from 'lucide-react'
 import { compileOptimizer, createOptimizerConfig, optimizerRegistry, type OptimizerConfig, type OptimizerDefinition, type OptimizerValue } from '../core/optimizer-ir'
 import { OptimizerCreator } from './OptimizerCreator'
 import { parseTrainingWorkspace } from './training-workspace'
@@ -181,14 +181,17 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
         <button onClick={() => deleteOptimizer(optimizer.id)} role="menuitem" type="button"><Trash2 size={12} />Delete {optimizer.label}</button>
       </div>
     })()}
-    {settingsOpen && <StudioSettingsModal onClose={onCloseSettings} studio="Training" tips={<><p>Use <b>Use optimizers</b> to select a configuration.</p><p>Switch to <b>Edit optimizers</b>, then click, double-click or right-click a custom optimizer to edit or delete it.</p></>}>
-        <section className="training-settings-presets">
+    {settingsOpen && <StudioSettingsModal onClose={onCloseSettings} sections={[
+      {
+        id: 'training', label: 'Training', icon: <Settings2 size={13} />, content: <section className="training-settings-presets">
           <strong>Optimizer presets</strong>
           {customOptimizers.length === 0 ? <p>No custom optimizer yet.</p> : customOptimizers.map((optimizer) => <div key={`setting-${optimizer.id}`}>
             <button onClick={() => selectOptimizer(optimizer.id)} type="button"><span>{optimizer.label}</span><small>torch.optim.{optimizer.torchClass}</small></button>
             <button aria-label={`Delete optimizer preset ${optimizer.label}`} onClick={() => deleteOptimizer(optimizer.id)} title="Delete optimizer" type="button"><Trash2 size={12} /></button>
           </div>)}
-        </section>
-    </StudioSettingsModal>}
+        </section>,
+      },
+      { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="studio-settings-tips"><p>Use <b>Use optimizers</b> to select a configuration.</p><p>Switch to <b>Edit optimizers</b>, then click, double-click or right-click a custom optimizer to edit or delete it.</p></div> },
+    ]} />}
   </>
 }

@@ -75,6 +75,7 @@ describe('LABO AI workspace', () => {
 
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
 
     await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalled(), { timeout: 2_000 })
@@ -94,6 +95,7 @@ describe('LABO AI workspace', () => {
 
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     await new Promise((resolve) => setTimeout(resolve, 850))
 
@@ -540,6 +542,8 @@ describe('LABO AI workspace', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add Token IDs' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'New model preset name' }), { target: { value: 'My routed model' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save a named copy of Blank starter' }))
     fireEvent.click(screen.getByText(/Activations/))
@@ -557,6 +561,8 @@ describe('LABO AI workspace', () => {
 
   it('creates independent blank workspaces, mixes presets, and deletes a multi-selection in edit mode', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     expect(screen.getByText('0 atoms')).toBeInTheDocument()
     expect(screen.getAllByText('Blank canvas 1').length).toBeGreaterThan(0)

@@ -4,6 +4,7 @@ import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, t
 import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
+import { StudioSettingsModal } from '../StudioSettingsModal'
 import type { CustomPyTorchCard } from './custom-card'
 
 interface AskLaboPanelProps {
@@ -66,7 +67,6 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
   const [editingCard, setEditingCard] = useState<ArchitectureNode>()
   const [editorDraft, setEditorDraft] = useState<AgentCardOverride>()
   const [editorError, setEditorError] = useState('')
-  const [settingsSection, setSettingsSection] = useState<'general' | 'workspaces' | 'agent' | 'tips'>('workspaces')
   const [activityOpen, setActivityOpen] = useState(false)
   const [activities, setActivities] = useState<AgentActivity[]>([])
   const activeActivityIdRef = useRef<string | undefined>(undefined)
@@ -302,8 +302,8 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
     onClose()
   }
 
-  return <div className={`ask-labo-backdrop ${dockClassName} ${open ? 'settings-open' : ''} ${plan ? 'review-open' : ''}`} onPointerDown={(event) => { if (event.target === event.currentTarget) closeOverlay() }}>
-  <aside aria-label="Ask LABO" aria-modal={open || Boolean(plan)} className={`ask-labo-panel ${plan ? 'has-plan' : ''}`} role={open || plan ? 'dialog' : 'region'}>
+  return <div className={`ask-labo-backdrop ${dockClassName} ${plan ? 'review-open' : ''}`} onPointerDown={(event) => { if (event.target === event.currentTarget) closeOverlay() }}>
+  <aside aria-label="Ask LABO" aria-modal={Boolean(plan)} className={`ask-labo-panel ${plan ? 'has-plan' : ''}`} role={plan ? 'dialog' : 'region'}>
     <header className="ask-labo-header">
       <span>{plan ? <Sparkles size={15} /> : <Settings2 size={15} />}{plan ? 'Review graph plan' : 'LABO settings'}</span>
       <button aria-label="Close Ask LABO" onClick={closeOverlay}><X size={15} /></button>
@@ -351,94 +351,26 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
       <button aria-expanded={activityOpen} aria-label="Open agent activity" className="ask-labo-activity-trigger" onClick={() => setActivityOpen((current) => !current)} title="Agent activity" type="button"><ListChecks size={14} />{activities.length > 0 && <b>{activities.find((activity) => activity.status === 'running') ? '…' : activities.length}</b>}</button>
     </form>
 
-    <div className="ask-labo-settings">
-      <nav aria-label="Settings sections" className="ask-labo-settings-tabs">
-        <button aria-pressed={settingsSection === 'general'} onClick={() => setSettingsSection('general')} type="button"><Settings2 size={13} />General</button>
-        <button aria-pressed={settingsSection === 'workspaces'} onClick={() => setSettingsSection('workspaces')} type="button"><FolderKanban size={13} />Workspaces</button>
-        <button aria-pressed={settingsSection === 'agent'} onClick={() => setSettingsSection('agent')} type="button"><Sparkles size={13} />Agent</button>
-        <button aria-pressed={settingsSection === 'tips'} onClick={() => setSettingsSection('tips')} type="button"><Lightbulb size={13} />Tips</button>
-      </nav>
-      {settingsSection === 'general' ? <div className="studio-settings-general ask-labo-general-settings">
-        <article><ShieldCheck size={15} /><div><strong>Private automatic save</strong><p>{window.labo?.runtime === 'web' ? 'Signed-in workspaces are stored in the account-scoped server database. Guest work is temporary.' : 'Workspaces and cards are stored in the persistent local profile.'}</p></div></article>
-        <article><Settings2 size={15} /><div><strong>Shared defaults, private creations</strong><p>Built-in cards are read-only. User cards and presets remain private to this profile.</p></div></article>
-        {window.labo?.runtime === 'web' && <a className="studio-settings-account-link" href="/dashboard/settings" target="_top">Manage account and private data</a>}
-      </div> : settingsSection === 'workspaces' ? <div className="ask-labo-workspace-settings">{workspaceSettings}</div> : settingsSection === 'tips' ? <div className="ask-labo-tips">
-        <article>
-          <span><MousePointer2 size={14} />Select & delete</span>
-          <strong>Delete several cards or a full graph</strong>
-          <p>Switch to <b>Edit cards</b>, then drag on empty canvas around the cards. Hold Shift, Cmd or Ctrl while clicking to adjust the selection, then choose <b>Delete selection</b>. Connected elastics are removed with the cards.</p>
-        </article>
-        <article>
-          <span><Settings2 size={14} />Edit a card</span>
-          <strong>Open card settings</strong>
-          <p>In <b>Edit cards</b>, click a card to open its settings. You can also right-click a card for the Edit and Delete actions.</p>
-        </article>
-        <article>
-          <span><Cable size={14} />Add & wire</span>
-          <strong>Compose manually</strong>
-          <p>Use <b>Add blocks</b>, click a card to place it automatically or drag it onto the canvas, then drag between compatible typed plugs.</p>
-        </article>
-        <article>
-          <span><FolderKanban size={14} />Save & compare</span>
-          <strong>Keep each architecture reusable</strong>
-          <p>Open <b>Settings → Workspaces</b> to name, save, reset or place complete presets side by side.</p>
-        </article>
-        <article>
-          <span><Sparkles size={14} />Ask LABO</span>
-          <strong>Build with natural language</strong>
-          <p>Describe the architecture in the footer prompt. Configure review, auto-apply and parallel mode under <b>Settings → Agent</b>.</p>
-        </article>
-      </div> : <div className="ask-labo-settings-content">
-      <div className="ask-labo-intro">
-        <strong>Atomic graph agent</strong>
-        <p>LABO inspects the typed card library, composes missing reusable cards when possible, wires the graph and returns an explicit plan.</p>
-      </div>
-
-      <section className="ask-labo-mode" aria-label="Agent apply mode">
-        <div>
-          <button aria-pressed={!autoApply} onClick={() => setAutoApply(false)} type="button">Review</button>
-          <button aria-pressed={autoApply} onClick={() => setAutoApply(true)} type="button">Auto apply</button>
-        </div>
-        <small>{autoApply ? 'Apply every locally valid operation immediately.' : 'Preview cards and elastics before applying.'}</small>
-      </section>
-
-      <section className="ask-labo-mode ask-labo-scope" aria-label="Agent graph scope">
-        <div>
-          <button aria-pressed={graphMode === 'extend'} disabled={loading} onClick={() => { setGraphMode('extend'); setPlan(undefined) }} type="button">Extend current</button>
-          <button aria-pressed={graphMode === 'parallel'} disabled={loading} onClick={() => { setGraphMode('parallel'); setPlan(undefined) }} type="button">New parallel</button>
-        </div>
-        <small>{graphMode === 'parallel' ? 'Keep the existing graph read-only and build beside it.' : 'Connect new cards to compatible free ports.'}</small>
-      </section>
-
-      <section className="ask-labo-key-settings">
-      <div className="ask-labo-key-heading"><span><KeyRound size={13} />OpenAI API key</span>{settings?.configured && <b><span className="status-dot" />Connected</b>}</div>
-      {settings?.configured ? <>
-        <div className="ask-labo-key-status">
-          <ShieldCheck size={16} />
-          <span><strong>{settings.source === 'secure-storage' ? 'Stored securely for this user' : 'Provided by the app environment'}</strong><small>The key value is never exposed back to the interface.</small></span>
-        </div>
-        <div className="ask-labo-key-actions">
-          <button disabled={credentialBusy} onClick={() => void testApiKey()} type="button">Test connection</button>
-          {settings.source === 'secure-storage' && <button className={confirmDelete ? 'confirm-delete' : ''} disabled={credentialBusy} onClick={() => void deleteApiKey()} type="button"><Trash2 size={12} />{confirmDelete ? 'Confirm removal' : 'Remove key'}</button>}
-          {window.labo?.runtime === 'web' && <a href="/dashboard/settings" target="_top">Manage account</a>}
-        </div>
-      </> : settings?.authRequired ? <div className="ask-labo-key-form">
-        <p>Everything except Ask LABO works without an account.</p>
-        <a className="ask-labo-sign-in" href="/auth/signin?callbackUrl=%2Flabo-ai%2Flive" target="_top"><ShieldCheck size={12} />Sign in to use the agent</a>
-      </div> : <form className="ask-labo-key-form" onSubmit={(event) => void saveApiKey(event)}>
-        <p>No API key configured for this user.</p>
-        <label htmlFor="openai-api-key">OpenAI API key</label>
-        <div>
-          <input autoComplete="off" id="openai-api-key" onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" type={showApiKey ? 'text' : 'password'} value={apiKey} />
-          <button aria-label={showApiKey ? 'Hide API key' : 'Show API key'} onClick={() => setShowApiKey((current) => !current)} type="button">{showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-        </div>
-        <button disabled={credentialBusy || apiKey.trim().length < 20 || settings?.encryptionAvailable === false} type="submit"><ShieldCheck size={12} />{credentialBusy ? 'Saving…' : 'Save and verify key'}</button>
-        {settings?.encryptionAvailable === false && <small>Secure storage requires the LABO AI desktop app and an available system keychain.</small>}
-      </form>}
-      {credentialMessage && <p className="ask-labo-key-message">{credentialMessage}</p>}
-      </section>
-      </div>}
-    </div>
+    {open && <StudioSettingsModal onClose={closeOverlay} sections={[
+      { id: 'workspaces', label: 'Workspaces', icon: <FolderKanban size={13} />, content: <div className="ask-labo-workspace-settings">{workspaceSettings}</div> },
+      { id: 'agent', label: 'Agent', icon: <Sparkles size={13} />, content: <div className="ask-labo-settings-content">
+        <div className="ask-labo-intro"><strong>Atomic graph agent</strong><p>LABO inspects the typed card library, composes missing reusable cards when possible, wires the graph and returns an explicit plan.</p></div>
+        <section className="ask-labo-mode" aria-label="Agent apply mode"><div><button aria-pressed={!autoApply} onClick={() => setAutoApply(false)} type="button">Review</button><button aria-pressed={autoApply} onClick={() => setAutoApply(true)} type="button">Auto apply</button></div><small>{autoApply ? 'Apply every locally valid operation immediately.' : 'Preview cards and elastics before applying.'}</small></section>
+        <section className="ask-labo-mode ask-labo-scope" aria-label="Agent graph scope"><div><button aria-pressed={graphMode === 'extend'} disabled={loading} onClick={() => { setGraphMode('extend'); setPlan(undefined) }} type="button">Extend current</button><button aria-pressed={graphMode === 'parallel'} disabled={loading} onClick={() => { setGraphMode('parallel'); setPlan(undefined) }} type="button">New parallel</button></div><small>{graphMode === 'parallel' ? 'Keep the existing graph read-only and build beside it.' : 'Connect new cards to compatible free ports.'}</small></section>
+        <section className="ask-labo-key-settings">
+          <div className="ask-labo-key-heading"><span><KeyRound size={13} />OpenAI API key</span>{settings?.configured && <b><span className="status-dot" />Connected</b>}</div>
+          {settings?.configured ? <><div className="ask-labo-key-status"><ShieldCheck size={16} /><span><strong>{settings.source === 'secure-storage' ? 'Stored securely for this user' : 'Provided by the app environment'}</strong><small>The key value is never exposed back to the interface.</small></span></div><div className="ask-labo-key-actions"><button disabled={credentialBusy} onClick={() => void testApiKey()} type="button">Test connection</button>{settings.source === 'secure-storage' && <button className={confirmDelete ? 'confirm-delete' : ''} disabled={credentialBusy} onClick={() => void deleteApiKey()} type="button"><Trash2 size={12} />{confirmDelete ? 'Confirm removal' : 'Remove key'}</button>}{window.labo?.runtime === 'web' && <a href="/dashboard/settings" target="_top">Manage account</a>}</div></> : settings?.authRequired ? <div className="ask-labo-key-form"><p>Everything except Ask LABO works without an account.</p><a className="ask-labo-sign-in" href="/auth/signin?callbackUrl=%2Flabo-ai%2Flive" target="_top"><ShieldCheck size={12} />Sign in to use the agent</a></div> : <form className="ask-labo-key-form" onSubmit={(event) => void saveApiKey(event)}><p>No API key configured for this user.</p><label htmlFor="openai-api-key">OpenAI API key</label><div><input autoComplete="off" id="openai-api-key" onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" type={showApiKey ? 'text' : 'password'} value={apiKey} /><button aria-label={showApiKey ? 'Hide API key' : 'Show API key'} onClick={() => setShowApiKey((current) => !current)} type="button">{showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}</button></div><button disabled={credentialBusy || apiKey.trim().length < 20 || settings?.encryptionAvailable === false} type="submit"><ShieldCheck size={12} />{credentialBusy ? 'Saving…' : 'Save and verify key'}</button>{settings?.encryptionAvailable === false && <small>Secure storage requires the LABO AI desktop app and an available system keychain.</small>}</form>}
+          {credentialMessage && <p className="ask-labo-key-message">{credentialMessage}</p>}
+        </section>
+      </div> },
+      { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="ask-labo-tips">
+        <article><span><MousePointer2 size={14} />Select & delete</span><strong>Delete several cards or a full graph</strong><p>Switch to <b>Edit cards</b>, then drag on empty canvas around the cards. Hold Shift, Cmd or Ctrl while clicking to adjust the selection, then choose <b>Delete selection</b>. Connected elastics are removed with the cards.</p></article>
+        <article><span><Settings2 size={14} />Edit a card</span><strong>Open card settings</strong><p>In <b>Edit cards</b>, click a card to open its settings. You can also right-click a card for the Edit and Delete actions.</p></article>
+        <article><span><Cable size={14} />Add & wire</span><strong>Compose manually</strong><p>Use <b>Add blocks</b>, click a card to place it automatically or drag it onto the canvas, then drag between compatible typed plugs.</p></article>
+        <article><span><FolderKanban size={14} />Save & compare</span><strong>Keep each architecture reusable</strong><p>Open <b>Settings → Workspaces</b> to name, save, reset or place complete presets side by side.</p></article>
+        <article><span><Sparkles size={14} />Ask LABO</span><strong>Build with natural language</strong><p>Describe the architecture in the footer prompt. Configure review, auto-apply and parallel mode under <b>Settings → Agent</b>.</p></article>
+      </div> },
+    ]} />}
 
     {error && <div className="ask-labo-error"><AlertTriangle size={14} /><span>{error}</span></div>}
 

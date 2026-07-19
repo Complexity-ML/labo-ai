@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Settings2, X } from 'lucide-react'
+import { Lightbulb, Search, Settings2, X } from 'lucide-react'
 import { LaboMark } from './LaboMark'
 import './App.css'
 import { ModelStudio } from './model/ModelStudio'
@@ -76,9 +76,10 @@ function App() {
     {workspace === 'training' && <TrainingStudio onCatalogChange={setCustomOptimizers} onCloseSettings={() => setStudioSettingsOpen(false)} onRequestedOptimizerHandled={() => setRequestedOptimizer(undefined)} requestedOptimizer={requestedOptimizer} settingsOpen={studioSettingsOpen} />}
     {workspace === 'tokenizer' && <TokenizerStudio onCatalogChange={setCustomTokenizerCards} onRequestedCardHandled={() => setRequestedTokenizerCard(undefined)} requestedCard={requestedTokenizerCard} />}
 
-    {workspace === 'tokenizer' && studioSettingsOpen && <StudioSettingsModal onClose={() => setStudioSettingsOpen(false)} studio="Tokenizer" tips={<p>Right-click a custom tokenizer card to edit or delete it. Built-in tokenizer cards remain read-only.</p>}>
-      <p>Tokenizer pipelines and reusable tokenizer cards are auto-saved for the current private profile.</p>
-    </StudioSettingsModal>}
+    {workspace === 'tokenizer' && studioSettingsOpen && <StudioSettingsModal onClose={() => setStudioSettingsOpen(false)} sections={[
+      { id: 'tokenizer', label: 'Tokenizer', icon: <Settings2 size={13} />, content: <p>Tokenizer pipelines and reusable tokenizer cards are auto-saved for the current private profile.</p> },
+      { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="studio-settings-tips"><p>Right-click a custom tokenizer card to edit or delete it. Built-in tokenizer cards remain read-only.</p></div> },
+    ]} />}
 
     {searchOpen && <div className="card-search-backdrop">
       <section aria-label="Search cards" aria-modal="true" className="card-search-modal" role="dialog">
