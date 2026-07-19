@@ -823,6 +823,43 @@ describe('LABO AI workspace', () => {
     expect(screen.getByLabelText('Agent activity')).toHaveTextContent('applied')
     expect(screen.getByLabelText('Agent activity')).toHaveTextContent('1 accepted')
     expect(screen.getByRole('button', { name: 'Retry agent task: Add one ReLU card' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.queryByLabelText('Agent activity')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open agent activity' }))
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('0 tasks')
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('Your agent runs, validation results and errors will appear here.')
+    delete window.labo
+  })
+
+  it('repairs underscore block IDs before displaying and applying an agent plan', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Add two cards with model-generated identifiers.',
+        addedBlocks: [
+          { atomId: 'hidden-state-input', nodeId: 'image_input', reason: 'Add an image branch input.' },
+          { atomId: 'relu', nodeId: 'vision_projector', reason: 'Add a vision projection placeholder.' },
+        ],
+        createdBlocks: [],
+        connections: [{ sourceId: 'image_input', sourcePortId: 'hidden', targetId: 'vision_projector', targetPortId: 'hidden', reason: 'Connect the branch.' }],
+        missingBlocks: [],
+        warnings: [],
+      }),
+    }
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'Build a multimodal branch' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Propose graph changes' }))
+
+    expect(await screen.findByText('2 atomic blocks ready')).toBeInTheDocument()
+    expect(screen.getByText('1 elastic ready')).toBeInTheDocument()
+    expect(screen.queryByText(/Block id must start with a letter/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
+    expect(screen.getByRole('button', { name: 'Select Hidden State' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select ReLU' })).toBeInTheDocument()
     delete window.labo
   })
 

@@ -70,9 +70,10 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
   const [activityOpen, setActivityOpen] = useState(false)
   const [activities, setActivities] = useState<AgentActivity[]>([])
   const activeActivityIdRef = useRef<string | undefined>(undefined)
+  const activePlan = useMemo(() => plan ? repairAgentGraphPlan(graph, plan) : undefined, [graph, plan])
   const preview = useMemo(() => {
-    if (!plan) return undefined
-    const base = previewAgentGraphPlan(graph, plan, graphMode)
+    if (!activePlan) return undefined
+    const base = previewAgentGraphPlan(graph, activePlan, graphMode)
     return {
       ...base,
       graph: {
@@ -83,7 +84,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
         }),
       },
     }
-  }, [cardOverrides, graph, graphMode, plan])
+  }, [activePlan, cardOverrides, graph, graphMode])
 
   useEffect(() => {
     setConfirmDelete(false)
@@ -206,6 +207,12 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
     setActivityOpen(false)
   }
 
+  const clearActivities = () => {
+    activeActivityIdRef.current = undefined
+    setActivities([])
+    setActivityOpen(false)
+  }
+
   const openCardEditor = (nodeId: string) => {
     const node = preview?.graph.nodes.find((candidate) => candidate.id === nodeId)
     if (!node) return
@@ -305,7 +312,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
     {activityOpen && !open && !plan && <section aria-label="Agent activity" className="ask-labo-activity">
       <header>
         <span><ListChecks size={14} /><strong>Agent activity</strong><small>{activities.length} task{activities.length === 1 ? '' : 's'}</small></span>
-        <div><button disabled={loading || activities.length === 0} onClick={() => setActivities([])} type="button">Clear</button><button aria-label="Close agent activity" onClick={() => setActivityOpen(false)} type="button"><X size={13} /></button></div>
+        <div><button disabled={loading || activities.length === 0} onClick={clearActivities} type="button">Clear</button><button aria-label="Close agent activity" onClick={() => setActivityOpen(false)} type="button"><X size={13} /></button></div>
       </header>
       {activities.length === 0 ? <p className="ask-labo-activity-empty">Your agent runs, validation results and errors will appear here.</p> : <ol>
         {activities.map((activity) => <li data-status={activity.status} key={activity.id}>
@@ -425,15 +432,15 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
 
     {error && <div className="ask-labo-error"><AlertTriangle size={14} /><span>{error}</span></div>}
 
-    {plan && preview && <div className="ask-labo-result">
+    {activePlan && preview && <div className="ask-labo-result">
       <section>
         <h3>Plan</h3>
-        <p>{plan.summary}</p>
+        <p>{activePlan.summary}</p>
       </section>
 
-      {(plan.toolTrace?.length ?? 0) > 0 && <section>
+      {(activePlan.toolTrace?.length ?? 0) > 0 && <section>
         <h3>Tools used</h3>
-        <ul className="ask-labo-tool-trace">{plan.toolTrace!.map((item, index) => <li data-status={item.status} key={`${item.tool}-${index}`}><code>{item.tool}</code><span>{item.summary}</span></li>)}</ul>
+        <ul className="ask-labo-tool-trace">{activePlan.toolTrace!.map((item, index) => <li data-status={item.status} key={`${item.tool}-${index}`}><code>{item.tool}</code><span>{item.summary}</span></li>)}</ul>
       </section>}
 
       {preview.acceptedBlocks.length > 0 && <section>
@@ -472,13 +479,13 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
         </ul>
       </section>}
 
-      {((plan.updatedBlocks?.length ?? 0) > 0 || (plan.deletedBlocks?.length ?? 0) > 0 || (plan.movedBlocks?.length ?? 0) > 0) && <section>
+      {((activePlan.updatedBlocks?.length ?? 0) > 0 || (activePlan.deletedBlocks?.length ?? 0) > 0 || (activePlan.movedBlocks?.length ?? 0) > 0) && <section>
         <h3>Existing graph changes</h3>
-        {(plan.updatedBlocks ?? []).map((change) => <p key={`edit-${change.nodeId}`}><code>edit {change.nodeId}</code> · {change.reason}</p>)}
-        {(plan.deletedBlocks?.length ?? 0) > 3
-          ? <p><code>delete architecture</code> · {plan.deletedBlocks!.length} cards and their elastics</p>
-          : (plan.deletedBlocks ?? []).map((change) => <p key={`delete-${change.nodeId}`}><code>delete {change.nodeId}</code> · {change.reason}</p>)}
-        {(plan.movedBlocks ?? []).map((change) => <p key={`move-${change.nodeId}`}><code>move {change.nodeId}</code> · {change.reason}</p>)}
+        {(activePlan.updatedBlocks ?? []).map((change) => <p key={`edit-${change.nodeId}`}><code>edit {change.nodeId}</code> · {change.reason}</p>)}
+        {(activePlan.deletedBlocks?.length ?? 0) > 3
+          ? <p><code>delete architecture</code> · {activePlan.deletedBlocks!.length} cards and their elastics</p>
+          : (activePlan.deletedBlocks ?? []).map((change) => <p key={`delete-${change.nodeId}`}><code>delete {change.nodeId}</code> · {change.reason}</p>)}
+        {(activePlan.movedBlocks ?? []).map((change) => <p key={`move-${change.nodeId}`}><code>move {change.nodeId}</code> · {change.reason}</p>)}
       </section>}
 
       {preview.acceptedActions.length > 0 && <section>
@@ -486,25 +493,25 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
         {preview.acceptedActions.map((action, index) => <p key={`${action.type}-${index}`}><code>{action.type}{action.type === 'run' ? `:${action.mode}` : action.type === 'export' ? `:${action.kind}` : action.type === 'save-preset' ? `:${action.name}` : `:${action.scope}`}</code> · {action.reason}</p>)}
       </section>}
 
-      {plan.missingBlocks.length > 0 && <section className="ask-labo-missing">
+      {activePlan.missingBlocks.length > 0 && <section className="ask-labo-missing">
         <h3>Missing blocks</h3>
-        {plan.missingBlocks.map((block, index) => <div key={`${block.atomId ?? block.label}-${index}`}>
+        {activePlan.missingBlocks.map((block, index) => <div key={`${block.atomId ?? block.label}-${index}`}>
           <AlertTriangle size={13} />
           <span><strong>{block.label}</strong><small>{block.reason}</small></span>
         </div>)}
       </section>}
 
-      {(preview.rejectedBlocks.length > 0 || preview.rejected.length > 0 || preview.rejectedMutations.length > 0 || plan.warnings.length > 0) && <section className="ask-labo-warnings">
+      {(preview.rejectedBlocks.length > 0 || preview.rejected.length > 0 || preview.rejectedMutations.length > 0 || activePlan.warnings.length > 0) && <section className="ask-labo-warnings">
         <h3>Not applied</h3>
         {preview.rejectedBlocks.map(({ block, reason }) => <p key={`${block.nodeId}-${reason}`}>{block.nodeId}: {reason}</p>)}
         {preview.rejected.map(({ connection, reason }) => <p key={`${connection.sourceId}-${connection.targetId}-${reason}`}>{connection.sourceId} → {connection.targetId}: {reason}</p>)}
         {preview.rejectedMutations.map(({ nodeId, action, reason }, index) => <p key={`${nodeId ?? action?.type ?? 'mutation'}-${index}`}>{nodeId ?? action?.type}: {reason}</p>)}
-        {plan.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+        {activePlan.warnings.map((warning) => <p key={warning}>{warning}</p>)}
       </section>}
 
       <div className="ask-labo-actions">
         <button className="ask-labo-cancel" onClick={() => { if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' }); setPlan(undefined); setCardOverrides({}); setActivityOpen(true) }} type="button">Discard</button>
-        <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (plan.updatedBlocks?.length ?? 0) === 0 && (plan.deletedBlocks?.length ?? 0) === 0 && (plan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
+        <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (activePlan.updatedBlocks?.length ?? 0) === 0 && (activePlan.deletedBlocks?.length ?? 0) === 0 && (activePlan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
       </div>
     </div>}
 
