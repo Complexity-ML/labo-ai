@@ -44,7 +44,7 @@ Supported packages:
 - macOS 12 or later on Apple silicon: `LABO-AI-Setup-arm64.dmg`.
 - Windows 10/11 x64: `LABO-AI-Setup-x64.exe`.
 
-The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
+The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. On macOS, drag Setup into Applications, then Control-click it and choose **Open** for the first launch. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
 
 Suggested test path:
 
