@@ -32,8 +32,8 @@ interface Window {
     saveOpenAIKey?(apiKey: string): Promise<OpenAISettingsStatus>
     deleteOpenAIKey?(): Promise<OpenAISettingsStatus>
     testOpenAIKey?(): Promise<{ ok: true }>
-    loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; updatedAt?: number; warning?: string }>
-    saveWebWorkspace?(payload: { workspace: unknown; customCards: unknown[] }): Promise<{ saved: true; updatedAt: number }>
+    loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; training?: unknown; tokenizer?: unknown; updatedAt?: number; warning?: string }>
+    saveWebWorkspace?(payload: { workspace?: unknown; customCards?: unknown[]; training?: unknown; tokenizer?: unknown }): Promise<{ saved: true; updatedAt: number }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
     loadDesktopState?(scope: 'model' | 'training' | 'tokenizer'): Promise<unknown>
     saveDesktopState?(scope: 'model' | 'training' | 'tokenizer', data: unknown): Promise<{ saved: true }>

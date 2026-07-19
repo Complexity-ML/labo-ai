@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { blankStarterPreset } from './core/presets'
+import { researchBpePreset } from './core/tokenizer-presets'
 
 afterEach(() => {
   cleanup()
@@ -98,6 +99,39 @@ describe('LABO AI workspace', () => {
 
     expect(saveWebWorkspace).not.toHaveBeenCalled()
     delete window.labo
+  })
+
+  it('restores and saves account-scoped Training and Tokenizer workspaces on the web', async () => {
+    const saveWebWorkspace = vi.fn(async () => ({ saved: true as const, updatedAt: Date.now() }))
+    window.labo = {
+      platform: 'web',
+      runtime: 'web',
+      loadWebWorkspace: async () => ({
+        authenticated: true,
+        workspace: null,
+        customCards: [],
+        training: {
+          config: { id: 'web-muon-1', kind: 'web-muon', settings: { lr: 0.002 } },
+          customOptimizers: [{ id: 'web-muon', label: 'Private Web Muon', torchClass: 'Muon', defaults: { lr: 0.002 } }],
+          updatedAt: 1,
+        },
+        tokenizer: {
+          pipeline: researchBpePreset,
+          customCards: [{ id: 'private-web-tokenizer', label: 'Private Web Tokenizer', category: 'Transform', pythonCode: 'text = text.lower()' }],
+          updatedAt: 1,
+        },
+      }),
+      saveWebWorkspace,
+    }
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
+    expect(await screen.findByRole('button', { name: 'Use Private Web Muon' })).toBeInTheDocument()
+    await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalledWith(expect.objectContaining({ training: expect.any(Object) })))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tokenizer Studio' }))
+    expect(await screen.findByRole('button', { name: 'Add Private Web Tokenizer' })).toBeInTheDocument()
+    await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalledWith(expect.objectContaining({ tokenizer: expect.any(Object) })))
   })
 
   it('documents edit-mode lasso selection and full-graph deletion in Settings tips', () => {

@@ -67,6 +67,7 @@ export function TokenizerStudio() {
   const [selectedId, setSelectedId] = useState(pipeline.steps[0]?.id ?? '')
   const [customCards, setCustomCards] = useState<CustomTokenizerCard[]>([])
   const [customCardsReady, setCustomCardsReady] = useState(false)
+  const [webAuthenticated, setWebAuthenticated] = useState(false)
   const [cardCreatorOpen, setCardCreatorOpen] = useState(false)
   const [editingCard, setEditingCard] = useState<CustomTokenizerCard>()
   const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number; confirmDelete?: boolean }>()
@@ -101,6 +102,15 @@ export function TokenizerStudio() {
           setSelectedId(stored.pipeline.steps[0]?.id ?? '')
         }
         if (!cancelled && Array.isArray(stored?.customCards)) setCustomCards(stored.customCards.filter(isCustomTokenizerCard))
+      } else if (window.labo?.runtime === 'web' && window.labo.loadWebWorkspace) {
+        const result = await window.labo.loadWebWorkspace()
+        if (!cancelled) setWebAuthenticated(result.authenticated)
+        const stored = result.tokenizer && typeof result.tokenizer === 'object' ? result.tokenizer as { pipeline?: unknown; customCards?: unknown } : undefined
+        if (!cancelled && result.authenticated && isTokenizerPipeline(stored?.pipeline)) {
+          setPipeline(stored.pipeline)
+          setSelectedId(stored.pipeline.steps[0]?.id ?? '')
+        }
+        if (!cancelled && result.authenticated && Array.isArray(stored?.customCards)) setCustomCards(stored.customCards.filter(isCustomTokenizerCard))
       }
       if (!cancelled) setCustomCardsReady(true)
     }
@@ -112,8 +122,10 @@ export function TokenizerStudio() {
     if (!customCardsReady) return
     if (window.labo?.runtime === 'electron' && window.labo.saveDesktopState) {
       void window.labo.saveDesktopState('tokenizer', { pipeline, customCards, updatedAt: Date.now() })
+    } else if (window.labo?.runtime === 'web' && webAuthenticated && window.labo.saveWebWorkspace) {
+      void window.labo.saveWebWorkspace({ tokenizer: { pipeline, customCards, updatedAt: Date.now() } })
     }
-  }, [customCards, customCardsReady, pipeline])
+  }, [customCards, customCardsReady, pipeline, webAuthenticated])
 
   useEffect(() => {
     if (!cardMenu) return

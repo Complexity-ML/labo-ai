@@ -16,6 +16,7 @@ export function TrainingStudio({ settingsOpen = false, onCloseSettings = () => u
   const [customOptimizers, setCustomOptimizers] = useState<OptimizerDefinition[]>([])
   const [creatorOpen, setCreatorOpen] = useState(false)
   const [storageReady, setStorageReady] = useState(false)
+  const [webAuthenticated, setWebAuthenticated] = useState(false)
   const [optimizerMenu, setOptimizerMenu] = useState<{ optimizerId: string; x: number; y: number }>()
   const interactedRef = useRef(false)
   const definitions = useMemo(() => ({ ...optimizerRegistry, ...Object.fromEntries(customOptimizers.map((optimizer) => [optimizer.id, optimizer])) }), [customOptimizers])
@@ -25,9 +26,14 @@ export function TrainingStudio({ settingsOpen = false, onCloseSettings = () => u
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const stored = window.labo?.runtime === 'electron' && window.labo.loadDesktopState
-        ? parseTrainingWorkspace(await window.labo.loadDesktopState('training'))
-        : undefined
+      let stored
+      if (window.labo?.runtime === 'electron' && window.labo.loadDesktopState) {
+        stored = parseTrainingWorkspace(await window.labo.loadDesktopState('training'))
+      } else if (window.labo?.runtime === 'web' && window.labo.loadWebWorkspace) {
+        const result = await window.labo.loadWebWorkspace()
+        if (!cancelled) setWebAuthenticated(result.authenticated)
+        if (result.authenticated) stored = parseTrainingWorkspace(result.training)
+      }
       if (!cancelled && stored && !interactedRef.current) {
         setCustomOptimizers(stored.customOptimizers)
         setConfig(stored.config)
@@ -43,8 +49,10 @@ export function TrainingStudio({ settingsOpen = false, onCloseSettings = () => u
     const workspace = { config, customOptimizers, updatedAt: Date.now() }
     if (window.labo?.runtime === 'electron' && window.labo.saveDesktopState) {
       void window.labo.saveDesktopState('training', workspace)
+    } else if (window.labo?.runtime === 'web' && webAuthenticated && window.labo.saveWebWorkspace) {
+      void window.labo.saveWebWorkspace({ training: workspace })
     }
-  }, [config, customOptimizers, storageReady])
+  }, [config, customOptimizers, storageReady, webAuthenticated])
 
   useEffect(() => {
     if (!optimizerMenu) return
