@@ -30,13 +30,13 @@ describe('LABO AI card builder', () => {
     expect(screen.getByRole('textbox', { name: 'Model card name' })).toHaveValue('Tied token embedding')
   })
   
-  it('creates a reusable custom PyTorch card and keeps its code editable', () => {
+  it('creates a reusable custom PyTorch card and keeps its code editable', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     expect(screen.queryByRole('textbox', { name: 'Custom card name' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    expect(screen.getByRole('dialog', { name: 'Create model card' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Create model card' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Card destination' })).toHaveValue('new-architecture')
     expect(screen.getByRole('option', { name: /After selected card/ })).toBeDisabled()
     fireEvent.click(screen.getByText('Advanced settings'))
@@ -65,20 +65,21 @@ describe('LABO AI card builder', () => {
     ])
   })
   
-  it('closes the Card Builder when its backdrop is clicked', () => {
+  it('closes the Card Builder when its backdrop is clicked', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    const dialog = screen.getByRole('dialog', { name: 'Create model card' })
+    const dialog = await screen.findByRole('dialog', { name: 'Create model card' })
   
     fireEvent.pointerDown(dialog.parentElement!)
   
     expect(screen.queryByRole('dialog', { name: 'Create model card' })).not.toBeInTheDocument()
   })
   
-  it('can save a reusable card to the library without mutating the graph', () => {
+  it('can save a reusable card to the library without mutating the graph', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    await screen.findByRole('dialog', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('combobox', { name: 'Card destination' }), { target: { value: 'library' } })
     fireEvent.click(screen.getByText('Advanced settings'))
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'Library RMSNorm' } })
@@ -90,9 +91,10 @@ describe('LABO AI card builder', () => {
     expect(screen.getByText('0 atoms')).toBeInTheDocument()
   })
   
-  it('auto-composes category-specific Blockly card construction blocks', () => {
+  it('auto-composes category-specific Blockly card construction blocks', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    await screen.findByRole('dialog', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Use a SiLU activation for the expert branch' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card' }))
   
@@ -112,6 +114,7 @@ describe('LABO AI card builder', () => {
     window.labo = { platform: 'web', runtime: 'web', askLabo }
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    await screen.findByRole('dialog', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a GELU expert activation' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card' }))
   
@@ -123,9 +126,10 @@ describe('LABO AI card builder', () => {
     expect(screen.queryByRole('button', { name: 'Select Expert GELU' })).not.toBeInTheDocument()
   })
   
-  it('changes the available card blocks and plugs with the selected category', () => {
+  it('changes the available card blocks and plugs with the selected category', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
+    await screen.findByRole('dialog', { name: 'Create model card' })
     fireEvent.click(screen.getByText('Advanced settings'))
     const palette = screen.getByLabelText('Card operation palette')
   

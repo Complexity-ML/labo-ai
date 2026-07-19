@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Blocks, Check, Code2, Cpu, PackageCheck, Pause, Pencil, Play, Plus, Square, StepForward, Trash2 } from 'lucide-react'
 import { AtomicPlayer, type AtomicPlayerSnapshot, type AtomExecutionResult } from './core/atomic-player'
+import { PythonCodePreview } from './model/PythonCodeEditor'
 import {
   addTokenizerStep,
   compileTokenizer,
@@ -259,7 +260,7 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
           {view === 'split' && (
             <div className="code-panel">
               <div className="panel-tab"><Code2 size={13} /> tokenizer.py <span>GENERATED</span></div>
-              <pre className="code-editor"><code>{code}</code></pre>
+              <PythonCodePreview value={code} />
             </div>
           )}
         </section>

@@ -4,6 +4,7 @@ import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, t
 import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
+import { PythonCodeEditor } from './PythonCodeEditor'
 import { StudioSettingsModal } from '../StudioSettingsModal'
 import type { CustomPyTorchCard } from './custom-card'
 
@@ -465,7 +466,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
         <header><strong>Edit card</strong><button aria-label="Close card editor" onClick={() => setEditingCard(undefined)} type="button"><X size={13} /></button></header>
         <label><span>Name</span><input aria-label="Agent card name" onChange={(event) => setEditorDraft((current) => current ? { ...current, label: event.target.value } : current)} value={editorDraft.label} /></label>
         <label><span>Block ID</span><input aria-label="Agent card ID" disabled value={editingCard.id} /></label>
-        {editingCard.kind === 'custom-pytorch' ? <label><span>PyTorch module</span><textarea aria-label="Agent card PyTorch module" onChange={(event) => setEditorDraft((current) => current ? { ...current, code: event.target.value } : current)} rows={4} spellCheck={false} value={editorDraft.code ?? ''} /></label> : <div className="ask-labo-card-settings">
+        {editingCard.kind === 'custom-pytorch' ? <label><span>PyTorch module</span><PythonCodeEditor ariaLabel="Agent card PyTorch module" className="compact-python-editor" onChange={(value) => setEditorDraft((current) => current ? { ...current, code: value } : current)} value={editorDraft.code ?? ''} /></label> : <div className="ask-labo-card-settings">
           {modelAtomRegistry[editingCard.atomId ?? '']?.settings.map((setting) => {
             const value = editorDraft.attributes?.[setting.id] ?? setting.default
             return <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean'

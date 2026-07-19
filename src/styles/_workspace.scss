@@ -298,6 +298,22 @@
 
 .pytorch-textarea { background: transparent; }
 
+.compact-python-editor {
+  min-height: 126px;
+  overflow: hidden;
+  border: 1px solid var(--labo-line);
+  border-radius: 8px;
+  background: #080b0c;
+
+  .code-editor {
+    padding: 12px 13px;
+    font-size: 10px;
+    line-height: 1.6;
+  }
+}
+
+.model-card-python-editor { min-height: 280px; }
+
 .inspector-section { padding: 15px; }
 .section-title { color: #707c78; font-size: 9px; }
 

@@ -1,11 +1,21 @@
 export type OptimizerValue = number | boolean | string | null | Array<number | null>
 
+export interface OptimizerComposition {
+  kind: 'composed'
+  momentum: boolean
+  adaptiveScale: boolean
+  normalizeGradient: boolean
+  weightDecay?: boolean
+  decoupledWeightDecay: boolean
+}
+
 export interface OptimizerDefinition {
   id: string
   label: string
   torchClass: string
   defaults: Record<string, OptimizerValue>
   notes?: string
+  composition?: OptimizerComposition
 }
 
 export interface OptimizerConfig {
@@ -55,9 +65,41 @@ function pythonValue(value: OptimizerValue): string {
   return String(value)
 }
 
+function compileComposedOptimizer(definition: OptimizerDefinition): string {
+  const composition = definition.composition
+  if (!composition) return ''
+  const className = definition.torchClass
+  const initArguments = Object.entries(definition.defaults).map(([key, value]) => `${key}=${pythonValue(value)}`).join(', ')
+  const defaultKeys = Object.keys(definition.defaults).map((key) => `${key}=${key}`).join(', ')
+  const stateLines = [
+    composition.momentum ? "                momentum = state.setdefault('momentum', torch.zeros_like(parameter))\n                momentum.mul_(group['beta1']).add_(gradient, alpha=1 - group['beta1'])\n                update = momentum" : '                update = gradient',
+    composition.adaptiveScale ? "                variance = state.setdefault('variance', torch.zeros_like(parameter))\n                variance.mul_(group['beta2']).addcmul_(gradient, gradient, value=1 - group['beta2'])\n                update = update / (variance.sqrt() + group['eps'])" : '',
+    composition.normalizeGradient ? "                update = update / (update.norm().clamp_min(group.get('eps', 1e-8)))" : '',
+    composition.weightDecay === false ? '' : composition.decoupledWeightDecay ? "                parameter.mul_(1 - group['lr'] * group.get('weight_decay', 0.0))" : "                update = update.add(parameter, alpha=group.get('weight_decay', 0.0))",
+  ].filter(Boolean).join('\n')
+  return `class ${className}(torch.optim.Optimizer):
+    def __init__(self, params, ${initArguments}):
+        defaults = dict(${defaultKeys})
+        super().__init__(params, defaults)
+
+    @torch.no_grad()
+    def step(self, closure=None):
+        loss = closure() if closure is not None else None
+        for group in self.param_groups:
+            for parameter in group['params']:
+                if parameter.grad is None:
+                    continue
+                gradient = parameter.grad
+                state = self.state[parameter]
+${stateLines}
+                parameter.add_(update, alpha=-group['lr'])
+        return loss`
+}
+
 export function compileOptimizer(config: OptimizerConfig, parameters = 'model.parameters()', definitions: Record<string, OptimizerDefinition> = optimizerRegistry): string {
   const definition = definitions[config.kind]
   if (!definition) throw new Error(`Unknown optimizer: ${config.kind}`)
   const settings = Object.entries(config.settings).map(([key, value]) => `${key}=${pythonValue(value)}`).join(', ')
+  if (definition.composition) return `${compileComposedOptimizer(definition)}\n\noptimizer = ${definition.torchClass}(${parameters}, ${settings})`
   return `optimizer = torch.optim.${definition.torchClass}(${parameters}, ${settings})`
 }

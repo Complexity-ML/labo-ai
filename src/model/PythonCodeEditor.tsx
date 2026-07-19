@@ -3,6 +3,8 @@ import { useRef, type ChangeEvent, type ReactNode, type UIEvent } from 'react'
 interface PythonCodeEditorProps {
   value: string
   onChange: (value: string) => void
+  ariaLabel?: string
+  className?: string
 }
 
 const keywords = new Set([
@@ -55,7 +57,7 @@ function highlightPython(source: string): ReactNode[] {
   return nodes
 }
 
-export function PythonCodeEditor({ value, onChange }: PythonCodeEditorProps) {
+export function PythonCodeEditor({ ariaLabel = 'PyTorch editor', className = '', value, onChange }: PythonCodeEditorProps) {
   const highlightRef = useRef<HTMLPreElement>(null)
 
   const syncScroll = (event: UIEvent<HTMLTextAreaElement>) => {
@@ -67,10 +69,10 @@ export function PythonCodeEditor({ value, onChange }: PythonCodeEditorProps) {
   const update = (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)
 
   return (
-    <div className="python-editor-shell">
+    <div className={`python-editor-shell ${className}`}>
       <pre aria-hidden="true" className="code-editor python-syntax-layer" ref={highlightRef}><code>{highlightPython(value)}{'\n'}</code></pre>
       <textarea
-        aria-label="PyTorch editor"
+        aria-label={ariaLabel}
         className="code-editor pytorch-textarea"
         onChange={update}
         onScroll={syncScroll}
@@ -79,4 +81,8 @@ export function PythonCodeEditor({ value, onChange }: PythonCodeEditorProps) {
       />
     </div>
   )
+}
+
+export function PythonCodePreview({ className = '', value }: { className?: string; value: string }) {
+  return <pre aria-label="Python code preview" className={`code-editor python-code-preview ${className}`}><code>{highlightPython(value)}{`\n`}</code></pre>
 }

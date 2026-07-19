@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { TensorRole } from '../core/ir'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
+import { PythonCodeEditor } from './PythonCodeEditor'
 import { composeCustomCard, customCardModule, customCardOperations, operationsByCategory, suggestedCardCategory, suggestedCardOperation, type CustomCardCategory, type CustomCardOperation, type CustomPyTorchCard } from './custom-card'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
@@ -127,7 +128,7 @@ export function CustomCardCreator({ onClose, onCreate, selectedTarget }: { onClo
             {(operation === 'rmsnorm' || operation === 'layernorm') && <label><span>Normalized dimension</span><input aria-label="Custom card normalized dimension" min="1" onChange={(event) => { const value = Number(event.target.value); setOutFeatures(value); setCode(customCardModule(operation, inFeatures, value, probability)) }} type="number" value={outFeatures} /></label>}
             {operation === 'dropout' && <label><span>Probability</span><input aria-label="Custom card dropout probability" max="1" min="0" onChange={(event) => { const value = Number(event.target.value); setProbability(value); setCode(customCardModule(operation, inFeatures, outFeatures, value)) }} step="0.05" type="number" value={probability} /></label>}
           </div>
-          <div className="card-constructor-code"><span>Generated PyTorch</span><textarea aria-label="Custom card PyTorch code" onChange={(event) => setCode(event.target.value)} rows={4} spellCheck={false} value={code} /><small className={validCustomPyTorchModule(code) ? 'custom-code-valid' : 'custom-code-invalid'}>{validCustomPyTorchModule(code) ? 'Valid safe nn.Module constructor' : 'Invalid or unsupported nn.Module constructor'}</small></div>
+          <div className="card-constructor-code"><span>Generated PyTorch</span><PythonCodeEditor ariaLabel="Custom card PyTorch code" className="compact-python-editor" onChange={setCode} value={code} /><small className={validCustomPyTorchModule(code) ? 'custom-code-valid' : 'custom-code-invalid'}>{validCustomPyTorchModule(code) ? 'Valid safe nn.Module constructor' : 'Invalid or unsupported nn.Module constructor'}</small></div>
         </div>
       </details>
       <label className="card-destination-select"><span>Destination</span><select aria-label="Card destination" onChange={(event) => setDestination(event.target.value as CustomCardDestination)} value={destination}><option value="new-architecture">New architecture</option><option value="library">My cards only</option><option disabled={!selectedTarget} value="selected">After {selectedTarget ?? 'selected card'}</option></select><small>The reusable definition is always saved in My cards.</small></label>

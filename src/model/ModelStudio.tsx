@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Blocks,
   Braces,
@@ -35,11 +35,13 @@ import { GraphCanvas } from './GraphCanvas'
 import { PythonCodeEditor } from './PythonCodeEditor'
 import { AskLaboPanel } from './AskLaboPanel'
 import type { AgentGraphAction } from '../core/agentic-graph'
-import { CustomCardCreator, type CustomCardDestination, type CustomCardCreateResult } from './CustomCardCreator'
+import type { CustomCardDestination, CustomCardCreateResult } from './CustomCardCreator'
 import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 import { previewModelAtom } from '../core/browser-atomic-preview'
+
+const CustomCardCreator = lazy(() => import('./CustomCardCreator').then((module) => ({ default: module.CustomCardCreator })))
 
 type ViewMode = 'blocks' | 'pytorch' | 'split'
 type InteractionMode = 'add' | 'edit'
@@ -952,7 +954,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           <p className="model-card-modal-hint">Edit this existing graph card. No new Blockly card is added in this mode.</p>
           <label><span>Name</span><input aria-label="Model card name" onChange={(event) => setCardEditDraft((current) => current ? { ...current, label: event.target.value } : current)} value={cardEditDraft.label} /></label>
           <label><span>Block ID</span><input aria-label="Model card ID" disabled value={editingNode.id} /></label>
-          {editingNode.kind === 'custom-pytorch' ? <label className="model-card-code-field"><span>PyTorch module</span><textarea aria-label="Model card PyTorch module" onChange={(event) => setCardEditDraft((current) => current ? { ...current, code: event.target.value } : current)} rows={14} spellCheck={false} value={cardEditDraft.code ?? ''} /></label> : <div className="model-card-modal-settings">
+          {editingNode.kind === 'custom-pytorch' ? <label className="model-card-code-field"><span>PyTorch module</span><PythonCodeEditor ariaLabel="Model card PyTorch module" className="compact-python-editor model-card-python-editor" onChange={(value) => setCardEditDraft((current) => current ? { ...current, code: value } : current)} value={cardEditDraft.code ?? ''} /></label> : <div className="model-card-modal-settings">
             {modelAtomRegistry[editingNode.atomId ?? '']?.settings.map((setting) => {
               const value = cardEditDraft.attributes?.[setting.id] ?? setting.default
               return <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean'
@@ -968,7 +970,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </section>
       </div>}
 
-      {createCardOpen && <CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} />}
+      {createCardOpen && <Suspense fallback={null}><CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} /></Suspense>}
 
       <footer className="statusbar model-statusbar">
       <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<>

@@ -27,7 +27,7 @@ export function searchOptimizers(query: string, custom: OptimizerDefinition[]): 
     id: optimizer.id,
     kind: 'optimizer' as const,
     label: optimizer.label,
-    description: `torch.optim.${optimizer.torchClass}${optimizer.notes ? ` · ${optimizer.notes}` : ''}`,
+    description: `${optimizer.composition ? optimizer.torchClass : `torch.optim.${optimizer.torchClass}`}${optimizer.notes ? ` · ${optimizer.notes}` : ''}`,
   })))
 }
 

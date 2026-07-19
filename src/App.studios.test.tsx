@@ -35,18 +35,18 @@ describe('LABO AI studios', () => {
   it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
-  
+
     expect(screen.getByRole('button', { name: 'Use AdamW' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Use Muon' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Use Muon' }))
     expect(screen.getByRole('spinbutton', { name: 'Muon momentum' })).toHaveValue(0.95)
     expect(screen.getByRole('button', { name: 'Training graph' })).toHaveAttribute('aria-pressed', 'true')
-  
+
     fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
-    expect(screen.getByText(/torch\.optim\.Muon\(model\.parameters\(\)/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/torch\.optim\.Muon\(model\.parameters\(\)/)
     expect(screen.queryByText('training.optimizer')).not.toBeInTheDocument()
     expect(screen.getByText('optimizer.py')).toBeInTheDocument()
-  
+
     fireEvent.click(screen.getByRole('button', { name: 'Training graph' }))
     expect(screen.getByText('training.optimizer')).toBeInTheDocument()
     expect(screen.queryByText('optimizer.py')).not.toBeInTheDocument()
@@ -57,31 +57,36 @@ describe('LABO AI studios', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create optimizer' }))
   
-    const dialog = screen.getByRole('dialog', { name: 'Create optimizer' })
+    const dialog = screen.getByRole('form', { name: 'Create optimizer' })
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer name' }), { target: { value: 'Research AdamW' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer PyTorch class' }), { target: { value: 'AdamW' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer default settings' }), { target: { value: '{"lr": 0.0002, "weight_decay": 0.05, "fused": true}' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create optimizer' }))
-  
-    expect(screen.queryByRole('dialog', { name: 'Create optimizer' })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Select Parameter update' }))
+    fireEvent.change(within(dialog).getByRole('spinbutton', { name: 'Optimizer learning rate' }), { target: { value: '0.0002' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Select Weight decay' }))
+    fireEvent.change(within(dialog).getByRole('spinbutton', { name: 'Optimizer weight decay' }), { target: { value: '0.05' } })
+    fireEvent.click(within(dialog).getByText('More parameters'))
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Optimizer Fused implementation' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
+
+    expect(screen.queryByRole('form', { name: 'Create optimizer' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Use Research AdamW' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Research AdamW lr' })).toHaveValue(0.0002)
     expect(screen.getAllByText('torch.optim.AdamW').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
-    expect(screen.getByText(/optimizer = torch\.optim\.AdamW\(model\.parameters\(\), lr=0\.0002, weight_decay=0\.05, fused=True\)/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/optimizer = torch\.optim\.AdamW\(model\.parameters\(\), lr=0\.0002/)
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/weight_decay=0\.05/)
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/fused=True/)
     fireEvent.click(screen.getByRole('button', { name: 'Training graph' }))
   
-    fireEvent.click(screen.getByRole('button', { name: 'Edit optimizers' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Research AdamW' }))
-    const editor = screen.getByRole('dialog', { name: 'Edit optimizer' })
+    fireEvent.doubleClick(screen.getByRole('article', { name: 'Optimizer card Research AdamW' }))
+    const editor = screen.getByRole('form', { name: 'Edit optimizer' })
     fireEvent.change(within(editor).getByRole('textbox', { name: 'Optimizer name' }), { target: { value: 'Updated AdamW' } })
-    fireEvent.click(within(editor).getByRole('button', { name: 'Save optimizer' }))
-    expect(screen.getByRole('button', { name: 'Edit Updated AdamW' })).toBeInTheDocument()
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    expect(screen.getByRole('button', { name: 'Use Updated AdamW' })).toBeInTheDocument()
     fireEvent.contextMenu(screen.getByRole('article', { name: 'Optimizer card Updated AdamW' }))
     expect(screen.getByRole('menuitem', { name: 'Edit Updated AdamW' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Delete Updated AdamW' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Updated AdamW' }))
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'Edit optimizer' })).getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(within(screen.getByRole('form', { name: 'Edit optimizer' })).getByRole('button', { name: 'Cancel' }))
   
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
     expect(screen.getByRole('button', { name: 'Training Studio' })).toHaveAttribute('aria-pressed', 'true')
@@ -99,6 +104,31 @@ describe('LABO AI studios', () => {
     for (const section of ['General', 'Workspaces', 'Agent', 'Application', 'Tips']) expect(within(tokenizerSettings).getByRole('button', { name: section })).toBeInTheDocument()
     fireEvent.click(within(tokenizerSettings).getByRole('button', { name: 'Application' }))
     expect(within(tokenizerSettings).getByText('One LABO AI workspace')).toBeInTheDocument()
+  })
+
+  it('composes a real optimizer rule without a redundant edit mode', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
+
+    expect(screen.queryByRole('button', { name: 'Edit optimizers' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use optimizers' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create optimizer' }))
+
+    const dialog = screen.getByRole('form', { name: 'Create optimizer' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add Normalize update' }))
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optimizer name' }), { target: { value: 'My LABO rule' } })
+    expect(within(dialog).getByRole('button', { name: 'Select Momentum' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Select Adaptive scale' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Select Normalize update' })).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
+
+    expect(screen.getByRole('button', { name: 'Use My LABO rule' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/class LaboOptimizer\(torch\.optim\.Optimizer\):/)
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/momentum = state\.setdefault/)
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/variance = state\.setdefault/)
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/optimizer = LaboOptimizer\(model\.parameters\(\)/)
+    expect(screen.getByLabelText('Python code preview')).not.toHaveTextContent(/torch\.optim\.LaboOptimizer/)
   })
   
   it('keeps natural-language search inside the active studio', async () => {
@@ -151,22 +181,22 @@ describe('LABO AI studios', () => {
     expect(screen.getAllByText('BPE trainer').length).toBeGreaterThanOrEqual(2)
     expect(screen.queryByRole('button', { name: 'Rust' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Split' }))
-    expect(screen.getByText(/vocab_size=32768/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/vocab_size=32768/)
   
     fireEvent.click(screen.getByRole('button', { name: 'Select BPE trainer' }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'vocabSize' }), { target: { value: '4096' } })
-    expect(screen.getByText(/vocab_size=4096/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/vocab_size=4096/)
   
     fireEvent.click(screen.getByRole('button', { name: 'Select Unicode normalization' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete selected tokenizer atom' }))
-    expect(screen.queryByText(/tokenizer\.normalizer/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Python code preview')).not.toHaveTextContent(/tokenizer\.normalizer/)
     expect(screen.getByText(/^4 atoms/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Play atomic pipeline' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Step one atom' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stop atomic pipeline' })).toBeInTheDocument()
   
     fireEvent.click(screen.getByRole('button', { name: 'o200k_base · OpenAI tiktoken' }))
-    expect(screen.getByText(/tiktoken\.get_encoding\("o200k_base"\)/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent(/tiktoken\.get_encoding\("o200k_base"\)/)
     expect(screen.getByText('200,019')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /New reusable card/ }))
     expect(screen.getByRole('dialog', { name: 'Tokenizer card builder' })).toBeInTheDocument()

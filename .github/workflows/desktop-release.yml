@@ -102,6 +102,7 @@ jobs:
           Copy-Item apps/bootstrap-installer/src-tauri/target/release/labo-ai-setup.exe release-assets/LABO-AI-Setup-x64-helper.exe
           $hash = (Get-FileHash release-assets/LABO-AI-Setup-x64-helper.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  LABO-AI-Setup-x64-helper.exe" | Set-Content -NoNewline release-assets/LABO-AI-Setup-x64-helper.exe.sha256
+          Copy-Item scripts/install-labo-ai-windows.ps1 release-assets/install-labo-ai-windows.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-setup-windows-x64
@@ -109,6 +110,7 @@ jobs:
             release-assets/LABO-AI-Setup-x64.exe
             release-assets/LABO-AI-Setup-x64-helper.exe
             release-assets/LABO-AI-Setup-x64-helper.exe.sha256
+            release-assets/install-labo-ai-windows.ps1
           if-no-files-found: error
           retention-days: 14
 

@@ -10,6 +10,7 @@ import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH } from './card-layout'
 import { orderedNodeInputPorts } from './port-layout'
 
 function describeNode(node: ArchitectureNode): string {
+  if (typeof node.attributes?.detail === 'string') return node.attributes.detail
   if (node.attributes?.inFeatures && node.attributes?.outFeatures) return `${node.attributes.inFeatures} → ${node.attributes.outFeatures}`
   if (node.kind === 'sdpa') return 'causal · SDPA'
   return node.role

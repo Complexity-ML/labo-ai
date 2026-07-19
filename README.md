@@ -35,22 +35,34 @@ The key product decisions remained human-directed: use atomic typed cards instea
 - SQLite-backed graph drafts, cards, optimizer configurations and user presets, preserved across application updates.
 - Per-user OpenAI API key management through Electron encrypted storage; keys can be tested and deleted from the UI.
 
-## Judge quick start
+## Judge quick start — one command
 
-On macOS, use the same source-first Terminal flow as Hermes Agent. It downloads the small Setup helper, verifies its published SHA-256 digest, and opens the installer without relying on an unnotarized app downloaded by the browser:
+The commands below always install the latest published release. Each bootstrap script downloads the small native Setup helper, verifies its published SHA-256 digest, and launches the source-first installer.
+
+### macOS (Apple silicon)
+
+Paste this single command into Terminal:
 
 ```bash
 curl -fsSL https://github.com/Complexity-ML/labo-ai/releases/latest/download/install-labo-ai-macos.sh | bash
 ```
 
-Windows users can download the latest lightweight Setup from the [LABO AI product page](https://www.complexity-ai.fr/labo-ai) or [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest). **LABO AI Setup** fetches the latest tagged source, verifies and provisions its own Node.js runtime, then builds and installs the Electron app locally.
+### Windows (x64)
+
+Paste this single command into PowerShell:
+
+```powershell
+irm https://github.com/Complexity-ML/labo-ai/releases/latest/download/install-labo-ai-windows.ps1 | iex
+```
+
+**LABO AI Setup** then fetches the latest tagged source, verifies and provisions its own Node.js runtime, and builds the Electron application locally without replacing private workspace data. Graph editing and the player work without an API key; only Ask LABO requires a user-provided key.
 
 Supported packages:
 
 - macOS 12 or later on Apple silicon: `LABO-AI-Setup-arm64.dmg`.
 - Windows 10/11 x64: `LABO-AI-Setup-x64.exe`.
 
-The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. On macOS, drag Setup into Applications, then Control-click it and choose **Open** for the first launch. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
+The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The one-command path runs the checksum-verified helper directly; the DMG and EXE remain available from [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest) for manual installation. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
 
 Suggested test path:
 

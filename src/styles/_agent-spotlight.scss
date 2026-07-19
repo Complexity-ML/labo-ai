@@ -113,14 +113,14 @@
   grid-template-rows: 32px 20px;
   align-items: center;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 13%);
+  border: 1px solid color-mix(in srgb, var(--pastel-lavender) 22%, var(--labo-line));
   border-radius: 20px;
-  background: rgb(34 38 38 / 96%);
-  box-shadow: 0 18px 54px rgb(0 0 0 / 52%), inset 0 1px 0 rgb(255 255 255 / 4%);
+  background: linear-gradient(115deg, color-mix(in srgb, var(--pastel-sage) 7%, var(--labo-panel-raised)), color-mix(in srgb, var(--pastel-lavender) 7%, var(--labo-panel-raised)));
+  box-shadow: 0 18px 54px rgb(0 0 0 / 42%), inset 0 1px 0 color-mix(in srgb, var(--pastel-lavender) 9%, transparent);
 
   &:focus-within {
-    border-color: rgb(112 224 173 / 38%);
-    box-shadow: 0 18px 58px rgb(0 0 0 / 56%), 0 0 0 3px rgb(112 224 173 / 7%);
+    border-color: color-mix(in srgb, var(--pastel-lavender) 52%, var(--labo-line));
+    box-shadow: 0 18px 58px rgb(0 0 0 / 46%), 0 0 0 3px color-mix(in srgb, var(--pastel-lavender) 8%, transparent);
   }
 
   textarea {
@@ -132,7 +132,7 @@
     border: 0;
     border-radius: 0;
     padding: 8px 17px 2px;
-    color: #edf3f1;
+    color: var(--labo-text);
     background: transparent;
     font: 13px/1.5 Inter, sans-serif;
     box-shadow: none;
@@ -141,7 +141,7 @@
     &::-webkit-scrollbar { display: none; }
 
     &:focus { border: 0; box-shadow: none; }
-    &::placeholder { color: #8a918e; }
+    &::placeholder { color: var(--labo-faint); }
   }
 
   > button {
@@ -152,13 +152,13 @@
     height: 34px;
     margin: 0 10px;
     padding: 0;
-    border-color: rgb(112 224 173 / 34%);
+    border-color: color-mix(in srgb, var(--pastel-sage) 34%, var(--labo-line));
     border-radius: 50%;
-    color: #10201a;
-    background: #d7eee4;
+    color: #15201d;
+    background: linear-gradient(140deg, var(--pastel-sage), color-mix(in srgb, var(--pastel-lavender) 35%, var(--pastel-sage)));
 
     span { display: none; }
-    &:disabled { color: #75807c; background: rgb(255 255 255 / 8%); }
+    &:disabled { border-color: var(--labo-line); color: var(--labo-faint); background: color-mix(in srgb, var(--labo-surface) 76%, transparent); }
   }
 }
 
@@ -170,10 +170,10 @@
   align-items: center;
   gap: 9px;
   padding: 0 17px 5px;
-  color: #aeb8b4;
+  color: var(--labo-muted);
 
   span { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; }
-  small { overflow: hidden; color: #727d79; font: 8px 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+  small { overflow: hidden; color: var(--labo-faint); font: 8px 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 .ask-labo-activity-trigger {
