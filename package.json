@@ -23,7 +23,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:ci": "vitest run --exclude electron/atomic-runtime.test.ts --exclude electron/generated-pytorch.test.ts --exclude electron/runtime.test.ts",
-    "test:desktop": "npm run build && npm run build:electron && vitest run electron/atomic-runtime.test.ts electron/runtime.test.ts electron/security.test.ts electron/openai-credentials.test.ts electron/ask-labo.test.ts src/App.test.tsx src/core/graph-placement.test.ts src/core/agentic-graph.test.ts src/core/pytorch-compiler.test.ts src/core/media-presets.test.ts && node scripts/desktop-smoke.mjs",
+    "test:desktop": "npm run build && npm run build:electron && vitest run src/App.*.test.tsx electron/atomic-runtime.test.ts electron/runtime.test.ts electron/security.test.ts electron/openai-credentials.test.ts electron/ask-labo.test.ts src/core/graph-placement.test.ts src/core/agentic-graph.test.ts src/core/pytorch-compiler.test.ts src/core/media-presets.test.ts && node scripts/desktop-smoke.mjs",
     "preview": "vite preview"
   },
   "build": {
