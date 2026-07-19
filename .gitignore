@@ -15,6 +15,7 @@ dist-electron
 release
 apps/bootstrap-installer/src-tauri/target
 apps/bootstrap-installer/src-tauri/gen
+apps/bootstrap-installer/ui/styles.css
 *.local
 
 # Generated app-icon intermediates (keep build/icon.png and build/icon.icns)

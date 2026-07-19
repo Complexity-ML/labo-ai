@@ -5,6 +5,18 @@ const stage = document.querySelector('#stage')
 const version = document.querySelector('#version')
 const message = document.querySelector('#message')
 const progress = document.querySelector('#progress')
+const log = document.querySelector('#log')
+
+function appendLog(step, text) {
+  const item = document.createElement('li')
+  const time = document.createElement('time')
+  const value = document.createElement('span')
+  time.textContent = step
+  value.textContent = text
+  item.append(time, value)
+  log.append(item)
+  log.scrollTop = log.scrollHeight
+}
 
 async function refresh() {
   try {
@@ -21,6 +33,7 @@ listen('setup-progress', ({ payload }) => {
   stage.textContent = payload.stage
   message.textContent = payload.message
   progress.style.width = `${payload.percent}%`
+  appendLog(`${payload.percent}% ${payload.stage}`, payload.message)
 })
 
 button.addEventListener('click', async () => {
@@ -28,6 +41,13 @@ button.addEventListener('click', async () => {
   button.textContent = 'Installing…'
   try {
     const result = await invoke('install_latest')
+    if (result.setupRelaunched) {
+      stage.textContent = 'Updating Setup'
+      version.textContent = result.tag
+      message.textContent = 'The verified latest Setup is taking over this installation.'
+      appendLog('RELAUNCH', 'Closing this Setup and continuing in the newly verified helper.')
+      return
+    }
     stage.textContent = 'Installed'
     version.textContent = result.tag
     message.textContent = 'LABO AI is installed and launching. Future updates are available from Settings.'

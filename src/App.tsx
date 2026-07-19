@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Lightbulb, Search, Settings2, X } from 'lucide-react'
 import { LaboMark } from './LaboMark'
-import './App.css'
+import './App.scss'
 import { ModelStudio } from './model/ModelStudio'
 import { TokenizerStudio } from './TokenizerStudio'
 import { TrainingStudio } from './training/TrainingStudio'

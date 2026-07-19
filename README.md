@@ -127,6 +127,8 @@ The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches both the a
 - Setup state and its managed Node.js runtime live in the operating system's local application-data directory.
 - macOS installs LABO AI to `~/Applications/LABO AI.app`; Windows installs it below `%LOCALAPPDATA%/Programs/LABO AI`.
 - One previous application directory is retained for rollback.
+- Before each application update, the installed Setup helper checks and SHA-256 verifies its own latest native helper, relaunching it when the updater itself changed.
+- The Setup window exposes live stages, progress and an expandable installation journal, then quits automatically when LABO AI launches.
 - SQLite workspaces, custom cards and optimizer presets remain in Electron's separate user profile and are never replaced by an application update.
 - The updater accepts no repository or command from the renderer: its source repository and build commands are fixed in the native Setup code.
 

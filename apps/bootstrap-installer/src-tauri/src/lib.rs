@@ -21,6 +21,13 @@ const NODE_VERSION: &str = "v22.14.0";
 struct GitHubRelease {
     tag_name: String,
     tarball_url: String,
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -38,12 +45,15 @@ struct SetupStatus {
     latest_tag: Option<String>,
     app_path: String,
     platform: &'static str,
+    setup_version: &'static str,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InstallResult {
     tag: String,
     path: String,
+    setup_relaunched: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -132,6 +142,7 @@ fn status() -> Result<SetupStatus, String> {
         latest_tag,
         app_path: app_destination()?.display().to_string(),
         platform: env::consts::OS,
+        setup_version: env!("CARGO_PKG_VERSION"),
     })
 }
 
@@ -162,6 +173,108 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     Ok(bytes)
+}
+
+fn helper_destination() -> Result<PathBuf, String> {
+    let extension = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    Ok(electron_user_data()?
+        .join("installer")
+        .join(format!("labo-ai-setup{extension}")))
+}
+
+fn setup_helper_asset() -> Result<&'static str, String> {
+    match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => Ok("LABO-AI-Setup-arm64-helper"),
+        ("macos", "x86_64") => Ok("LABO-AI-Setup-x64-helper"),
+        ("windows", "x86_64") => Ok("LABO-AI-Setup-x64-helper.exe"),
+        ("windows", "aarch64") => Ok("LABO-AI-Setup-arm64-helper.exe"),
+        _ => Err(format!(
+            "Unsupported Setup helper platform: {} {}",
+            env::consts::OS,
+            env::consts::ARCH
+        )),
+    }
+}
+
+fn version_parts(value: &str) -> Option<Vec<u64>> {
+    value
+        .trim_start_matches('v')
+        .split('.')
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()
+}
+
+fn release_is_newer(tag: &str) -> bool {
+    match (version_parts(tag), version_parts(env!("CARGO_PKG_VERSION"))) {
+        (Some(latest), Some(current)) => latest > current,
+        _ => false,
+    }
+}
+
+fn relaunch_latest_setup(app: &AppHandle, release: &GitHubRelease) -> Result<bool, String> {
+    if !release_is_newer(&release.tag_name) {
+        return Ok(false);
+    }
+    let asset_name = setup_helper_asset()?;
+    let checksum_name = format!("{asset_name}.sha256");
+    let helper_asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == asset_name)
+        .ok_or_else(|| format!("Latest release does not contain {asset_name}"))?;
+    let checksum_asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == checksum_name)
+        .ok_or_else(|| format!("Latest release does not contain {checksum_name}"))?;
+
+    emit(
+        app,
+        "Setup update",
+        format!(
+            "Updating LABO AI Setup to {} before continuing…",
+            release.tag_name
+        ),
+        8,
+    );
+    let expected = String::from_utf8(download(&checksum_asset.browser_download_url)?)
+        .map_err(|error| error.to_string())?
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| "Setup checksum file is empty".to_string())?
+        .to_lowercase();
+    let bytes = download(&helper_asset.browser_download_url)?;
+    let actual = format!("{:x}", Sha256::digest(&bytes));
+    if actual != expected {
+        return Err(format!("SHA-256 mismatch for {asset_name}"));
+    }
+
+    let destination = helper_destination()?;
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let next = destination.with_file_name(if cfg!(target_os = "windows") {
+        "labo-ai-setup-next.exe"
+    } else {
+        "labo-ai-setup-next"
+    });
+    fs::write(&next, bytes).map_err(|error| format!("Unable to stage the new Setup: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&next, fs::Permissions::from_mode(0o755))
+            .map_err(|error| error.to_string())?;
+    }
+    Command::new(next)
+        .arg("--auto-install")
+        .spawn()
+        .map_err(|error| format!("Unable to relaunch the updated Setup: {error}"))?;
+    Ok(true)
 }
 
 fn only_child_directory(path: &Path) -> Result<PathBuf, String> {
@@ -363,14 +476,7 @@ fn copy_application(source: &Path, destination: &Path) -> Result<(), String> {
 }
 
 fn install_helper() -> Result<(), String> {
-    let extension = if cfg!(target_os = "windows") {
-        ".exe"
-    } else {
-        ""
-    };
-    let destination = electron_user_data()?
-        .join("installer")
-        .join(format!("labo-ai-setup{extension}"));
+    let destination = helper_destination()?;
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -405,6 +511,13 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
     fs::create_dir_all(install_root()?).map_err(|error| error.to_string())?;
     emit(app, "Release", "Checking the latest LABO AI release…", 5);
     let release = latest_release()?;
+    if relaunch_latest_setup(app, &release)? {
+        return Ok(InstallResult {
+            tag: release.tag_name,
+            path: String::new(),
+            setup_relaunched: true,
+        });
+    }
 
     emit(
         app,
@@ -529,6 +642,7 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
     Ok(InstallResult {
         tag: release.tag_name,
         path: destination.display().to_string(),
+        setup_relaunched: false,
     })
 }
 
@@ -562,8 +676,40 @@ pub fn run() {
         return;
     }
 
+    let automatic_install = env::args().any(|argument| argument == "--auto-install");
     tauri::Builder::default()
+        .setup(move |app| {
+            if automatic_install {
+                let handle = app.handle().clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(700));
+                    if let Err(error) = perform_install(&handle) {
+                        emit(&handle, "Failed", error, 100);
+                        return;
+                    }
+                    if let Some(window) = handle.get_webview_window("main") {
+                        let _ = window.close();
+                    }
+                    thread::sleep(Duration::from_millis(150));
+                    handle.exit(0);
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![setup_status, install_latest])
         .run(tauri::generate_context!())
         .expect("error while running LABO AI Setup");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{release_is_newer, version_parts};
+
+    #[test]
+    fn compares_setup_versions_without_downgrading() {
+        assert_eq!(version_parts("v1.4.12"), Some(vec![1, 4, 12]));
+        assert!(release_is_newer("v0.1.29"));
+        assert!(!release_is_newer("v0.1.28"));
+        assert!(!release_is_newer("v0.1.27"));
+    }
 }

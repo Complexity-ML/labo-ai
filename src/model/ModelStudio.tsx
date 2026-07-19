@@ -16,7 +16,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import '../App.css'
+import '../App.scss'
 import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
 import { executionLayers } from '../core/execution-plan'
 import { architectureComponents } from '../core/graph-components'

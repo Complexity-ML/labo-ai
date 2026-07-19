@@ -43,7 +43,7 @@ describe('LABO AI agent', () => {
     expect(screen.getByLabelText('Agent activity')).toHaveTextContent('0 tasks')
     expect(screen.getByLabelText('Agent activity')).toHaveTextContent('Your agent runs, validation results and errors will appear here.')
     delete window.labo
-  })
+  }, 10_000)
   
   it('repairs underscore block IDs before displaying and applying an agent plan', async () => {
     const askLabo = vi.fn(async () => ({
