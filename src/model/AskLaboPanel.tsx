@@ -522,8 +522,8 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
       <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (activePlan.updatedBlocks?.length ?? 0) === 0 && (activePlan.deletedBlocks?.length ?? 0) === 0 && (activePlan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
     </div>}
 
-    {editingCard && editorDraft && <div className="ask-labo-card-modal-backdrop">
-      <section aria-label="Edit agent card" aria-modal="true" className="ask-labo-card-modal" role="dialog">
+    {editingCard && editorDraft && <div className="ask-labo-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) { setEditingCard(undefined); setEditorDraft(undefined); setEditorError('') } }}>
+      <section aria-label="Edit agent card" aria-modal="true" className="ask-labo-card-modal" onPointerDown={(event) => event.stopPropagation()} role="dialog">
         <header><strong>Edit card</strong><button aria-label="Close card editor" onClick={() => setEditingCard(undefined)} type="button"><X size={13} /></button></header>
         <label><span>Name</span><input aria-label="Agent card name" onChange={(event) => setEditorDraft((current) => current ? { ...current, label: event.target.value } : current)} value={editorDraft.label} /></label>
         <label><span>Block ID</span><input aria-label="Agent card ID" disabled value={editingCard.id} /></label>

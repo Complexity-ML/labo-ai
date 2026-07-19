@@ -562,6 +562,9 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     let sequence = 2
     while (usedIds.has(id)) id = `${baseId}-${sequence++}`
     const preset = cloneArchitectureGraph({ ...sourceGraph, id, name })
+    if (sourceGraph.id === blankStarterPreset.id) {
+      presetDraftsRef.current.set(blankStarterPreset.id, { graph: cloneArchitectureGraph(blankStarterPreset), selectedNodeId: '' })
+    }
     presetDraftsRef.current.set(id, { graph: preset, selectedNodeId })
     setUserPresets((current) => [...current, preset])
     setGraph(preset)

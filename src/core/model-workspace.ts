@@ -60,6 +60,11 @@ function isDraft(value: unknown): value is ModelPresetDraft {
   return isGraph(draft.graph) && typeof draft.selectedNodeId === 'string'
 }
 
+function sameGraphContent(left: ArchitectureGraph, right: ArchitectureGraph): boolean {
+  const content = ({ architecture, nodes, edges, groups, config, contracts }: ArchitectureGraph) => ({ architecture, nodes, edges, groups, config, contracts })
+  return JSON.stringify(content(left)) === JSON.stringify(content(right))
+}
+
 function browserStorage(): Storage | undefined {
   try {
     return typeof window === 'undefined' ? undefined : window.localStorage
@@ -73,6 +78,8 @@ export function parseModelWorkspace(value: unknown): ModelWorkspaceState {
   const candidate = value as Partial<ModelWorkspaceState>
   const drafts = Object.fromEntries(Object.entries(candidate.drafts ?? {}).filter((entry): entry is [string, ModelPresetDraft] => isDraft(entry[1])))
   const userPresets = Array.isArray(candidate.userPresets) ? candidate.userPresets.filter(isGraph) : []
+  const blankDraft = drafts['blank-starter']
+  if (blankDraft && userPresets.some((preset) => sameGraphContent(blankDraft.graph, preset))) delete drafts['blank-starter']
   return {
     activePresetId: typeof candidate.activePresetId === 'string' ? candidate.activePresetId : '',
     drafts,

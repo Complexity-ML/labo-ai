@@ -512,7 +512,9 @@ describe('LABO AI workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add ReLU' }))
     expect(screen.getByText('2 atoms')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'GPT-like' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    expect(screen.getByText('0 atoms')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Select Token IDs' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load preset My routed model' }))
 
     expect(screen.getByText('2 atoms')).toBeInTheDocument()
@@ -948,6 +950,9 @@ describe('LABO AI workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit ReLU' }))
     expect(screen.getByRole('dialog', { name: 'Edit agent card' })).toBeInTheDocument()
+    fireEvent.pointerDown(document.querySelector('.ask-labo-card-modal-backdrop')!)
+    expect(screen.queryByRole('dialog', { name: 'Edit agent card' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit ReLU' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Agent card name' }), { target: { value: 'Reviewed ReLU' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save card' }))
 
