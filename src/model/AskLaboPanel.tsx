@@ -509,10 +509,12 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', open, wor
         {activePlan.warnings.map((warning) => <p key={warning}>{warning}</p>)}
       </section>}
 
-      <div className="ask-labo-actions">
-        <button className="ask-labo-cancel" onClick={() => { if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' }); setPlan(undefined); setCardOverrides({}); setActivityOpen(true) }} type="button">Discard</button>
-        <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (activePlan.updatedBlocks?.length ?? 0) === 0 && (activePlan.deletedBlocks?.length ?? 0) === 0 && (activePlan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
-      </div>
+    </div>}
+
+    {activePlan && preview && <div className="ask-labo-actions">
+      <span className="ask-labo-approval-summary">Ready · {preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length} cards · {preview.accepted.length} elastic{preview.accepted.length === 1 ? '' : 's'}</span>
+      <button className="ask-labo-cancel" onClick={() => { if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' }); setPlan(undefined); setCardOverrides({}); setActivityOpen(true) }} type="button">Discard</button>
+      <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (activePlan.updatedBlocks?.length ?? 0) === 0 && (activePlan.deletedBlocks?.length ?? 0) === 0 && (activePlan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
     </div>}
 
     {editingCard && editorDraft && <div className="ask-labo-card-modal-backdrop">

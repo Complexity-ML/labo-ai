@@ -856,6 +856,7 @@ describe('LABO AI workspace', () => {
 
     expect(await screen.findByText('2 atomic blocks ready')).toBeInTheDocument()
     expect(screen.getByText('1 elastic ready')).toBeInTheDocument()
+    expect(screen.getByText('Ready · 2 cards · 1 elastic')).toBeInTheDocument()
     expect(screen.queryByText(/Block id must start with a letter/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
     expect(screen.getByRole('button', { name: 'Select Hidden State' })).toBeInTheDocument()

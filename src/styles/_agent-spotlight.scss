@@ -63,7 +63,10 @@
   .ask-labo-form { display: none; }
 }
 
-.ask-labo-backdrop.review-open .ask-labo-panel { width: min(920px, calc(100vw - 64px)); }
+.ask-labo-backdrop.review-open .ask-labo-panel {
+  width: min(920px, calc(100vw - 64px));
+  overflow: hidden;
+}
 .ask-labo-backdrop:not(.settings-open) .ask-labo-settings,
 .ask-labo-backdrop:not(.review-open) .ask-labo-result,
 .ask-labo-backdrop:not(.settings-open):not(.review-open) .ask-labo-header { display: none; }
@@ -392,16 +395,35 @@
 .ask-labo-key-settings { border-color: var(--labo-line-soft); }
 
 .ask-labo-result {
+  min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0 18px 18px;
-  overflow: hidden;
+  margin: 0 18px;
+  overflow: auto;
   border: 1px solid var(--labo-line);
   border-radius: 10px;
   background: rgb(6 10 11 / 52%);
 
   > section { border-right: 1px solid var(--labo-line-soft); }
   > section:nth-child(even) { border-right: 0; }
-  .ask-labo-actions { grid-column: 1 / -1; }
+}
+
+.review-open .ask-labo-actions {
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(180px, .55fr);
+  align-items: center;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--labo-line-soft);
+  background: rgb(11 16 17 / 97%);
+  box-shadow: 0 -14px 35px rgb(0 0 0 / 28%);
+}
+
+.ask-labo-approval-summary {
+  overflow: hidden;
+  color: #91a09a;
+  font: 9px 'JetBrains Mono', monospace;
+  letter-spacing: .035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ask-labo-error {
@@ -475,6 +497,8 @@
   .ask-labo-backdrop.review-open .ask-labo-panel { width: calc(100vw - 40px); }
   .ask-labo-result { grid-template-columns: 1fr; }
   .ask-labo-result > section { border-right: 0; }
+  .review-open .ask-labo-actions { grid-template-columns: 1fr 1.25fr; }
+  .ask-labo-approval-summary { grid-column: 1 / -1; }
   .ask-labo-workspace-settings { grid-template-columns: 1fr; }
   .ask-labo-workspace-settings > .workspace-management-column { border-right: 0; border-bottom: 1px solid var(--labo-line-soft); }
   .ask-labo-tips { grid-template-columns: 1fr; }
