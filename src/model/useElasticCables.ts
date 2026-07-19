@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type Dispat
 import { connectCable, disconnectCable, inferredEdgeTargetPort } from '../core/cables'
 import type { ArchitectureEdge, ArchitectureGraph, TensorRole } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
+import { parallelEdgeColors } from '../core/parallel-edge-colors'
 import { screenToWorld, type GraphViewport } from './viewport'
 
 export type PortDirection = 'input' | 'output'
-export type CablePath = { id: string; path: string; role: TensorRole }
+export type CablePath = { id: string; path: string; role: TensorRole; color?: string }
 
 type CableDraft = {
   sourceId: string
@@ -40,6 +41,7 @@ export function useElasticCables(graph: ArchitectureGraph, setGraph: Dispatch<Se
   const [message, setMessage] = useState('Drag a plug to rewire · outputs support multi-plug')
   const qkvGroup = useMemo(() => graph.groups?.find((group) => group.kind === 'qkv-projection'), [graph.groups])
   const qkvIds = useMemo(() => new Set(qkvGroup?.nodeIds ?? []), [qkvGroup])
+  const branchColors = useMemo(() => parallelEdgeColors(graph), [graph])
 
   const portIdForSource = useCallback((edge: ArchitectureEdge) => {
     const role = sourceRole(graph, edge)
@@ -74,7 +76,9 @@ export function useElasticCables(graph: ArchitectureGraph, setGraph: Dispatch<Se
         if (!source || !target) return []
         const start = center(source, bounds)
         const end = center(target, bounds)
-        return [{ id: edge.id, role: sourceRole(graph, edge), path: elasticPath(start.x, start.y, end.x, end.y) }]
+        const role = sourceRole(graph, edge)
+        const color = ['query', 'key', 'value'].includes(role) ? undefined : branchColors.get(edge.id)
+        return [{ id: edge.id, role, color, path: elasticPath(start.x, start.y, end.x, end.y) }]
       })
       setPaths(next)
       if (draft) {
@@ -93,7 +97,7 @@ export function useElasticCables(graph: ArchitectureGraph, setGraph: Dispatch<Se
       resizeObserver?.disconnect()
       window.removeEventListener('resize', update)
     }
-  }, [canvasRef, center, draft, graph, layoutKey, portIdForSource, portIdForTarget])
+  }, [branchColors, canvasRef, center, draft, graph, layoutKey, portIdForSource, portIdForTarget])
 
   const beginCable = (event: ReactPointerEvent<HTMLButtonElement>, nodeId: string, portId: string, role: TensorRole, direction: PortDirection) => {
     event.preventDefault()

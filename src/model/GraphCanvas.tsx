@@ -19,7 +19,7 @@ function describeNode(node: ArchitectureNode): string {
 function CableLayer({ paths, draftPath }: { paths: CablePath[]; draftPath?: { path: string; role: TensorRole } }) {
   return <svg aria-hidden="true" className="graph-connections" viewBox="0 0 4000 4000">
     <defs><marker id="edge-arrow" markerHeight="5" markerWidth="5" orient="auto" refX="4" refY="2.5"><path d="M0,0 L5,2.5 L0,5 Z" /></marker></defs>
-    {paths.map((cable) => <path className={`graph-edge edge-${cable.role}`} d={cable.path} data-edge-id={cable.id} key={cable.id} markerEnd="url(#edge-arrow)" />)}
+    {paths.map((cable) => <path className={`graph-edge edge-${cable.role}`} d={cable.path} data-edge-id={cable.id} key={cable.id} markerEnd="url(#edge-arrow)" style={cable.color ? { stroke: cable.color } : undefined} />)}
     {draftPath && <path className={`graph-edge cable-draft edge-${draftPath.role}`} d={draftPath.path} />}
   </svg>
 }
