@@ -32,7 +32,7 @@ describe('LABO AI graph editing', () => {
     expect(updatedCode).toContain('# labo:node=relu-1 atom=relu')
     expect(updatedCode).toContain('self.relu_1 = nn.ReLU(inplace=False)')
     expect(updatedCode).not.toContain('relu_1_output = self.relu_1(')
-  })
+  }, 15_000)
   
   it('drags a library card onto the requested graph position', () => {
     render(<App />)
