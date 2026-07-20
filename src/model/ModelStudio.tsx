@@ -816,6 +816,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
     <span className="block-glyph glyph-output" />
     Tied language-model head
   </button>
+  const askLaboPanel = <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<WorkspaceSettingsContent comparisonPresets={[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)]} currentGraph={graph} currentLabel={presetMenuLabels[graph.id] ?? graph.name} error={presetError} name={presetName} onAddComparison={addPresetForComparison} onCreateBlank={createBlankWorkspace} onDeleteWorkspace={deleteUserPreset} onLoadWorkspace={(preset) => loadPreset(preset, preset.nodes[0]?.id ?? '')} onNameChange={setPresetName} onReset={resetCurrentPreset} onSave={createUserPreset} presetLabel={(preset) => presetMenuLabels[preset.id] ?? preset.name} resetConfirming={confirmPresetReset} resetDisabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} savedWorkspaces={userPresets} />} />
 
   return (
     <>
@@ -824,7 +825,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
           <span>{createCardOpen ? cardPlayerSnapshot.results.length : stats.nodeCount} atoms</span>
           <ModelPlayerControls blankGraph={createCardOpen ? cardPlayerSnapshot.results.length === 0 : blankGraph} nativePyTorchRuntime={nativePyTorchRuntime} onArrange={() => createCardOpen ? cardPlayerRef.current?.arrange() : setGraph((current) => layoutArchitectureGraph(current))} onPause={() => createCardOpen ? cardPlayerRef.current?.pause() : modelPlayerRef.current?.pause()} onPlay={() => createCardOpen ? void cardPlayerRef.current?.play() : void modelPlayerRef.current?.play()} onStep={() => createCardOpen ? void cardPlayerRef.current?.step() : void modelPlayerRef.current?.step()} onStop={() => createCardOpen ? cardPlayerRef.current?.stop() : modelPlayerRef.current?.stop()} runtimeAvailable={createCardOpen ? cardPlayerSnapshot.results.length > 0 : runtimeAvailable} scope={createCardOpen ? 'reusable card' : 'model'} snapshot={createCardOpen ? cardPlayerSnapshot : modelPlayerSnapshot} />
           <ModelPanelControls inspectorOpen={inspectorOpen} libraryOpen={libraryOpen} onInspectorToggle={() => setInspectorOpen((current) => !current)} onLibraryToggle={() => setLibraryOpen((current) => !current)} />
-          <ExportMenu code={code} codeGraph={codeGraph} graph={graph} />
+          <ExportMenu code={code} codeGraph={codeGraph} graph={graph} onDiagram={createCardOpen ? () => cardPlayerRef.current?.exportDiagram() : undefined} onPyTorch={createCardOpen ? () => cardPlayerRef.current?.exportPyTorch() : undefined} />
         </>}>
           <StudioViewSwitcher<ViewMode> ariaLabel="Editor view" onChange={setView} options={[{ id: 'blocks', label: 'Blocks', icon: <Blocks size={14} /> }, { id: 'pytorch', label: 'PyTorch', icon: <Braces size={14} /> }, { id: 'split', label: 'Split', icon: <SplitSquareHorizontal size={14} /> }]} value={view} />
           <ModelInteractionSwitcher createCardOpen={createCardOpen} interactionMode={interactionMode} onCreateCard={() => { if (!createCardOpen) openCardCreator() }} onInteractionMode={(mode) => { setInteractionMode(mode); setCreateCardOpen(false) }} />
@@ -972,7 +973,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
       </div>}
 
       <StudioStatusbar className="model-statusbar">
-      <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<WorkspaceSettingsContent comparisonPresets={[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)]} currentGraph={graph} currentLabel={presetMenuLabels[graph.id] ?? graph.name} error={presetError} name={presetName} onAddComparison={addPresetForComparison} onCreateBlank={createBlankWorkspace} onDeleteWorkspace={deleteUserPreset} onLoadWorkspace={(preset) => loadPreset(preset, preset.nodes[0]?.id ?? '')} onNameChange={setPresetName} onReset={resetCurrentPreset} onSave={createUserPreset} presetLabel={(preset) => presetMenuLabels[preset.id] ?? preset.name} resetConfirming={confirmPresetReset} resetDisabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} savedWorkspaces={userPresets} />} />
+      {askLaboPanel}
 
         <span><span className={`status-dot ${validation.valid || blankGraph ? '' : 'invalid'}`} /> Neural IR {blankGraph ? 'blank' : validation.valid ? 'valid' : 'invalid'}</span>
         <span>{stats.nodeCount} nodes · {stats.edgeCount} links</span>
@@ -981,6 +982,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
         <span>LABO Runtime · local</span>
       </StudioStatusbar>
       </>}
+      {createCardOpen && askOpen && askLaboPanel}
     </>
   )
 }

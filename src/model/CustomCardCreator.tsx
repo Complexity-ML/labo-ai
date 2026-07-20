@@ -17,6 +17,7 @@ import { setLibraryDragPreview } from '../studio/libraryDragPreview'
 import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
 import { executionLayers } from '../core/execution-plan'
 import { previewModelAtom } from '../core/browser-atomic-preview'
+import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
 export type CustomCardDestination = 'library' | 'selected' | 'new-architecture'
@@ -24,6 +25,8 @@ export interface CustomCardCreateResult { ok: boolean; message?: string }
 
 export interface CustomCardCreatorHandle {
   arrange(): void
+  exportDiagram(): unknown
+  exportPyTorch(): unknown
   pause(): void
   play(): Promise<void>
   step(): Promise<void>
@@ -150,11 +153,13 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
 
   useImperativeHandle(ref, () => ({
     arrange: () => setGraph((current) => layoutArchitectureGraph(current)),
+    exportDiagram: () => exportArchitectureDiagram(graph),
+    exportPyTorch: () => exportPyTorchCode(graph, generated.code),
     pause: () => playerRef.current?.pause(),
     play: async () => { await playerRef.current?.play() },
     step: async () => { await playerRef.current?.step() },
     stop: () => playerRef.current?.stop(),
-  }), [])
+  }), [generated.code, graph])
 
   useEffect(() => {
     if (!requestedCard) return

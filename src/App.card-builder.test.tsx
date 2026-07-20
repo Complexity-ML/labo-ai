@@ -87,6 +87,17 @@ describe('LABO AI card builder', () => {
     expect(screen.getByRole('button', { name: 'Reusable card' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('keeps the shared application settings reachable from Reusable Card', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+
+    expect(screen.getByRole('dialog', { name: 'LABO AI settings' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Application' }))
+    expect(screen.getByRole('button', { name: 'Use Complexity Spectrum theme' })).toBeInTheDocument()
+  })
+
   it('switches cleanly between model construction, card editing, and reusable-card creation', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
@@ -181,6 +192,35 @@ describe('LABO AI card builder', () => {
     expect(exportFile.mock.calls[0]![0]).toMatchObject({ filename: 'tr-300m.svg', kind: 'svg' })
     expect(exportFile.mock.calls[0]![0].content).toContain('<svg')
     delete window.labo
+  })
+
+  it('exports the active reusable-card graph instead of the underlying model', async () => {
+    const exportFile = vi.fn(async (_payload: { filename: string; content: string; kind: 'svg' | 'python' }) => ({ saved: true }))
+    window.labo = {
+      platform: 'darwin', runtime: 'electron', exportFile,
+      askLabo: async () => ({
+        summary: 'Compose card.',
+        addedBlocks: [
+          { atomId: 'hidden-state-input', nodeId: 'builder-input', reason: 'Card input.' },
+          { atomId: 'silu', nodeId: 'builder-silu', reason: 'Reusable activation.' },
+        ],
+        createdBlocks: [],
+        connections: [{ sourceId: 'builder-input', sourcePortId: 'hidden', targetId: 'builder-silu', targetPortId: 'hidden', reason: 'Connect card input.' }],
+        missingBlocks: [], warnings: [],
+      }),
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a SiLU card' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU'))
+
+    fireEvent.click(screen.getByLabelText('Export architecture'))
+    fireEvent.click(screen.getByRole('button', { name: /Diagram SVG/ }))
+    await waitFor(() => expect(exportFile).toHaveBeenCalledOnce())
+    expect(exportFile.mock.calls[0]![0]).toMatchObject({ filename: 'reusable-card.svg', kind: 'svg' })
+    expect(exportFile.mock.calls[0]![0].content).toContain('SiLU')
   })
   
   it('exposes the supervised objective that consumes the Training Labels Y plug', () => {

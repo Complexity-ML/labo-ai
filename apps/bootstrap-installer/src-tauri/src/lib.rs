@@ -21,6 +21,18 @@ static INSTALL_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 struct InstallGuard;
 
+fn background_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 impl Drop for InstallGuard {
     fn drop(&mut self) {
         INSTALL_IN_PROGRESS.store(false, Ordering::Release);
@@ -42,6 +54,8 @@ struct GitHubRelease {
     tag_name: String,
     tarball_url: String,
     assets: Vec<GitHubAsset>,
+    #[serde(skip)]
+    revision: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +74,7 @@ struct GitHubAsset {
 struct InstallState {
     installed_tag: Option<String>,
     installed_channel: Option<String>,
+    installed_revision: Option<String>,
     installed_at: Option<u64>,
     app_path: Option<String>,
 }
@@ -68,7 +83,10 @@ struct InstallState {
 #[serde(rename_all = "camelCase")]
 struct SetupStatus {
     installed_tag: Option<String>,
+    installed_channel: Option<String>,
+    installed_revision: Option<String>,
     latest_tag: Option<String>,
+    latest_revision: Option<String>,
     channel: String,
     app_path: String,
     platform: &'static str,
@@ -145,35 +163,44 @@ fn latest_release() -> Result<GitHubRelease, String> {
                 })
                 .collect(),
             tag_name,
+            revision: None,
         })
     })
 }
 
-fn main_source() -> Result<GitHubRelease, String> {
+fn github_revision(reference: &str) -> Result<String, String> {
     let commit = client()?
         .get(format!(
-            "https://api.github.com/repos/{REPOSITORY}/commits/main"
+            "https://api.github.com/repos/{REPOSITORY}/commits/{reference}"
         ))
         .send()
         .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("Unable to check the main branch: {error}"))?
+        .map_err(|error| format!("Unable to resolve GitHub revision {reference}: {error}"))?
         .json::<GitHubCommit>()
-        .map_err(|error| format!("Invalid GitHub main-branch response: {error}"))?;
+        .map_err(|error| format!("Invalid GitHub commit response: {error}"))?;
     if commit.sha.len() < 7
         || !commit
             .sha
             .chars()
             .all(|character| character.is_ascii_hexdigit())
     {
-        return Err("GitHub returned an invalid main commit".to_string());
+        return Err(format!(
+            "GitHub returned an invalid revision for {reference}"
+        ));
     }
+    Ok(commit.sha.to_ascii_lowercase())
+}
+
+fn main_source() -> Result<GitHubRelease, String> {
+    let revision = github_revision("main")?;
     Ok(GitHubRelease {
-        tag_name: format!("main@{}", &commit.sha[..7]),
+        tag_name: format!("main@{}", &revision[..7]),
         tarball_url: format!(
             "https://github.com/{REPOSITORY}/archive/{}.tar.gz",
-            commit.sha
+            revision
         ),
         assets: Vec::new(),
+        revision: Some(revision),
     })
 }
 
@@ -270,16 +297,32 @@ fn read_state() -> InstallState {
 fn status(channel: &str) -> Result<SetupStatus, String> {
     let state = read_state();
     let channel = normalized_channel(Some(channel));
-    let latest_tag = if channel == "main" {
+    let latest_source = if channel == "main" {
         main_source()
     } else {
         latest_release()
     }
-    .ok()
-    .map(|release| release.tag_name);
+    .ok();
+    let latest_revision = latest_source.as_ref().and_then(|release| {
+        release
+            .revision
+            .clone()
+            .or_else(|| github_revision(&release.tag_name).ok())
+    });
+    let latest_tag = latest_source.map(|release| release.tag_name);
+    let installed_revision = state.installed_revision.or_else(|| {
+        state.installed_tag.as_deref().and_then(|tag| {
+            tag.strip_prefix("main@")
+                .map(str::to_string)
+                .or_else(|| github_revision(tag).ok())
+        })
+    });
     Ok(SetupStatus {
         installed_tag: state.installed_tag,
+        installed_channel: state.installed_channel,
+        installed_revision,
         latest_tag,
+        latest_revision,
         channel: channel.to_string(),
         app_path: app_destination()?.display().to_string(),
         platform: env::consts::OS,
@@ -417,7 +460,7 @@ fn relaunch_latest_setup(
         fs::set_permissions(&next, fs::Permissions::from_mode(0o755))
             .map_err(|error| error.to_string())?;
     }
-    let mut command = Command::new(next);
+    let mut command = background_command(next);
     #[cfg(target_os = "linux")]
     command.env("APPIMAGE_EXTRACT_AND_RUN", "1");
     command
@@ -551,7 +594,7 @@ fn run_npm(node_root: &Path, source: &Path, arguments: &[&str]) -> Result<(), St
     if let Some(current) = env::var_os("PATH") {
         search_paths.extend(env::split_paths(&current));
     }
-    let output = Command::new(&npm)
+    let output = background_command(&npm)
         .args(arguments)
         .current_dir(source)
         .env(
@@ -614,13 +657,13 @@ fn copy_application(source: &Path, destination: &Path) -> Result<(), String> {
         fs::remove_dir_all(destination).map_err(|error| error.to_string())?;
     }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let status = Command::new("/bin/cp")
+    let status = background_command("/bin/cp")
         .arg("-R")
         .arg(source)
         .arg(destination)
         .status();
     #[cfg(target_os = "windows")]
-    let status = Command::new("robocopy")
+    let status = background_command("robocopy")
         .arg(source)
         .arg(destination)
         .arg("/E")
@@ -667,16 +710,16 @@ fn install_helper() -> Result<(), String> {
 
 fn launch_application(destination: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    Command::new("/usr/bin/open")
+    background_command("/usr/bin/open")
         .arg(destination)
         .spawn()
         .map_err(|error| error.to_string())?;
     #[cfg(target_os = "windows")]
-    Command::new(destination.join("LABO AI.exe"))
+    background_command(destination.join("LABO AI.exe"))
         .spawn()
         .map_err(|error| error.to_string())?;
     #[cfg(target_os = "linux")]
-    Command::new(linux_application_executable(destination)?)
+    background_command(linux_application_executable(destination)?)
         .spawn()
         .map_err(|error| error.to_string())?;
     Ok(())
@@ -718,7 +761,7 @@ fn install_linux_integration(destination: &Path, source: &Path) -> Result<(), St
     fs::write(applications.join("labo-ai.desktop"), desktop_entry)
         .map_err(|error| format!("Unable to create the Linux application launcher: {error}"))?;
 
-    if Command::new("update-desktop-database")
+    if background_command("update-desktop-database")
         .arg(&applications)
         .status()
         .is_err()
@@ -735,7 +778,7 @@ fn powershell_literal(value: &Path) -> String {
 
 #[cfg(target_os = "windows")]
 fn run_powershell(script: &str) -> Result<(), String> {
-    let status = Command::new("powershell.exe")
+    let status = background_command("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -813,8 +856,6 @@ fn install_windows_integration(destination: &Path, release_tag: &str) -> Result<
 
 #[cfg(target_os = "windows")]
 fn schedule_windows_setup_cleanup() -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-
     let process_id = std::process::id();
     let script = format!(
         "$ErrorActionPreference = 'SilentlyContinue'; \
@@ -833,7 +874,7 @@ fn schedule_windows_setup_cleanup() -> Result<(), String> {
            if (Test-Path -LiteralPath $directory) {{ Remove-Item -LiteralPath $directory -Recurse -Force }} \
          }}"
     );
-    Command::new("powershell.exe")
+    background_command("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -844,7 +885,6 @@ fn schedule_windows_setup_cleanup() -> Result<(), String> {
             "-Command",
             &script,
         ])
-        .creation_flags(0x08000000)
         .spawn()
         .map_err(|error| format!("Unable to schedule Setup cleanup: {error}"))?;
     Ok(())
@@ -892,11 +932,11 @@ fn restore_setup_after_handoff_failure(app: &AppHandle) {
 
 #[cfg(target_os = "windows")]
 fn stop_running_application() -> Result<(), String> {
-    let _ = Command::new("taskkill")
+    let _ = background_command("taskkill")
         .args(["/IM", "LABO AI.exe", "/T", "/F"])
         .output();
     for _ in 0..50 {
-        let running = Command::new("tasklist")
+        let running = background_command("tasklist")
             .args(["/FI", "IMAGENAME eq LABO AI.exe", "/NH"])
             .output()
             .map(|output| {
@@ -1066,7 +1106,7 @@ fn perform_install(app: &AppHandle, channel: &str) -> Result<InstallResult, Stri
 
     #[cfg(target_os = "macos")]
     {
-        let signed = Command::new("/usr/bin/codesign")
+        let signed = background_command("/usr/bin/codesign")
             .args(["--force", "--deep", "--sign", "-"])
             .arg(&destination)
             .status();
@@ -1085,6 +1125,10 @@ fn perform_install(app: &AppHandle, channel: &str) -> Result<InstallResult, Stri
     let state = InstallState {
         installed_tag: Some(release.tag_name.clone()),
         installed_channel: Some(channel.to_string()),
+        installed_revision: release
+            .revision
+            .clone()
+            .or_else(|| github_revision(&release.tag_name).ok()),
         installed_at: Some(installed_at),
         app_path: Some(destination.display().to_string()),
     };

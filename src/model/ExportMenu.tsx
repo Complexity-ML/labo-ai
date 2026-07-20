@@ -2,10 +2,10 @@ import { Download } from 'lucide-react'
 import type { ArchitectureGraph } from '../core/ir'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 
-export function ExportMenu({ graph, codeGraph = graph, code }: { graph: ArchitectureGraph; codeGraph?: ArchitectureGraph; code: string }) {
+export function ExportMenu({ graph, codeGraph = graph, code, onDiagram, onPyTorch }: { graph: ArchitectureGraph; codeGraph?: ArchitectureGraph; code: string; onDiagram?: () => unknown; onPyTorch?: () => unknown }) {
   const close = (target: HTMLElement) => target.closest('details')?.removeAttribute('open')
-  const diagram = () => exportArchitectureDiagram(graph)
-  const pytorch = () => exportPyTorchCode(codeGraph, code)
+  const diagram = onDiagram ?? (() => exportArchitectureDiagram(graph))
+  const pytorch = onPyTorch ?? (() => exportPyTorchCode(codeGraph, code))
   return <details className="export-menu">
     <summary aria-label="Export architecture"><Download size={13} /><span>Export</span></summary>
     <div>

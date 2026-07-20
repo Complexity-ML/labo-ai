@@ -1,4 +1,4 @@
-import { Database, FolderKanban, Lightbulb, Settings2, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { Database, FolderKanban, Lightbulb, Palette, Settings2, Sparkles, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { DesktopUpdateSettings } from './DesktopUpdateSettings'
 import { StudioDialog } from './studio/StudioDialog'
@@ -31,14 +31,14 @@ export function StudioSettingsModal({ onClose, sections }: { onClose(): void; se
     general: 'Storage, privacy and desktop updates.',
     workspaces: 'Save, restore and compare your private graphs.',
     agent: 'Choose how Ask LABO plans and applies changes.',
-    studio: 'Options and presets for the active studio.',
+    studio: 'Appearance shared across every LABO AI studio.',
     tips: 'Shortcuts and gestures for faster graph editing.',
   }
   const defaultNavigation = [
     { id: 'general', label: 'General', icon: <Settings2 size={13} /> },
     { id: 'workspaces', label: 'Workspaces', icon: <FolderKanban size={13} /> },
     { id: 'agent', label: 'Agent', icon: <Sparkles size={13} /> },
-    { id: 'studio', label: 'Studio', icon: <SlidersHorizontal size={13} /> },
+    { id: 'studio', label: 'Application', icon: <Palette size={13} /> },
     { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} /> },
   ]
   const customSections = new Map(sections.map((section) => [section.id, section]))
@@ -47,7 +47,7 @@ export function StudioSettingsModal({ onClose, sections }: { onClose(): void; se
   const fallbackCopy: Record<string, { title: string; body: string }> = {
     workspaces: { title: 'Private workspace', body: 'The active studio saves its current draft automatically for this profile.' },
     agent: { title: 'Shared agent preferences', body: 'Ask LABO uses the same private credentials and review defaults throughout the application.' },
-    studio: { title: 'Active studio', body: 'This studio currently uses the shared LABO AI defaults.' },
+    studio: { title: 'Application appearance', body: 'Choose one visual identity shared by the complete LABO AI workspace.' },
     tips: { title: 'Studio shortcuts', body: 'Use the same selection, editing and keyboard conventions throughout LABO AI.' },
   }
 

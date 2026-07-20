@@ -34,6 +34,66 @@ describe('LABO AI studios', () => {
     delete window.labo
   })
 
+  it('does not reinstall a main commit that is already installed', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      getDesktopUpdateStatus: async () => ({
+        currentVersion: '0.1.45',
+        channel: 'main',
+        installedTag: 'main@abcdef1',
+        latestTag: 'main@abcdef1234567890',
+        helperInstalled: true,
+        updateAvailable: false,
+        setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+      }),
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+
+    expect(await screen.findByRole('button', { name: 'Up to date' })).toBeDisabled()
+    delete window.labo
+  })
+
+  it('keeps stable and main update detection separate when switching channels', async () => {
+    const getDesktopUpdateStatus = vi.fn(async (requestedChannel?: DesktopUpdateChannel) => {
+      const channel = requestedChannel ?? 'stable'
+      return channel === 'main' ? {
+        currentVersion: '0.1.45',
+        channel,
+        installedTag: 'v0.1.45',
+        installedChannel: 'stable' as const,
+        latestTag: 'main@abcdef1',
+        helperInstalled: true,
+        updateAvailable: true,
+        setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+      } : {
+        currentVersion: '0.1.45',
+        channel,
+        installedTag: 'v0.1.45',
+        installedChannel: 'stable' as const,
+        latestTag: 'v0.1.45',
+        helperInstalled: true,
+        updateAvailable: false,
+        setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+      }
+    })
+    window.labo = { platform: 'darwin', runtime: 'electron', getDesktopUpdateStatus }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+
+    expect(await screen.findByRole('button', { name: 'Up to date' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /MainExperimental/ }))
+    expect(await screen.findByText('main@abcdef1')).toBeInTheDocument()
+    expect(screen.getByText('Latest main commit')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /StableRecommended/ }))
+    await waitFor(() => expect(screen.queryByText('main@abcdef1')).not.toBeInTheDocument())
+    expect(screen.getByText('Latest stable release')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Up to date' })).toBeDisabled()
+    delete window.labo
+  })
+
   it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))
@@ -96,7 +156,9 @@ describe('LABO AI studios', () => {
     expect(within(settings).getByRole('button', { name: 'General' })).toHaveAttribute('aria-pressed', 'true')
     for (const section of ['General', 'Workspaces', 'Agent', 'Application', 'Tips']) expect(within(settings).getByRole('button', { name: section })).toBeInTheDocument()
     fireEvent.click(within(settings).getByRole('button', { name: 'Application' }))
-    expect(within(settings).getByText('One LABO AI workspace')).toBeInTheDocument()
+    expect(within(settings).getByRole('button', { name: 'Use LABO Dark theme' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(within(settings).getByRole('button', { name: 'Use Complexity Spectrum theme' }))
+    expect(document.documentElement).toHaveAttribute('data-labo-theme', 'complexity-spectrum')
     fireEvent.pointerDown(document.querySelector('.model-card-modal-backdrop')!)
     expect(screen.queryByRole('dialog', { name: 'LABO AI settings' })).not.toBeInTheDocument()
 
@@ -105,7 +167,7 @@ describe('LABO AI studios', () => {
     const tokenizerSettings = screen.getByRole('dialog', { name: 'LABO AI settings' })
     for (const section of ['General', 'Workspaces', 'Agent', 'Application', 'Tips']) expect(within(tokenizerSettings).getByRole('button', { name: section })).toBeInTheDocument()
     fireEvent.click(within(tokenizerSettings).getByRole('button', { name: 'Application' }))
-    expect(within(tokenizerSettings).getByText('One LABO AI workspace')).toBeInTheDocument()
+    expect(within(tokenizerSettings).getByRole('button', { name: 'Use Complexity Spectrum theme' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('composes a real optimizer rule without a redundant edit mode', () => {

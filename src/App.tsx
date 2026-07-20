@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import './App.scss'
 import { ModelStudio } from './model/ModelStudio'
 import { TokenizerStudio } from './TokenizerStudio'
@@ -11,6 +11,7 @@ import { AppHeader, type StudioWorkspaceId } from './studio/AppHeader'
 import { GlobalSearch, type GlobalSearchResult } from './studio/GlobalSearch'
 import { useGlobalSearch } from './studio/useGlobalSearch'
 import './styles/desktop.scss'
+import { initializeLaboTheme } from './studio/application-appearance'
 
 function App() {
   const [workspace, setWorkspace] = useState<StudioWorkspaceId>('model')
@@ -30,6 +31,8 @@ function App() {
   const platform = window.labo?.platform
   const runtimeClass = window.labo?.runtime === 'electron' ? ` runtime-electron runtime-${platform ?? 'desktop'}` : ''
   const searchShortcut = platform === 'darwin' ? '⌘K' : 'Ctrl+K'
+
+  useLayoutEffect(() => initializeLaboTheme(), [])
 
   useEffect(() => {
     let active = true

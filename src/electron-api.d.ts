@@ -72,7 +72,10 @@ interface DesktopUpdateStatus {
   currentVersion: string
   channel: DesktopUpdateChannel
   installedTag?: string
+  installedChannel?: DesktopUpdateChannel
+  installedRevision?: string
   latestTag?: string
+  latestRevision?: string
   helperInstalled: boolean
   updateAvailable: boolean
   setupUrl: string

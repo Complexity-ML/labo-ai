@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, getDesktopUpdateStatus, validDesktopUpdateChannel } from './desktop-updates'
+import { desktopRevisionsMatch, desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, desktopUpdateIsAvailable, getDesktopUpdateStatus, validDesktopUpdateChannel } from './desktop-updates'
 
 describe('desktop source-first updates', () => {
   it('uses a private Electron profile helper path on every desktop platform', () => {
@@ -24,6 +24,19 @@ describe('desktop source-first updates', () => {
     expect(desktopUpdateArguments('main')).toEqual(['--auto-install', '--channel', 'main'])
     expect(validDesktopUpdateChannel('main')).toBe('main')
     expect(validDesktopUpdateChannel('unexpected')).toBe('stable')
+  })
+
+  it('recognizes the same installed revision across stable and main reference formats', () => {
+    expect(desktopRevisionsMatch('v0.1.45', '0.1.45', 'stable')).toBe(true)
+    expect(desktopRevisionsMatch('main@abcdef1', 'main@abcdef1234567890', 'main')).toBe(true)
+    expect(desktopRevisionsMatch('main@abcdef1', 'main@1234567', 'main')).toBe(false)
+  })
+
+  it('treats switching channels as an explicit update even when each channel has its own reference format', () => {
+    expect(desktopUpdateIsAvailable('v0.1.45', 'v0.1.45', 'stable', 'stable')).toBe(false)
+    expect(desktopUpdateIsAvailable('v0.1.45', 'main@abcdef1', 'main', 'stable')).toBe(true)
+    expect(desktopUpdateIsAvailable('main@abcdef1', 'v0.1.45', 'stable', 'main')).toBe(true)
+    expect(desktopUpdateIsAvailable('v0.1.45', 'main@abcdef1', 'main', 'stable', 'abcdef1234567', 'abcdef1')).toBe(false)
   })
 
   it('sends a legacy desktop build to the latest Setup release', async () => {

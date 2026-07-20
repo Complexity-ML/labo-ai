@@ -102,6 +102,22 @@ function errorMessage(value: unknown): string {
   return typeof record.message === 'string' ? record.message : String(value)
 }
 
+function conversationPlan(summary: string): AskLaboPlan {
+  return {
+    summary,
+    addedBlocks: [],
+    createdBlocks: [],
+    connections: [],
+    updatedBlocks: [],
+    deletedBlocks: [],
+    movedBlocks: [],
+    actions: [],
+    missingBlocks: [],
+    warnings: [],
+    toolTrace: [],
+  }
+}
+
 export class CodexAppServer {
   private process?: ChildProcessWithoutNullStreams
   private nextId = 1
@@ -216,6 +232,23 @@ export class CodexAppServer {
     })
   }
 
+  private collectAgentText(threadId: string): { read(): string | undefined; stop(): void } {
+    let completedText = ''
+    let streamedText = ''
+    const listener = (method: string, params: unknown) => {
+      const value = asRecord(params)
+      if (value.threadId !== threadId) return
+      const item = asRecord(value.item)
+      if (method === 'item/completed' && item.type === 'agentMessage' && typeof item.text === 'string') completedText = item.text
+      if (method === 'item/agentMessage/delta' && typeof value.delta === 'string') streamedText += value.delta
+    }
+    this.notificationListeners.add(listener)
+    return {
+      read: () => completedText || streamedText || undefined,
+      stop: () => this.notificationListeners.delete(listener),
+    }
+  }
+
   async status(): Promise<ChatGPTSessionStatus> {
     try {
       await this.start()
@@ -275,23 +308,41 @@ export class CodexAppServer {
     }))
     const thread = asRecord(threadResponse.thread)
     if (typeof thread.id !== 'string') throw new Error('Codex did not start a LABO planning thread')
+    const agentText = this.collectAgentText(thread.id)
     const completed = this.waitFor('turn/completed', (params) => params.threadId === thread.id, turnTimeoutMs)
-    await this.request('turn/start', {
-      threadId: thread.id,
-      input: [{ type: 'text', text: JSON.stringify({ request: payload.request.trim(), context: payload.context }), text_elements: [] }],
-      approvalPolicy: 'never', effort: configuration.effort || null, outputSchema: chatGPTPlanSchema,
-    }, turnTimeoutMs)
-    const notification = await completed
-    const turn = asRecord(notification.turn)
-    if (turn.status !== 'completed') throw new Error(errorMessage(turn.error ?? 'ChatGPT planning failed'))
-    const items = Array.isArray(turn.items) ? turn.items.map(asRecord) : []
-    const text = items.filter((item) => item.type === 'agentMessage' && typeof item.text === 'string').map((item) => item.text as string).at(-1)
-    if (!text) throw new Error('ChatGPT returned no LABO graph plan')
-    let plan: AskLaboPlan
-    try { plan = JSON.parse(text) as AskLaboPlan } catch { throw new Error('ChatGPT returned an unreadable LABO graph plan') }
-    if (!plan || typeof plan.summary !== 'string' || !Array.isArray(plan.addedBlocks) || !Array.isArray(plan.connections)) throw new Error('ChatGPT returned an invalid LABO graph plan')
-    void this.request('thread/delete', { threadId: thread.id }).catch(() => undefined)
-    return plan
+    try {
+      await this.request('turn/start', {
+        threadId: thread.id,
+        input: [{ type: 'text', text: JSON.stringify({ request: payload.request.trim(), context: payload.context }), text_elements: [] }],
+        approvalPolicy: 'never', effort: configuration.effort || null, outputSchema: chatGPTPlanSchema,
+      }, turnTimeoutMs)
+      const notification = await completed
+      const turn = asRecord(notification.turn)
+      if (turn.status !== 'completed') throw new Error(errorMessage(turn.error ?? 'ChatGPT planning failed'))
+      const items = Array.isArray(turn.items) ? turn.items.map(asRecord) : []
+      const text = items.filter((item) => item.type === 'agentMessage' && typeof item.text === 'string').map((item) => item.text as string).at(-1) ?? agentText.read()
+      if (!text) throw new Error('ChatGPT completed without returning a response')
+      let parsed: unknown
+      try { parsed = JSON.parse(text) } catch { return conversationPlan(text.trim()) }
+      const plan = asRecord(parsed)
+      if (typeof plan.summary !== 'string') return conversationPlan(text.trim())
+      return {
+        ...conversationPlan(plan.summary),
+        ...(Array.isArray(plan.addedBlocks) ? { addedBlocks: plan.addedBlocks } : {}),
+        ...(Array.isArray(plan.createdBlocks) ? { createdBlocks: plan.createdBlocks } : {}),
+        ...(Array.isArray(plan.connections) ? { connections: plan.connections } : {}),
+        ...(Array.isArray(plan.updatedBlocks) ? { updatedBlocks: plan.updatedBlocks } : {}),
+        ...(Array.isArray(plan.deletedBlocks) ? { deletedBlocks: plan.deletedBlocks } : {}),
+        ...(Array.isArray(plan.movedBlocks) ? { movedBlocks: plan.movedBlocks } : {}),
+        ...(Array.isArray(plan.actions) ? { actions: plan.actions } : {}),
+        ...(Array.isArray(plan.missingBlocks) ? { missingBlocks: plan.missingBlocks } : {}),
+        ...(Array.isArray(plan.warnings) ? { warnings: plan.warnings } : {}),
+        ...(Array.isArray(plan.toolTrace) ? { toolTrace: plan.toolTrace } : {}),
+      } as AskLaboPlan
+    } finally {
+      agentText.stop()
+      void this.request('thread/delete', { threadId: thread.id }).catch(() => undefined)
+    }
   }
 
   stop(): void {

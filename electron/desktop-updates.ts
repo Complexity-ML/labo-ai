@@ -7,7 +7,10 @@ export interface DesktopUpdateStatus {
   currentVersion: string
   channel: DesktopUpdateChannel
   installedTag?: string
+  installedChannel?: DesktopUpdateChannel
+  installedRevision?: string
   latestTag?: string
+  latestRevision?: string
   helperInstalled: boolean
   updateAvailable: boolean
   setupUrl: string
@@ -21,6 +24,20 @@ export const desktopUpdateArguments = (channel: DesktopUpdateChannel) => ['--aut
 
 export function validDesktopUpdateChannel(value: unknown): DesktopUpdateChannel {
   return value === 'main' ? 'main' : 'stable'
+}
+
+export function desktopRevisionsMatch(installedRef: string | undefined, latestRef: string | undefined, channel: DesktopUpdateChannel): boolean {
+  if (!installedRef || !latestRef) return false
+  if (channel === 'stable') return installedRef.replace(/^v/, '') === latestRef.replace(/^v/, '')
+  const installedCommit = installedRef.replace(/^main@/, '').toLowerCase()
+  const latestCommit = latestRef.replace(/^main@/, '').toLowerCase()
+  return installedCommit.length >= 7 && latestCommit.length >= 7
+    && (installedCommit.startsWith(latestCommit) || latestCommit.startsWith(installedCommit))
+}
+
+export function desktopUpdateIsAvailable(installedRef: string | undefined, latestRef: string | undefined, selectedChannel: DesktopUpdateChannel, installedChannel: DesktopUpdateChannel, installedRevision?: string, latestRevision?: string): boolean {
+  if (desktopRevisionsMatch(installedRevision, latestRevision, 'main')) return false
+  return Boolean(latestRef && (selectedChannel !== installedChannel || !desktopRevisionsMatch(installedRef, latestRef, selectedChannel)))
 }
 
 export function desktopUpdateHelperPath(userData: string, platform = process.platform): string {
@@ -52,7 +69,7 @@ async function findDesktopUpdateHelper(userData: string, platform = process.plat
   return undefined
 }
 
-function readHelperStatus(helper: string, channel: DesktopUpdateChannel, platform = process.platform): Promise<{ installedTag?: string; latestTag?: string }> {
+function readHelperStatus(helper: string, channel: DesktopUpdateChannel, platform = process.platform): Promise<{ installedTag?: string; installedChannel?: DesktopUpdateChannel; installedRevision?: string; latestTag?: string; latestRevision?: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(helper, ['--status', '--channel', channel], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -72,10 +89,13 @@ function readHelperStatus(helper: string, channel: DesktopUpdateChannel, platfor
       clearTimeout(timeout)
       if (code !== 0) return reject(new Error(stderr.trim() || `LABO AI Setup exited with ${code}`))
       try {
-        const parsed = JSON.parse(stdout.trim()) as { installedTag?: unknown; latestTag?: unknown }
+        const parsed = JSON.parse(stdout.trim()) as { installedTag?: unknown; installedChannel?: unknown; installedRevision?: unknown; latestTag?: unknown; latestRevision?: unknown }
         resolve({
           ...(typeof parsed.installedTag === 'string' ? { installedTag: parsed.installedTag } : {}),
+          ...(parsed.installedChannel === 'stable' || parsed.installedChannel === 'main' ? { installedChannel: parsed.installedChannel } : {}),
+          ...(typeof parsed.installedRevision === 'string' ? { installedRevision: parsed.installedRevision } : {}),
           ...(typeof parsed.latestTag === 'string' ? { latestTag: parsed.latestTag } : {}),
+          ...(typeof parsed.latestRevision === 'string' ? { latestRevision: parsed.latestRevision } : {}),
         })
       } catch {
         reject(new Error('LABO AI Setup returned an invalid status'))
@@ -92,13 +112,17 @@ export async function getDesktopUpdateStatus(userData: string, currentVersion: s
   try {
     const status = await readHelperStatus(helper, channel, platform)
     const installedRef = status.installedTag ?? (channel === 'stable' ? `v${currentVersion}` : undefined)
+    const installedChannel = status.installedChannel ?? (status.installedTag?.startsWith('main@') ? 'main' : 'stable')
     return {
       currentVersion,
       channel,
       installedTag: status.installedTag,
+      installedChannel,
+      installedRevision: status.installedRevision,
       latestTag: status.latestTag,
+      latestRevision: status.latestRevision,
       helperInstalled: true,
-      updateAvailable: Boolean(status.latestTag && status.latestTag !== installedRef),
+      updateAvailable: desktopUpdateIsAvailable(installedRef, status.latestTag, channel, installedChannel, status.installedRevision, status.latestRevision),
       setupUrl: desktopSetupReleaseUrl,
     }
   } catch (error) {

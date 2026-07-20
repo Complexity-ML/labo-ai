@@ -1,4 +1,4 @@
-import { AlertTriangle, Blocks, Cable, Check, FolderKanban, Lightbulb, Settings2, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Blocks, Cable, Check, FolderKanban, Lightbulb, Palette, Settings2, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { createAgentGraphContext, previewAgentGraphPlan, repairAgentGraphPlan, type AgentGraphMode, type AgentGraphPlan } from '../core/agentic-graph'
 import type { ArchitectureGraph, ArchitectureNode } from '../core/ir'
@@ -10,6 +10,7 @@ import type { CustomPyTorchCard } from './custom-card'
 import { AgentPrompt } from '../studio/AgentPrompt'
 import { AgentActivityPanel, type AgentActivityItem } from '../studio/AgentActivityPanel'
 import { AgentSettingsContent, StudioEditingTips } from '../studio/AgentSettingsContent'
+import { ApplicationAppearanceSettings } from '../studio/ApplicationAppearanceSettings'
 
 interface AskLaboPanelProps {
   graph: ArchitectureGraph
@@ -375,7 +376,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
     {open && <StudioSettingsModal onClose={closeOverlay} sections={[
       { id: 'workspaces', label: 'Workspaces', icon: <FolderKanban size={13} />, content: <div className="ask-labo-workspace-settings">{workspaceSettings}</div> },
       { id: 'agent', label: 'Agent', icon: <Sparkles size={13} />, content: <AgentSettingsContent apiKey={apiKey} autoApply={autoApply} chatGPT={chatGPT} confirmDelete={confirmDelete} credentialBusy={credentialBusy} credentialMessage={credentialMessage} graphMode={graphMode} loading={loading} onApiKeyChange={setApiKey} onAutoApplyChange={setAutoApply} onChatGPTConfigurationChange={(configuration) => void configureChatGPT(configuration)} onConnectChatGPT={() => void connectChatGPT()} onDeleteApiKey={() => void deleteApiKey()} onDisconnectChatGPT={() => void disconnectChatGPT()} onGraphModeChange={(mode) => { setGraphMode(mode); setPlan(undefined) }} onSaveApiKey={(event) => void saveApiKey(event)} onShowApiKeyChange={setShowApiKey} onTestApiKey={() => void testApiKey()} settings={settings} showApiKey={showApiKey} /> },
-      { id: 'studio', label: 'Application', icon: <Settings2 size={13} />, content: <div className="studio-settings-empty"><strong>One LABO AI workspace</strong><p>Model, Training and Tokenizer Studio share this private profile, these settings and the same automatic-save policy.</p></div> },
+      { id: 'studio', label: 'Application', icon: <Palette size={13} />, content: <ApplicationAppearanceSettings /> },
       { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <StudioEditingTips /> },
     ]} />}
 
