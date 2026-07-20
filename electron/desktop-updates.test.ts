@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, getDesktopUpdateStatus } from './desktop-updates'
 
 describe('desktop source-first updates', () => {
-  it('uses a private Electron profile helper path on macOS and Windows', () => {
+  it('uses a private Electron profile helper path on every desktop platform', () => {
     expect(desktopUpdateHelperPath('/profile', 'darwin')).toBe('/profile/installer/labo-ai-setup')
     expect(desktopUpdateHelperPath('/profile', 'win32')).toBe('/profile/installer/labo-ai-setup.exe')
+    expect(desktopUpdateHelperPath('/profile', 'linux')).toBe('/profile/installer/labo-ai-setup')
   })
 
   it('also discovers helpers installed by the legacy lowercase Setup profile', () => {

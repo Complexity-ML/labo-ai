@@ -55,14 +55,23 @@ Paste this single command into PowerShell:
 irm https://github.com/Complexity-ML/labo-ai/releases/latest/download/install-labo-ai-windows.ps1 | iex
 ```
 
+### Linux (x64)
+
+Paste this single command into a terminal:
+
+```bash
+curl -fsSL https://github.com/Complexity-ML/labo-ai/releases/latest/download/install-labo-ai-linux.sh | bash
+```
+
 **LABO AI Setup** then fetches the latest tagged source, verifies and provisions its own Node.js runtime, and builds the Electron application locally without replacing private workspace data. Graph editing and the player work without an API key; only Ask LABO requires a user-provided key.
 
 Supported packages:
 
 - macOS 12 or later on Apple silicon: `LABO-AI-Setup-arm64.dmg`.
 - Windows 10/11 x64: `LABO-AI-Setup-x64.exe`.
+- Linux x64: `LABO-AI-Setup-x64.AppImage` (generic AppImage, installed for the current user).
 
-The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The one-command path runs the checksum-verified helper directly; the DMG and EXE remain available from [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest) for manual installation. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
+The Setup packages are currently unsigned, so macOS Gatekeeper or Windows SmartScreen may request confirmation on first launch. The one-command path runs the checksum-verified helper directly; the DMG, EXE and AppImage remain available from [GitHub Releases](https://github.com/Complexity-ML/labo-ai/releases/latest) for manual installation. The Electron application is produced locally rather than downloaded as an opaque prebuilt binary. Internet access and several minutes are required for the first install; later updates reuse the managed Node.js runtime. Setup also updates itself from verified release assets before rebuilding LABO AI when a newer helper is available.
 
 Suggested test path:
 
@@ -80,7 +89,7 @@ Requirements:
 
 - Node.js and npm
 - Python 3 with the packages in `requirements-runtime.txt`
-- macOS or Windows for the packaged desktop build
+- macOS, Windows or Linux for the packaged desktop build
 
 ```bash
 npm install
@@ -115,12 +124,19 @@ Create an unpacked Windows Electron application for development:
 npm run package:win:dir
 ```
 
+Create an unpacked Linux Electron application for development:
+
+```bash
+npm run package:linux:dir -- --x64
+```
+
 Build the public source-first Tauri Setup package:
 
 ```bash
 npm ci --prefix apps/bootstrap-installer
 npm run build:mac --prefix apps/bootstrap-installer # macOS
 npm run build:win --prefix apps/bootstrap-installer # Windows
+npm run build:linux --prefix apps/bootstrap-installer # Linux AppImage
 ```
 
 Run the guided one-minute agent demo after adding an API key in the app:
@@ -142,12 +158,12 @@ npm version patch
 git push origin main --follow-tags
 ```
 
-The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches both the application and Setup versions, validates the project, builds the small Apple-silicon DMG and Windows x64 Setup EXE, and publishes them with stable filenames. The Setup then builds Electron locally from that latest tagged release. Existing installations expose the same updater from the shared **Settings → General** page. The Complexity website can use GitHub's `/releases/latest/download/…` URLs, so its download buttons do not require a separate version edit.
+The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches both the application and Setup versions, validates the project, builds the small Apple-silicon DMG, Windows x64 Setup EXE and Linux x64 Setup AppImage, and publishes them with stable filenames. The Setup then builds Electron locally from that latest tagged release. Existing installations expose the same updater from the shared **Settings → General** page. The Complexity website can use GitHub's `/releases/latest/download/…` URLs, so its download buttons do not require a separate version edit.
 
 ### Source-first installation layout
 
 - Setup state and its managed Node.js runtime live in the operating system's local application-data directory.
-- macOS installs LABO AI to `~/Applications/LABO AI.app`; Windows installs it below `%LOCALAPPDATA%/Programs/LABO AI`.
+- macOS installs LABO AI to `~/Applications/LABO AI.app`; Windows installs it below `%LOCALAPPDATA%/Programs/LABO AI`; Linux installs it below `${XDG_DATA_HOME:-~/.local/share}/LABO AI/app` and creates a per-user `.desktop` launcher.
 - One previous application directory is retained for rollback.
 - Before each application update, the installed Setup helper checks and SHA-256 verifies its own latest native helper, relaunching it when the updater itself changed.
 - The Setup window exposes live stages, progress and an expandable installation journal, then quits automatically when LABO AI launches.

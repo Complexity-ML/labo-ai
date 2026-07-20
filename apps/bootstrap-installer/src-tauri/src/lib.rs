@@ -100,6 +100,8 @@ fn latest_release() -> Result<GitHubRelease, String> {
             "LABO-AI-Setup-arm64-helper.sha256",
             "LABO-AI-Setup-x64-helper.exe",
             "LABO-AI-Setup-x64-helper.exe.sha256",
+            "LABO-AI-Setup-x64.AppImage",
+            "LABO-AI-Setup-x64.AppImage.sha256",
         ];
         Ok(GitHubRelease {
             tarball_url: format!(
@@ -145,6 +147,12 @@ fn electron_user_data() -> Result<PathBuf, String> {
             .map(|path| path.join("LABO AI"))
             .ok_or_else(|| "No roaming application-data directory is available".to_string());
     }
+    #[cfg(target_os = "linux")]
+    {
+        return dirs::config_dir()
+            .map(|path| path.join("LABO AI"))
+            .ok_or_else(|| "No XDG configuration directory is available".to_string());
+    }
     #[allow(unreachable_code)]
     install_root()
 }
@@ -162,8 +170,14 @@ fn app_destination() -> Result<PathBuf, String> {
             .map(|path| path.join("Programs/LABO AI"))
             .ok_or_else(|| "No local application-data directory is available".to_string());
     }
+    #[cfg(target_os = "linux")]
+    {
+        return dirs::data_local_dir()
+            .map(|path| path.join("LABO AI").join("app"))
+            .ok_or_else(|| "No XDG application-data directory is available".to_string());
+    }
     #[allow(unreachable_code)]
-    Err("LABO AI Setup currently supports macOS and Windows".to_string())
+    Err("LABO AI Setup currently supports macOS, Windows and Linux".to_string())
 }
 
 fn state_path() -> Result<PathBuf, String> {
@@ -236,6 +250,7 @@ fn setup_helper_asset() -> Result<&'static str, String> {
         ("macos", "x86_64") => Ok("LABO-AI-Setup-x64-helper"),
         ("windows", "x86_64") => Ok("LABO-AI-Setup-x64-helper.exe"),
         ("windows", "aarch64") => Ok("LABO-AI-Setup-arm64-helper.exe"),
+        ("linux", "x86_64") => Ok("LABO-AI-Setup-x64.AppImage"),
         _ => Err(format!(
             "Unsupported Setup helper platform: {} {}",
             env::consts::OS,
@@ -314,7 +329,10 @@ fn relaunch_latest_setup(app: &AppHandle, release: &GitHubRelease) -> Result<boo
         fs::set_permissions(&next, fs::Permissions::from_mode(0o755))
             .map_err(|error| error.to_string())?;
     }
-    Command::new(next)
+    let mut command = Command::new(next);
+    #[cfg(target_os = "linux")]
+    command.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+    command
         .arg("--auto-install")
         .spawn()
         .map_err(|error| format!("Unable to relaunch the updated Setup: {error}"))?;
@@ -369,6 +387,8 @@ fn node_asset() -> Result<(&'static str, &'static str), String> {
         ("macos", "x86_64") => Ok(("node-v22.14.0-darwin-x64.tar.gz", "tar.gz")),
         ("windows", "x86_64") => Ok(("node-v22.14.0-win-x64.zip", "zip")),
         ("windows", "aarch64") => Ok(("node-v22.14.0-win-arm64.zip", "zip")),
+        ("linux", "x86_64") => Ok(("node-v22.14.0-linux-x64.tar.gz", "tar.gz")),
+        ("linux", "aarch64") => Ok(("node-v22.14.0-linux-arm64.tar.gz", "tar.gz")),
         _ => Err(format!(
             "Unsupported platform: {} {}",
             env::consts::OS,
@@ -489,11 +509,21 @@ fn built_application(source: &Path) -> PathBuf {
     source.join("release").join(folder)
 }
 
+#[cfg(target_os = "linux")]
+fn built_application(source: &Path) -> PathBuf {
+    let folder = if env::consts::ARCH == "aarch64" {
+        "linux-arm64-unpacked"
+    } else {
+        "linux-unpacked"
+    };
+    source.join("release").join(folder)
+}
+
 fn copy_application(source: &Path, destination: &Path) -> Result<(), String> {
     if destination.exists() {
         fs::remove_dir_all(destination).map_err(|error| error.to_string())?;
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let status = Command::new("/bin/cp")
         .arg("-R")
         .arg(source)
@@ -508,7 +538,7 @@ fn copy_application(source: &Path, destination: &Path) -> Result<(), String> {
         .arg("/NDL")
         .status();
     let status = status.map_err(|error| format!("Unable to copy LABO AI: {error}"))?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let success = status.success();
     #[cfg(target_os = "windows")]
     let success = status.code().is_some_and(|code| code <= 7);
@@ -524,7 +554,14 @@ fn install_helper() -> Result<(), String> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    let current = env::current_exe().map_err(|error| error.to_string())?;
+    let current_executable = env::current_exe().map_err(|error| error.to_string())?;
+    #[cfg(target_os = "linux")]
+    let current = env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+        .unwrap_or(current_executable);
+    #[cfg(not(target_os = "linux"))]
+    let current = current_executable;
     if current != destination {
         fs::copy(current, &destination)
             .map_err(|error| format!("Unable to install update helper: {error}"))?;
@@ -548,6 +585,56 @@ fn launch_application(destination: &Path) -> Result<(), String> {
     Command::new(destination.join("LABO AI.exe"))
         .spawn()
         .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "linux")]
+    Command::new(linux_application_executable(destination)?)
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_application_executable(destination: &Path) -> Result<PathBuf, String> {
+    ["labo-ai", "LABO AI"]
+        .iter()
+        .map(|name| destination.join(name))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            format!(
+                "The installed Linux executable is missing in {}",
+                destination.display()
+            )
+        })
+}
+
+#[cfg(target_os = "linux")]
+fn install_linux_integration(destination: &Path, source: &Path) -> Result<(), String> {
+    let executable = linux_application_executable(destination)?;
+    let icon = destination.join("resources").join("labo-ai.png");
+    if let Some(parent) = icon.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::copy(source.join("build/icon.png"), &icon)
+        .map_err(|error| format!("Unable to install the Linux application icon: {error}"))?;
+
+    let applications = dirs::data_local_dir()
+        .map(|path| path.join("applications"))
+        .ok_or_else(|| "No XDG application-data directory is available".to_string())?;
+    fs::create_dir_all(&applications).map_err(|error| error.to_string())?;
+    let desktop_entry = format!(
+        "[Desktop Entry]\nType=Application\nVersion=1.0\nName=LABO AI\nComment=Atomic neural architecture laboratory\nExec=\"{}\"\nIcon={}\nTerminal=false\nCategories=Development;Science;\nStartupWMClass=LABO AI\n",
+        executable.display().to_string().replace('"', "\\\""),
+        icon.display()
+    );
+    fs::write(applications.join("labo-ai.desktop"), desktop_entry)
+        .map_err(|error| format!("Unable to create the Linux application launcher: {error}"))?;
+
+    if Command::new("update-desktop-database")
+        .arg(&applications)
+        .status()
+        .is_err()
+    {
+        // The desktop entry is still discovered without the optional cache refresh utility.
+    }
     Ok(())
 }
 
@@ -686,7 +773,7 @@ fn prepare_application_handoff(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn prepare_application_handoff(_app: &AppHandle) -> Result<(), String> {
     if let Some(window) = _app.get_webview_window("main") {
         window
@@ -705,7 +792,7 @@ fn restore_setup_after_handoff_failure(app: &AppHandle) {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn restore_setup_after_handoff_failure(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -810,6 +897,21 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
             },
         ],
     )?;
+    #[cfg(target_os = "linux")]
+    run_npm(
+        &node,
+        &source,
+        &[
+            "run",
+            "package:linux:dir",
+            "--",
+            if env::consts::ARCH == "aarch64" {
+                "--arm64"
+            } else {
+                "--x64"
+            },
+        ],
+    )?;
 
     let built = built_application(&source);
     if !built.exists() {
@@ -836,6 +938,8 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
 
     #[cfg(target_os = "windows")]
     install_windows_integration(&destination, &release.tag_name)?;
+    #[cfg(target_os = "linux")]
+    install_linux_integration(&destination, &source)?;
 
     #[cfg(target_os = "macos")]
     {

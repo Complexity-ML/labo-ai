@@ -45,9 +45,13 @@ async function findDesktopUpdateHelper(userData: string, platform = process.plat
   return undefined
 }
 
-function readHelperStatus(helper: string): Promise<{ installedTag?: string; latestTag?: string }> {
+function readHelperStatus(helper: string, platform = process.platform): Promise<{ installedTag?: string; latestTag?: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(helper, ['--status'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(helper, ['--status'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      ...(platform === 'linux' ? { env: { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' } } : {}),
+    })
     let stdout = ''
     let stderr = ''
     const timeout = setTimeout(() => {
@@ -79,7 +83,7 @@ export async function getDesktopUpdateStatus(userData: string, currentVersion: s
     return { currentVersion, helperInstalled: false, updateAvailable: false, setupUrl: desktopSetupReleaseUrl }
   }
   try {
-    const status = await readHelperStatus(helper)
+    const status = await readHelperStatus(helper, platform)
     return {
       currentVersion,
       installedTag: status.installedTag,
@@ -106,6 +110,7 @@ export async function launchDesktopUpdate(userData: string, platform = process.p
     detached: true,
     stdio: 'ignore',
     windowsHide: false,
+    ...(platform === 'linux' ? { env: { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' } } : {}),
   })
   child.unref()
   return { launched: true }

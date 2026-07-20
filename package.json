@@ -5,7 +5,7 @@
   "author": "LABO AI",
   "license": "Apache-2.0",
   "private": true,
-  "version": "0.1.39",
+  "version": "0.1.40",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -20,6 +20,7 @@
     "package:win": "npm run build && npm run build:electron && electron-builder --win nsis zip --x64 --publish never",
     "package:win:dir": "npm run build && npm run build:electron && electron-builder --win dir --x64 --publish never",
     "package:win:arm64": "npm run build && npm run build:electron && electron-builder --win nsis zip --arm64 --publish never",
+    "package:linux:dir": "npm run build && npm run build:electron && electron-builder --linux dir --publish never",
     "lint": "oxlint",
     "test": "vitest run",
     "test:ci": "vitest run --exclude electron/atomic-runtime.test.ts --exclude electron/generated-pytorch.test.ts --exclude electron/runtime.test.ts",
@@ -62,6 +63,14 @@
       "target": [
         "nsis",
         "zip"
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "artifactName": "LABO-AI-${version}-${arch}-linux.${ext}",
+      "category": "Development",
+      "target": [
+        "AppImage"
       ]
     },
     "nsis": {

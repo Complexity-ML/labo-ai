@@ -31,6 +31,8 @@ jobs:
           test "$(node -p "require('./apps/bootstrap-installer/src-tauri/tauri.conf.json').version")" = "${package_version}"
           grep -q "^version = \"${package_version}\"$" apps/bootstrap-installer/src-tauri/Cargo.toml
       - run: npm run lint
+      - name: Validate bootstrap scripts
+        run: bash -n scripts/install-labo-ai-macos.sh scripts/install-labo-ai-linux.sh
       - name: Run portable unit tests
         run: npm run test:ci
       - run: npm run build
@@ -114,8 +116,45 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  setup-linux:
+    needs: validate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/bootstrap-installer/package-lock.json
+      - name: Install Tauri Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci --prefix apps/bootstrap-installer
+      - name: Build the lightweight Linux x64 Setup AppImage
+        run: npm run build:linux --prefix apps/bootstrap-installer
+      - name: Prepare stable latest-download filename
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          setup_appimage="$(find apps/bootstrap-installer/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f -print -quit)"
+          test -n "${setup_appimage}"
+          cp "${setup_appimage}" release-assets/LABO-AI-Setup-x64.AppImage
+          sha256sum release-assets/LABO-AI-Setup-x64.AppImage > release-assets/LABO-AI-Setup-x64.AppImage.sha256
+          cp scripts/install-labo-ai-linux.sh release-assets/install-labo-ai-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-setup-linux-x64
+          path: |
+            release-assets/LABO-AI-Setup-x64.AppImage
+            release-assets/LABO-AI-Setup-x64.AppImage.sha256
+            release-assets/install-labo-ai-linux.sh
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
-    needs: [setup-macos, setup-windows]
+    needs: [setup-macos, setup-windows, setup-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
