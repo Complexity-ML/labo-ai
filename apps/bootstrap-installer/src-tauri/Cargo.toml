@@ -1,6 +1,6 @@
 [package]
 name = "labo-ai-setup"
-version = "0.1.43"
+version = "0.1.44"
 description = "Source-first installer and updater for LABO AI"
 authors = ["Complexity-ML"]
 license = "Apache-2.0"
