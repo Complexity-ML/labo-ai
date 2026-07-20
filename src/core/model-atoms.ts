@@ -16,7 +16,7 @@ export type ModelAtomCategory =
 
 export interface AtomPort {
   id: string
-  tensor: 'token-ids' | 'image' | 'video' | 'hidden' | 'query' | 'key' | 'value' | 'attention' | 'logits' | 'labels' | 'scalar' | 'routing-logits' | 'expert-indices' | 'routing-weights'
+  tensor: 'token-ids' | 'image' | 'video' | 'audio' | 'hidden' | 'query' | 'key' | 'value' | 'attention' | 'logits' | 'labels' | 'scalar' | 'routing-logits' | 'expert-indices' | 'routing-weights'
   rank?: number
 }
 

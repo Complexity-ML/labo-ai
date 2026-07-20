@@ -127,7 +127,7 @@ export function parsePyTorchDialect(source: string, currentGraph: ArchitectureGr
         continue
       }
       const outputTensor = definition.outputs[0]?.tensor
-      const role = outputTensor === 'query' || outputTensor === 'key' || outputTensor === 'value' || outputTensor === 'image' || outputTensor === 'video' ? outputTensor : outputTensor === 'hidden' ? 'hidden' : 'output'
+      const role = outputTensor === 'query' || outputTensor === 'key' || outputTensor === 'value' || outputTensor === 'image' || outputTensor === 'video' || outputTensor === 'audio' ? outputTensor : outputTensor === 'hidden' ? 'hidden' : 'output'
       graph = addNode(graph, {
         id: block.nodeId,
         kind: 'semantic',

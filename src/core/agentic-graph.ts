@@ -126,6 +126,10 @@ const agentVirtualAtomics: Record<string, AgentVirtualAtomic> = {
     atomId: 'video-tensor-input', label: 'Video Tensor input', inputs: [], outputs: [{ id: 'video', tensor: 'video', rank: 5 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Video Tensor', role: 'video', position }),
   },
+  'audio-waveform-input': {
+    atomId: 'audio-waveform-input', label: 'Audio Waveform input', inputs: [], outputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    createNode: (id, position) => ({ id, kind: 'input', label: 'Audio Waveform', role: 'audio', position }),
+  },
   'training-labels-input': {
     atomId: 'training-labels-input', label: 'Training Labels input', inputs: [], outputs: [{ id: 'labels', tensor: 'labels', rank: 2 }],
     createNode: (id, position) => ({ id, kind: 'input', label: 'Training Labels', role: 'labels', position }),
@@ -221,7 +225,7 @@ export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGra
 
 function roleForDefinition(definition: ModelAtomDefinition): TensorRole {
   const output = definition.outputs[0]?.tensor
-  if (output === 'query' || output === 'key' || output === 'value' || output === 'token-ids' || output === 'image' || output === 'video') return output
+  if (output === 'query' || output === 'key' || output === 'value' || output === 'token-ids' || output === 'image' || output === 'video' || output === 'audio') return output
   if (output === 'logits' || output === 'scalar') return 'output'
   return 'hidden'
 }
@@ -298,13 +302,13 @@ export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: Agent
   for (const block of [...plan.addedBlocks]) {
     const definition = modelAtomRegistry[block.atomId]
     for (const input of definition?.inputs ?? []) {
-      if (!['token-ids', 'labels', 'image', 'video'].includes(input.tensor) || hasIncoming(block.nodeId, input.id)) continue
-      const virtualAtomId = input.tensor === 'token-ids' ? 'token-ids-input' : input.tensor === 'labels' ? 'training-labels-input' : input.tensor === 'image' ? 'image-tensor-input' : 'video-tensor-input'
+      if (!['token-ids', 'labels', 'image', 'video', 'audio'].includes(input.tensor) || hasIncoming(block.nodeId, input.id)) continue
+      const virtualAtomId = input.tensor === 'token-ids' ? 'token-ids-input' : input.tensor === 'labels' ? 'training-labels-input' : input.tensor === 'image' ? 'image-tensor-input' : input.tensor === 'video' ? 'video-tensor-input' : 'audio-waveform-input'
       let source = plan.addedBlocks.find((candidate) => candidate.atomId === virtualAtomId)
       if (!source && capacity()) {
         source = {
           atomId: virtualAtomId,
-          nodeId: uniqueAgentNodeId(graph, plan, input.tensor === 'token-ids' ? 'agent-token-ids' : input.tensor === 'labels' ? 'agent-training-labels' : input.tensor === 'image' ? 'agent-image' : 'agent-video'),
+          nodeId: uniqueAgentNodeId(graph, plan, input.tensor === 'token-ids' ? 'agent-token-ids' : input.tensor === 'labels' ? 'agent-training-labels' : input.tensor === 'image' ? 'agent-image' : input.tensor === 'video' ? 'agent-video' : 'agent-audio'),
           reason: `LABO repaired the missing ${input.tensor} graph source locally.`,
         }
         plan.addedBlocks.push(source)

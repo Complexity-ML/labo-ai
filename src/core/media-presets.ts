@@ -177,3 +177,51 @@ export const videoVqTokenizerPreset: ArchitectureGraph = {
     { id: 'codebook-reconstruct', source: 'video-codebook', sourcePort: 'output', target: 'video-reconstruct', targetPort: 'hidden' },
   ],
 }
+
+export const audioEncoderPreset: ArchitectureGraph = {
+  id: 'audio-encoder',
+  name: 'Audio encoder',
+  architecture: 'custom',
+  config: { hiddenSize: 512, queryHeads: 8, keyValueHeads: 8, headDim: 64 },
+  contracts: { causal: false, preservesGqaAtZeroGate: false, sdpaCompatible: false, contextualValue: true },
+  nodes: [
+    { id: 'audio-input', kind: 'input', label: 'Audio Waveform', role: 'audio', position: { x: 180, y: 35 } },
+    { id: 'audio-normalize', kind: 'semantic', atomId: 'audio-waveform-normalization', label: 'Normalize waveform', role: 'audio', position: { x: 180, y: 155 }, attributes: { epsilon: 1e-6 } },
+    { id: 'audio-preemphasis', kind: 'semantic', atomId: 'audio-preemphasis', label: 'Audio pre-emphasis', role: 'audio', position: { x: 180, y: 275 }, attributes: { coefficient: 0.97 } },
+    { id: 'audio-frames', kind: 'semantic', atomId: 'audio-frame-embedding', label: 'Audio frame embedding', role: 'hidden', position: { x: 180, y: 395 }, attributes: { inputChannels: 1, frameSize: 400, hopSize: 160, bias: true } },
+    { id: 'audio-positions', kind: 'semantic', atomId: 'audio-position-embedding', label: 'Audio positions', role: 'hidden', position: { x: 180, y: 515 }, attributes: { maxFrames: 2048, initialScale: 0.02 } },
+    { id: 'audio-temporal', kind: 'semantic', atomId: 'audio-temporal-convolution', label: 'Temporal audio mixing', role: 'hidden', position: { x: 180, y: 635 }, attributes: { kernelSize: 5 } },
+    { id: 'audio-project', kind: 'semantic', atomId: 'audio-feature-projector', label: 'Audio feature projector', role: 'hidden', position: { x: 180, y: 755 }, attributes: { bias: true } },
+    { id: 'audio-head', kind: 'semantic', atomId: 'audio-ctc-head', label: 'Audio CTC head', role: 'output', position: { x: 180, y: 875 }, attributes: { vocabSize: 1024, bias: true } },
+  ],
+  edges: [
+    { id: 'audio-normalization', source: 'audio-input', sourcePort: 'audio', target: 'audio-normalize', targetPort: 'audio' },
+    { id: 'audio-emphasis', source: 'audio-normalize', sourcePort: 'audio', target: 'audio-preemphasis', targetPort: 'audio' },
+    { id: 'audio-embedding', source: 'audio-preemphasis', sourcePort: 'audio', target: 'audio-frames', targetPort: 'audio' },
+    { id: 'audio-positioning', source: 'audio-frames', sourcePort: 'output', target: 'audio-positions', targetPort: 'hidden' },
+    { id: 'audio-mixing', source: 'audio-positions', sourcePort: 'output', target: 'audio-temporal', targetPort: 'hidden' },
+    { id: 'audio-projection', source: 'audio-temporal', sourcePort: 'output', target: 'audio-project', targetPort: 'hidden' },
+    { id: 'audio-logits', source: 'audio-project', sourcePort: 'output', target: 'audio-head', targetPort: 'hidden' },
+  ],
+}
+
+export const audioVqTokenizerPreset: ArchitectureGraph = {
+  id: 'audio-vq-tokenizer',
+  name: 'Audio VQ tokenizer',
+  architecture: 'custom',
+  config: { hiddenSize: 256, queryHeads: 4, keyValueHeads: 4, headDim: 64 },
+  contracts: { causal: false, preservesGqaAtZeroGate: false, sdpaCompatible: false, contextualValue: false },
+  nodes: [
+    { id: 'audio-input', kind: 'input', label: 'Audio Waveform', role: 'audio', position: { x: 180, y: 35 } },
+    { id: 'audio-normalize', kind: 'semantic', atomId: 'audio-waveform-normalization', label: 'Normalize waveform', role: 'audio', position: { x: 180, y: 155 }, attributes: { epsilon: 1e-6 } },
+    { id: 'audio-tokenize', kind: 'semantic', atomId: 'audio-vq-tokenizer', label: 'VQ audio tokenizer', role: 'token-ids', position: { x: 180, y: 275 }, attributes: { inputChannels: 1, frameSize: 400, hopSize: 160, codebookSize: 1024, initialScale: 0.02 } },
+    { id: 'audio-codebook', kind: 'semantic', atomId: 'audio-codebook-embedding', label: 'Audio codebook embedding', role: 'hidden', position: { x: 180, y: 395 }, attributes: { codebookSize: 1024 } },
+    { id: 'audio-reconstruct', kind: 'semantic', atomId: 'audio-token-decoder', label: 'Reconstruct waveform', role: 'audio', position: { x: 180, y: 515 }, attributes: { outputChannels: 1, frameSize: 400, hopSize: 160, bias: true } },
+  ],
+  edges: [
+    { id: 'audio-normalize-edge', source: 'audio-input', sourcePort: 'audio', target: 'audio-normalize', targetPort: 'audio' },
+    { id: 'normalize-tokenize', source: 'audio-normalize', sourcePort: 'audio', target: 'audio-tokenize', targetPort: 'audio' },
+    { id: 'tokens-codebook', source: 'audio-tokenize', sourcePort: 'tokenIds', target: 'audio-codebook', targetPort: 'tokenIds' },
+    { id: 'codebook-reconstruct', source: 'audio-codebook', sourcePort: 'output', target: 'audio-reconstruct', targetPort: 'hidden' },
+  ],
+}

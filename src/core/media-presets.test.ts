@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { compileToPyTorch, validateGraph } from './ir'
-import { imageVqTokenizerPreset, multimodalImageEditorPreset, videoTransformerPreset, videoVqTokenizerPreset, visionTransformerPreset } from './media-presets'
+import { audioEncoderPreset, audioVqTokenizerPreset, imageVqTokenizerPreset, multimodalImageEditorPreset, videoTransformerPreset, videoVqTokenizerPreset, visionTransformerPreset } from './media-presets'
 import { modelAtomRegistry } from './model-atoms'
 
-const mediaPresets = [visionTransformerPreset, multimodalImageEditorPreset, videoTransformerPreset, imageVqTokenizerPreset, videoVqTokenizerPreset]
+const mediaPresets = [visionTransformerPreset, multimodalImageEditorPreset, videoTransformerPreset, audioEncoderPreset, imageVqTokenizerPreset, videoVqTokenizerPreset, audioVqTokenizerPreset]
 
 describe('executable media presets', () => {
   it.each(mediaPresets.map((preset) => [preset.name, preset] as const))('%s validates and compiles to PyTorch', (_name, preset) => {
@@ -13,8 +13,8 @@ describe('executable media presets', () => {
     expect(code).toContain('# labo:node=')
   })
 
-  it('uses explicit image, video and multimodal atomic capabilities', () => {
-    for (const atomId of ['vision-patch-projection', 'modality-type-embedding', 'adaptive-conditioning', 'temporal-depthwise-convolution', 'latent-denoiser', 'image-latent-decoder', 'video-latent-decoder']) {
+  it('uses explicit image, video, audio and multimodal atomic capabilities', () => {
+    for (const atomId of ['vision-patch-projection', 'modality-type-embedding', 'adaptive-conditioning', 'temporal-depthwise-convolution', 'audio-temporal-convolution', 'audio-ctc-head', 'latent-denoiser', 'image-latent-decoder', 'video-latent-decoder']) {
       expect(modelAtomRegistry[atomId]).toMatchObject({ id: atomId, category: 'media', lowerings: { pytorch: { executable: true } } })
     }
   })
@@ -38,6 +38,13 @@ describe('executable media presets', () => {
       'video-vq-tokenizer',
       'video-codebook-embedding',
       'video-token-decoder',
+      'audio-waveform-normalization',
+      'audio-preemphasis',
+      'audio-resample',
+      'audio-frame-embedding',
+      'audio-vq-tokenizer',
+      'audio-codebook-embedding',
+      'audio-token-decoder',
       // Image and video token processing.
       'spatial-position-embedding',
       'vision-class-token',

@@ -303,7 +303,39 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
             patch_size = int(settings.get("patchSize", 16))
             tubelets = nn.Conv3d(int(settings.get("inputChannels", 3)), hidden_size, kernel_size=(tubelet_size, patch_size, patch_size), stride=(tubelet_size, patch_size, patch_size), bias=bool(settings.get("bias", True)))(inputs["video"])
             return {"output": tubelets.flatten(2).transpose(1, 2)}
-        if atom in {"vision-patch-projection", "conditioning-projection", "image-latent-decoder", "video-latent-decoder"}:
+        if atom == "audio-waveform-normalization":
+            require(inputs, "audio")
+            centered = inputs["audio"] - inputs["audio"].mean(dim=-1, keepdim=True)
+            return {"audio": centered / centered.abs().amax(dim=-1, keepdim=True).clamp_min(float(settings.get("epsilon", 1e-6)))}
+        if atom == "audio-preemphasis":
+            require(inputs, "audio")
+            audio = inputs["audio"]
+            coefficient = float(settings.get("coefficient", 0.97))
+            return {"audio": torch.cat((audio[..., :1], audio[..., 1:] - coefficient * audio[..., :-1]), dim=-1)}
+        if atom == "audio-resample":
+            require(inputs, "audio")
+            source_rate = max(1, int(settings.get("sourceRate", 48000)))
+            target_rate = max(1, int(settings.get("targetRate", 16000)))
+            length = max(1, int(inputs["audio"].shape[-1] * target_rate / source_rate))
+            return {"audio": F.interpolate(inputs["audio"], size=length, mode="linear", align_corners=False)}
+        if atom == "audio-frame-embedding":
+            require(inputs, "audio")
+            frames = nn.Conv1d(int(settings.get("inputChannels", 1)), hidden_size, kernel_size=int(settings.get("frameSize", 400)), stride=int(settings.get("hopSize", 160)), bias=bool(settings.get("bias", True)))(inputs["audio"])
+            return {"output": frames.transpose(1, 2)}
+        if atom == "audio-vq-tokenizer":
+            require(inputs, "audio")
+            latents = nn.Conv1d(int(settings.get("inputChannels", 1)), hidden_size, kernel_size=int(settings.get("frameSize", 400)), stride=int(settings.get("hopSize", 160)))(inputs["audio"]).transpose(1, 2)
+            codebook = torch.randn(int(settings.get("codebookSize", 1024)), hidden_size, device=latents.device) * float(settings.get("initialScale", 0.02))
+            distances = latents.pow(2).sum(dim=-1, keepdim=True) + codebook.pow(2).sum(dim=-1) - 2 * torch.matmul(latents, codebook.t())
+            return {"tokenIds": distances.argmin(dim=-1)}
+        if atom == "audio-codebook-embedding":
+            require(inputs, "tokenIds")
+            return {"output": nn.Embedding(int(settings.get("codebookSize", 1024)), hidden_size)(inputs["tokenIds"])}
+        if atom == "audio-token-decoder":
+            require(inputs, "hidden")
+            decoded = nn.ConvTranspose1d(hidden_size, int(settings.get("outputChannels", 1)), kernel_size=int(settings.get("frameSize", 400)), stride=int(settings.get("hopSize", 160)), bias=bool(settings.get("bias", True)))(inputs["hidden"].transpose(1, 2))
+            return {"audio": torch.tanh(decoded)}
+        if atom in {"vision-patch-projection", "conditioning-projection", "image-latent-decoder", "video-latent-decoder", "audio-feature-projector"}:
             require(inputs, "hidden")
             return {"output": nn.Linear(hidden_size, hidden_size, bias=bool(settings.get("bias", True)))(inputs["hidden"])}
         if atom == "modality-type-embedding":
@@ -320,6 +352,21 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
             source = inputs["hidden"].transpose(1, 2)
             output = nn.Conv1d(hidden_size, hidden_size, kernel_size=kernel, padding=kernel // 2, groups=hidden_size)(source)
             return {"output": output.transpose(1, 2)}
+        if atom == "audio-temporal-convolution":
+            require(inputs, "hidden")
+            kernel = int(settings.get("kernelSize", 5))
+            output = nn.Conv1d(hidden_size, hidden_size, kernel_size=kernel, padding=kernel // 2, groups=hidden_size)(inputs["hidden"].transpose(1, 2))
+            return {"output": output.transpose(1, 2)}
+        if atom == "audio-position-embedding":
+            require(inputs, "hidden")
+            positions = torch.randn(1, int(settings.get("maxFrames", 2048)), hidden_size, device=inputs["hidden"].device) * float(settings.get("initialScale", 0.02))
+            return {"output": inputs["hidden"] + positions[:, :inputs["hidden"].shape[1]]}
+        if atom == "audio-mean-pooling":
+            require(inputs, "hidden")
+            return {"output": inputs["hidden"].mean(dim=1, keepdim=True)}
+        if atom == "audio-ctc-head":
+            require(inputs, "hidden")
+            return {"logits": nn.Linear(hidden_size, int(settings.get("vocabSize", 1024)), bias=bool(settings.get("bias", True)))(inputs["hidden"])}
         if atom == "latent-denoiser":
             require(inputs, "hidden")
             source = inputs["hidden"]
@@ -587,6 +634,8 @@ def run_model(graph: dict[str, Any], supplied_token_ids: list[int] | None = None
                     value = torch.randn(2, 3, 32, 64)
                 elif node.get("role") == "video":
                     value = torch.randn(2, 3, 4, 32, 32)
+                elif node.get("role") == "audio":
+                    value = torch.randn(2, 1, 3200)
                 elif token_input:
                     value = token_tensor if token_tensor is not None else torch.randint(0, 64, (2, 8))
                 elif labels_input:

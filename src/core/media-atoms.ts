@@ -50,7 +50,7 @@ const twoHiddenInputs: AtomPort[] = [
 ]
 
 /**
- * Executable image, video and multimodal atoms.
+ * Executable image, video, audio and multimodal atoms.
  *
  * LABO represents media as rank-3 token sequences [batch, tokens, channels].
  * Raw pixels/frames are patchified before entering the graph; every atom below
@@ -223,6 +223,131 @@ export const mediaAtomRegistry: Record<string, ModelAtomDefinition> = {
         '{{module}}_tokens = {{in:hidden}}[:, :{{module}}_count].transpose(1, 2).reshape({{in:hidden}}.shape[0], {{hiddenSize}}, {{module}}_time, {{module}}_grid, {{module}}_grid)',
         '{{out:video}} = self.{{module}}({{module}}_tokens)',
       ],
+    ),
+  },
+  'audio-waveform-normalization': {
+    id: 'audio-waveform-normalization',
+    label: 'Audio waveform normalization',
+    category: 'media',
+    inputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    outputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    settings: [{ id: 'epsilon', type: 'number', default: 1e-6 }],
+    lowerings: lowering([], [
+      '{{module}}_centered = {{in:audio}} - {{in:audio}}.mean(dim=-1, keepdim=True)',
+      '{{out:audio}} = {{module}}_centered / {{module}}_centered.abs().amax(dim=-1, keepdim=True).clamp_min({{epsilon}})',
+    ]),
+  },
+  'audio-preemphasis': {
+    id: 'audio-preemphasis',
+    label: 'Audio pre-emphasis',
+    category: 'media',
+    inputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    outputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    settings: [{ id: 'coefficient', type: 'number', default: 0.97 }],
+    lowerings: lowering([], [
+      '{{out:audio}} = torch.cat(({{in:audio}}[..., :1], {{in:audio}}[..., 1:] - {{coefficient}} * {{in:audio}}[..., :-1]), dim=-1)',
+    ]),
+  },
+  'audio-resample': {
+    id: 'audio-resample',
+    label: 'Audio linear resample',
+    category: 'media',
+    inputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    outputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    settings: [{ id: 'sourceRate', type: 'number', default: 48000 }, { id: 'targetRate', type: 'number', default: 16000 }],
+    lowerings: lowering([], [
+      '{{module}}_length = max(1, int({{in:audio}}.shape[-1] * {{targetRate}} / max({{sourceRate}}, 1)))',
+      "{{out:audio}} = F.interpolate({{in:audio}}, size={{module}}_length, mode='linear', align_corners=False)",
+    ]),
+  },
+  'audio-frame-embedding': {
+    id: 'audio-frame-embedding',
+    label: 'Audio frame embedding',
+    category: 'media',
+    inputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    outputs: [hiddenOutput],
+    settings: [{ id: 'inputChannels', type: 'number', default: 1 }, { id: 'frameSize', type: 'number', default: 400 }, { id: 'hopSize', type: 'number', default: 160 }, { id: 'bias', type: 'boolean', default: true }],
+    lowerings: lowering(
+      ['self.{{module}} = nn.Conv1d({{inputChannels}}, {{hiddenSize}}, kernel_size={{frameSize}}, stride={{hopSize}}, bias={{bias}})'],
+      ['{{out:output}} = self.{{module}}({{in:audio}}).transpose(1, 2)'],
+    ),
+  },
+  'audio-vq-tokenizer': {
+    id: 'audio-vq-tokenizer',
+    label: 'Audio VQ tokenizer',
+    category: 'media',
+    inputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    outputs: [{ id: 'tokenIds', tensor: 'token-ids', rank: 2 }],
+    settings: [{ id: 'inputChannels', type: 'number', default: 1 }, { id: 'frameSize', type: 'number', default: 400 }, { id: 'hopSize', type: 'number', default: 160 }, { id: 'codebookSize', type: 'number', default: 1024 }, { id: 'initialScale', type: 'number', default: 0.02 }],
+    lowerings: lowering(
+      ['self.{{module}}_encoder = nn.Conv1d({{inputChannels}}, {{hiddenSize}}, kernel_size={{frameSize}}, stride={{hopSize}})', 'self.{{module}}_codebook = nn.Parameter(torch.randn({{codebookSize}}, {{hiddenSize}}) * {{initialScale}})'],
+      [
+        '{{module}}_latents = self.{{module}}_encoder({{in:audio}}).transpose(1, 2)',
+        '{{module}}_distances = {{module}}_latents.pow(2).sum(dim=-1, keepdim=True) + self.{{module}}_codebook.pow(2).sum(dim=-1) - 2 * torch.matmul({{module}}_latents, self.{{module}}_codebook.t())',
+        '{{out:tokenIds}} = {{module}}_distances.argmin(dim=-1)',
+      ],
+    ),
+  },
+  'audio-codebook-embedding': {
+    id: 'audio-codebook-embedding',
+    label: 'Audio codebook embedding',
+    category: 'media',
+    inputs: [{ id: 'tokenIds', tensor: 'token-ids', rank: 2 }],
+    outputs: [hiddenOutput],
+    settings: [{ id: 'codebookSize', type: 'number', default: 1024 }],
+    lowerings: lowering(
+      ['self.{{module}} = nn.Embedding({{codebookSize}}, {{hiddenSize}})'],
+      ['{{out:output}} = self.{{module}}({{in:tokenIds}})'],
+    ),
+  },
+  'audio-token-decoder': {
+    id: 'audio-token-decoder',
+    label: 'Audio token decoder',
+    category: 'media',
+    inputs: [hiddenInput],
+    outputs: [{ id: 'audio', tensor: 'audio', rank: 3 }],
+    settings: [{ id: 'outputChannels', type: 'number', default: 1 }, { id: 'frameSize', type: 'number', default: 400 }, { id: 'hopSize', type: 'number', default: 160 }, { id: 'bias', type: 'boolean', default: true }],
+    lowerings: lowering(
+      ['self.{{module}} = nn.ConvTranspose1d({{hiddenSize}}, {{outputChannels}}, kernel_size={{frameSize}}, stride={{hopSize}}, bias={{bias}})'],
+      ['{{out:audio}} = torch.tanh(self.{{module}}({{in:hidden}}.transpose(1, 2)))'],
+    ),
+  },
+  'audio-feature-projector': linearMediaAtom('audio-feature-projector', 'Audio feature projector'),
+  'audio-temporal-convolution': {
+    id: 'audio-temporal-convolution',
+    label: 'Audio temporal convolution',
+    category: 'media',
+    inputs: [hiddenInput],
+    outputs: [hiddenOutput],
+    settings: [{ id: 'kernelSize', type: 'number', default: 5 }],
+    lowerings: lowering(
+      ['self.{{module}} = nn.Conv1d({{hiddenSize}}, {{hiddenSize}}, kernel_size={{kernelSize}}, padding={{kernelSize}} // 2, groups={{hiddenSize}})'],
+      ['{{out:output}} = self.{{module}}({{in:hidden}}.transpose(1, 2)).transpose(1, 2)'],
+    ),
+  },
+  'audio-position-embedding': {
+    id: 'audio-position-embedding',
+    label: 'Learned audio positions',
+    category: 'media',
+    inputs: [hiddenInput],
+    outputs: [hiddenOutput],
+    settings: [{ id: 'maxFrames', type: 'number', default: 2048 }, { id: 'initialScale', type: 'number', default: 0.02 }],
+    lowerings: lowering(
+      ['self.{{module}} = nn.Parameter(torch.randn(1, {{maxFrames}}, {{hiddenSize}}) * {{initialScale}})'],
+      ['{{out:output}} = {{in:hidden}} + self.{{module}}[:, :{{in:hidden}}.shape[1]]'],
+    ),
+  },
+  'audio-mean-pooling': unaryMediaAtom('audio-mean-pooling', 'Audio mean pooling', '{{in:hidden}}.mean(dim=1, keepdim=True)'),
+  'audio-ctc-head': {
+    id: 'audio-ctc-head',
+    label: 'Audio CTC vocabulary head',
+    category: 'media',
+    inputs: [hiddenInput],
+    outputs: [{ id: 'logits', tensor: 'logits', rank: 3 }],
+    settings: [{ id: 'vocabSize', type: 'number', default: 1024 }, { id: 'bias', type: 'boolean', default: true }],
+    lowerings: lowering(
+      ['self.{{module}} = nn.Linear({{hiddenSize}}, {{vocabSize}}, bias={{bias}})'],
+      ['{{out:logits}} = self.{{module}}({{in:hidden}})'],
     ),
   },
 

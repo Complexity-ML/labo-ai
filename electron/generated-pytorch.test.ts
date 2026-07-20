@@ -13,6 +13,7 @@ function runtimeInput(atomId: string, port: AtomPort): string {
   if (atomId === 'media-token-selector' && port.id === 'indices') return 'torch.randint(0, 2, (1, 2))'
   if (port.tensor === 'image') return 'torch.randn(1, 3, 32, 32)'
   if (port.tensor === 'video') return 'torch.randn(1, 3, 4, 32, 32)'
+  if (port.tensor === 'audio') return 'torch.randn(1, 1, 3200)'
   if (port.tensor === 'token-ids') return 'torch.randint(0, 64, (1, 2))'
   if (port.tensor === 'labels') return 'torch.randint(0, 32, (1, 2))'
   if (port.tensor === 'logits') return 'torch.randn(1, 2, 32)'

@@ -56,6 +56,7 @@ async function executeTokenizerIrAtom(step: TokenizerStep): Promise<{ summary: s
   }
   if (step.atom.includes('image')) return { summary: `${tokenizerAtomMetadata[step.atom].label} contract ready for [B, C, H, W] images` }
   if (step.atom.includes('video')) return { summary: `${tokenizerAtomMetadata[step.atom].label} contract ready for [B, C, T, H, W] videos` }
+  if (step.atom.includes('audio')) return { summary: `${tokenizerAtomMetadata[step.atom].label} contract ready for [B, C, samples] waveforms` }
   if (step.atom === 'custom-tokenizer') {
     return { summary: `Custom tokenizer card ready: ${String(step.settings.label)}` }
   }
@@ -80,7 +81,7 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
   const playerRef = useRef<AtomicPlayer | null>(null)
   const code = useMemo(() => compileTokenizer(pipeline), [pipeline])
   const selected = pipeline.steps.find((step) => step.id === selectedId) ?? pipeline.steps[0]
-  const vocabularyStep = pipeline.steps.find((step) => step.atom === 'bpe-trainer' || step.atom === 'tiktoken-encoding' || step.atom === 'image-vq-encode' || step.atom === 'video-vq-encode' || step.atom === 'image-codebook-embedding' || step.atom === 'video-codebook-embedding')
+  const vocabularyStep = pipeline.steps.find((step) => step.atom === 'bpe-trainer' || step.atom === 'tiktoken-encoding' || step.atom === 'image-vq-encode' || step.atom === 'video-vq-encode' || step.atom === 'audio-vq-encode' || step.atom === 'image-codebook-embedding' || step.atom === 'video-codebook-embedding' || step.atom === 'audio-codebook-embedding')
   const vocabSize = Number(vocabularyStep?.settings.vocabSize ?? vocabularyStep?.settings.codebookSize ?? 0)
 
   useEffect(() => {

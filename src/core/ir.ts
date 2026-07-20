@@ -16,7 +16,7 @@ export type NodeKind =
   | 'custom-pytorch'
   | 'semantic'
 
-export type TensorRole = 'token-ids' | 'image' | 'video' | 'hidden' | 'query' | 'key' | 'value' | 'attention' | 'output' | 'logits' | 'labels' | 'scalar' | 'routing-logits' | 'expert-indices' | 'routing-weights'
+export type TensorRole = 'token-ids' | 'image' | 'video' | 'audio' | 'hidden' | 'query' | 'key' | 'value' | 'attention' | 'output' | 'logits' | 'labels' | 'scalar' | 'routing-logits' | 'expert-indices' | 'routing-weights'
 
 export interface ArchitectureNode {
   id: string

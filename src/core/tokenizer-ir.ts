@@ -13,9 +13,13 @@ export type TokenizerAtomKind =
   | 'video-vq-encode'
   | 'video-codebook-embedding'
   | 'video-vq-decode'
+  | 'audio-normalize'
+  | 'audio-vq-encode'
+  | 'audio-codebook-embedding'
+  | 'audio-vq-decode'
   | 'custom-tokenizer'
 
-export type TokenizerLinkKind = 'text' | 'pieces' | 'vocabulary' | 'token-ids' | 'image' | 'video' | 'hidden'
+export type TokenizerLinkKind = 'text' | 'pieces' | 'vocabulary' | 'token-ids' | 'image' | 'video' | 'audio' | 'hidden'
 export type TokenizerSetting = string | number | boolean | string[]
 
 export interface TokenizerStep {
@@ -57,6 +61,10 @@ export const tokenizerAtomDefinitions: Record<TokenizerAtomKind, { label: string
   'video-vq-encode': { label: 'Video VQ encoder', category: 'Video tokenization', defaultSettings: { inputChannels: 3, hiddenSize: 256, tubeletSize: 2, patchSize: 16, codebookSize: 1024 } },
   'video-codebook-embedding': { label: 'Video codebook embedding', category: 'Video embedding', defaultSettings: { codebookSize: 1024, hiddenSize: 256 } },
   'video-vq-decode': { label: 'Video token decoder', category: 'Video decoding', defaultSettings: { hiddenSize: 256, outputChannels: 3, tubeletSize: 2, patchSize: 16 } },
+  'audio-normalize': { label: 'Audio waveform normalization', category: 'Audio input', defaultSettings: { epsilon: 1e-6 } },
+  'audio-vq-encode': { label: 'Audio VQ encoder', category: 'Audio tokenization', defaultSettings: { inputChannels: 1, hiddenSize: 256, frameSize: 400, hopSize: 160, codebookSize: 1024 } },
+  'audio-codebook-embedding': { label: 'Audio codebook embedding', category: 'Audio embedding', defaultSettings: { codebookSize: 1024, hiddenSize: 256 } },
+  'audio-vq-decode': { label: 'Audio token decoder', category: 'Audio decoding', defaultSettings: { hiddenSize: 256, outputChannels: 1, frameSize: 400, hopSize: 160 } },
   'custom-tokenizer': { label: 'Custom tokenizer card', category: 'Custom', defaultSettings: { label: 'Custom tokenizer card', category: 'Custom', pythonCode: '# Python tokenizer transform' } },
 }
 
@@ -98,6 +106,10 @@ const atomLowerings: Record<TokenizerAtomKind, AtomLowering> = {
   'video-vq-encode': { python: () => ['token_ids, spatiotemporal_shape = tokenizer.encode(video)'] },
   'video-codebook-embedding': { python: () => ['video_embeddings = tokenizer.embed(token_ids)'] },
   'video-vq-decode': { python: () => ['reconstruction = tokenizer.decode(token_ids, spatiotemporal_shape)'] },
+  'audio-normalize': { python: () => ['audio = audio - audio.mean(dim=-1, keepdim=True)', 'audio = audio / audio.abs().amax(dim=-1, keepdim=True).clamp_min(1e-6)'] },
+  'audio-vq-encode': { python: () => ['token_ids, frame_count = tokenizer.encode(audio)'] },
+  'audio-codebook-embedding': { python: () => ['audio_embeddings = tokenizer.embed(token_ids)'] },
+  'audio-vq-decode': { python: () => ['reconstruction = tokenizer.decode(token_ids, frame_count)'] },
   'custom-tokenizer': {
     python: (step) => String(step.settings.pythonCode).split('\n'),
   },
@@ -105,6 +117,7 @@ const atomLowerings: Record<TokenizerAtomKind, AtomLowering> = {
 
 const imageTokenizerAtoms: TokenizerAtomKind[] = ['image-normalize', 'image-vq-encode', 'image-codebook-embedding', 'image-vq-decode']
 const videoTokenizerAtoms: TokenizerAtomKind[] = ['video-normalize', 'video-vq-encode', 'video-codebook-embedding', 'video-vq-decode']
+const audioTokenizerAtoms: TokenizerAtomKind[] = ['audio-normalize', 'audio-vq-encode', 'audio-codebook-embedding', 'audio-vq-decode']
 
 function compileImageTokenizer(pipeline: TokenizerPipeline): string {
   const normalization = pipeline.steps.find((step) => step.atom === 'image-normalize')?.settings ?? tokenizerAtomDefinitions['image-normalize'].defaultSettings
@@ -192,6 +205,49 @@ function compileVideoTokenizer(pipeline: TokenizerPipeline): string {
   ].join('\n')
 }
 
+function compileAudioTokenizer(pipeline: TokenizerPipeline): string {
+  const normalization = pipeline.steps.find((step) => step.atom === 'audio-normalize')?.settings ?? tokenizerAtomDefinitions['audio-normalize'].defaultSettings
+  const encoder = pipeline.steps.find((step) => step.atom === 'audio-vq-encode')?.settings ?? tokenizerAtomDefinitions['audio-vq-encode'].defaultSettings
+  const embedding = pipeline.steps.find((step) => step.atom === 'audio-codebook-embedding')?.settings ?? tokenizerAtomDefinitions['audio-codebook-embedding'].defaultSettings
+  const decoder = pipeline.steps.find((step) => step.atom === 'audio-vq-decode')?.settings ?? tokenizerAtomDefinitions['audio-vq-decode'].defaultSettings
+  return [
+    'import torch',
+    'import torch.nn as nn',
+    '',
+    'class AudioVQTokenizer(nn.Module):',
+    '    def __init__(self):',
+    '        super().__init__()',
+    `        self.epsilon = ${normalization.epsilon}`,
+    `        self.encoder = nn.Conv1d(${encoder.inputChannels}, ${encoder.hiddenSize}, kernel_size=${encoder.frameSize}, stride=${encoder.hopSize})`,
+    `        self.codebook = nn.Embedding(${embedding.codebookSize}, ${embedding.hiddenSize})`,
+    `        self.decoder = nn.ConvTranspose1d(${decoder.hiddenSize}, ${decoder.outputChannels}, kernel_size=${decoder.frameSize}, stride=${decoder.hopSize})`,
+    '',
+    '    def normalize(self, audio):',
+    '        centered = audio - audio.mean(dim=-1, keepdim=True)',
+    '        return centered / centered.abs().amax(dim=-1, keepdim=True).clamp_min(self.epsilon)',
+    '',
+    '    def encode(self, audio):',
+    '        latents = self.encoder(self.normalize(audio)).transpose(1, 2)',
+    '        codebook = self.codebook.weight',
+    '        distances = latents.pow(2).sum(-1, keepdim=True) + codebook.pow(2).sum(-1) - 2 * latents @ codebook.t()',
+    '        return distances.argmin(-1), latents.shape[1]',
+    '',
+    '    def embed(self, token_ids):',
+    '        return self.codebook(token_ids)',
+    '',
+    '    def decode(self, token_ids, frame_count):',
+    '        latents = self.embed(token_ids[:, :frame_count]).transpose(1, 2)',
+    '        return torch.tanh(self.decoder(latents))',
+    '',
+    '    def forward(self, audio):',
+    '        token_ids, frame_count = self.encode(audio)',
+    '        return self.decode(token_ids, frame_count), token_ids',
+    '',
+    'tokenizer = AudioVQTokenizer()',
+    '',
+  ].join('\n')
+}
+
 export function createTokenizerPipeline(input: TokenizerPipeline): TokenizerPipeline {
   return {
     ...input,
@@ -261,6 +317,7 @@ export function compileTokenizer(pipeline: TokenizerPipeline): string {
 
   if (pipeline.steps.some((step) => imageTokenizerAtoms.includes(step.atom))) return compileImageTokenizer(pipeline)
   if (pipeline.steps.some((step) => videoTokenizerAtoms.includes(step.atom))) return compileVideoTokenizer(pipeline)
+  if (pipeline.steps.some((step) => audioTokenizerAtoms.includes(step.atom))) return compileAudioTokenizer(pipeline)
 
   const tiktokenStep = pipeline.steps.find((step) => step.atom === 'tiktoken-encoding')
   if (tiktokenStep) {

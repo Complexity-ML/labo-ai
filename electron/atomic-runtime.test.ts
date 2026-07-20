@@ -6,7 +6,7 @@ import { resolveAtomicRuntimePaths, runAtomicRuntime } from './atomic-runtime'
 import { gptLikeStarterPreset, gqaPreset, tokenMoePreset, trBasicPreset } from '../src/core/presets'
 import { activationAtomRegistry } from '../src/core/activation-atoms'
 import type { ArchitectureGraph } from '../src/core/ir'
-import { multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../src/core/media-presets'
+import { audioEncoderPreset, multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../src/core/media-presets'
 
 describe('Electron atomic runtime bridge', () => {
   it('resolves the development venv and runner outside Electron archives', () => {
@@ -77,16 +77,17 @@ describe('Electron atomic runtime bridge', () => {
   })
 
   it.each([
-    ['vision', visionTransformerPreset],
-    ['multimodal image editing', multimodalImageEditorPreset],
-    ['video', videoTransformerPreset],
-  ] as const)('runs the %s starter through PyTorch', async (_name, graph) => {
+    ['vision', visionTransformerPreset, [2, 8, 512]],
+    ['multimodal image editing', multimodalImageEditorPreset, [2, 8, 512]],
+    ['video', videoTransformerPreset, [2, 8, 512]],
+    ['audio', audioEncoderPreset, [2, 18, 1024]],
+  ] as const)('runs the %s starter through PyTorch', async (_name, graph, expectedShape) => {
     const trace = await runAtomicRuntime({ kind: 'model', graph })
 
     expect(trace.status).toBe('completed')
     expect(trace.results).toHaveLength(graph.nodes.length)
     expect(trace.results.at(-1)).toMatchObject({ status: 'passed' })
-    expect(trace.modelOutput).toMatchObject({ kind: 'tensor', tensorShape: [2, 8, 512] })
+    expect(trace.modelOutput).toMatchObject({ kind: 'tensor', tensorShape: expectedShape })
   })
 
   it('automatically matches grouped-query KV heads at SDPA', async () => {

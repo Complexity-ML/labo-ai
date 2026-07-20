@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addTokenizerStep, compileTokenizer, createTokenizerPipeline, removeTokenizerStep, tokenizerAtomDefinitions, updateTokenizerStepSettings, validateTokenizerPipeline } from './tokenizer-ir'
-import { o200kBasePreset } from './tokenizer-presets'
+import { audioVqPreset, o200kBasePreset } from './tokenizer-presets'
 
 const pipeline = createTokenizerPipeline({
   id: 'research-bpe',
@@ -47,7 +47,7 @@ describe('atomic Tokenizer IR', () => {
     for (const step of pipeline.steps) empty = removeTokenizerStep(empty, step.id)
 
     expect(empty.steps).toEqual([])
-    expect(Object.keys(tokenizerAtomDefinitions)).toHaveLength(15)
+    expect(Object.keys(tokenizerAtomDefinitions)).toHaveLength(19)
     const rebuilt = addTokenizerStep(empty, 'bpe-model')
     expect(rebuilt.steps).toEqual([
       { id: 'bpe-model-1', atom: 'bpe-model', settings: { unkToken: '<unk>' } },
@@ -62,6 +62,16 @@ describe('atomic Tokenizer IR', () => {
     expect(o200kBasePreset.steps[0].settings.vocabSize).toBe(200019)
     expect(python).toContain('tiktoken.get_encoding("o200k_base")')
     expect(python).not.toContain('tokenizer.train')
+  })
+
+  it('compiles the audio tokenizer preset to an executable waveform codec', () => {
+    const python = compileTokenizer(audioVqPreset)
+
+    expect(validateTokenizerPipeline(audioVqPreset)).toEqual({ valid: true, errors: [] })
+    expect(python).toContain('class AudioVQTokenizer(nn.Module):')
+    expect(python).toContain('nn.Conv1d(')
+    expect(python).toContain('nn.Embedding(')
+    expect(python).toContain('nn.ConvTranspose1d(')
   })
 
   it('lowers a user-created tokenizer card to Python', () => {

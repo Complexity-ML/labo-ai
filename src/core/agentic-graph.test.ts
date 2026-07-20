@@ -29,11 +29,11 @@ describe('agentic graph wiring', () => {
     expect(context.availableAtomics.find((atomic) => atomic.atomId === 'lm-head')?.settings).toContainEqual(expect.objectContaining({ id: 'tieEmbeddingWeights', default: true }))
   })
 
-  it('exposes raw image, raw video, and media cards to the agent', () => {
+  it('exposes raw image, video, audio, and media cards to the agent', () => {
     const context = createAgentGraphContext(tokenMoePreset)
     const ids = new Set(context.availableAtomics.map((atomic) => atomic.atomId))
 
-    for (const atomId of ['image-tensor-input', 'video-tensor-input', 'image-channel-normalization', 'image-patch-embedding', 'video-channel-normalization', 'video-tubelet-embedding']) {
+    for (const atomId of ['image-tensor-input', 'video-tensor-input', 'audio-waveform-input', 'image-channel-normalization', 'image-patch-embedding', 'video-channel-normalization', 'video-tubelet-embedding', 'audio-waveform-normalization', 'audio-frame-embedding']) {
       expect(ids.has(atomId), `missing ${atomId} from agent catalog`).toBe(true)
     }
   })

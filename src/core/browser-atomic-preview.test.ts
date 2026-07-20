@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { previewModelAtom } from './browser-atomic-preview'
-import { videoTransformerPreset, visionTransformerPreset } from './media-presets'
+import { audioEncoderPreset, videoTransformerPreset, visionTransformerPreset } from './media-presets'
 
 describe('browser atomic graph preview', () => {
   it('previews raw image inputs and image patch embeddings', async () => {
@@ -18,6 +18,15 @@ describe('browser atomic graph preview', () => {
     })
     await expect(previewModelAtom(videoTransformerPreset, 'video-spatial')).resolves.toEqual({
       summary: 'Graph preview · Video tubelet embedding → hidden · rank 3',
+    })
+  })
+
+  it('previews raw audio inputs and frame embeddings', async () => {
+    await expect(previewModelAtom(audioEncoderPreset, 'audio-input')).resolves.toEqual({
+      summary: 'Graph preview · Audio Waveform → audio · rank 3',
+    })
+    await expect(previewModelAtom(audioEncoderPreset, 'audio-frames')).resolves.toEqual({
+      summary: 'Graph preview · Audio frame embedding → hidden · rank 3',
     })
   })
 

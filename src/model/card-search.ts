@@ -24,7 +24,7 @@ const intentAliases: Record<string, string[]> = {
   activation: ['relu', 'gelu', 'silu', 'swish', 'activation', 'nonlineaire'],
   position: ['position', 'positionnel', 'rope', 'rotary', 'sinusoidal'],
   output: ['sortie', 'logits', 'prediction', 'predire', 'vocabulaire'],
-  media: ['image', 'vision', 'video', 'frame', 'multimodal', 'patch', 'latent', 'diffusion', 'denoiser', 'conditionnement', 'conditioning'],
+  media: ['image', 'vision', 'video', 'audio', 'speech', 'waveform', 'frame', 'multimodal', 'patch', 'latent', 'diffusion', 'denoiser', 'conditionnement', 'conditioning'],
 }
 
 function normalize(value: string): string {

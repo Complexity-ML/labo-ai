@@ -20,7 +20,7 @@ The key product decisions remained human-directed: use atomic typed cards instea
 
 - More than 100 typed, executable model cards grouped by useful families.
 - Blank, GPT-like, learned-MoE, token-routing, and TR 300M starters.
-- Executable Vision Transformer, multimodal image-editing, and spatiotemporal video starters with dedicated media atomics.
+- Executable Vision Transformer, multimodal image-editing, spatiotemporal video, and audio encoder starters with dedicated media atomics and tokenizer pipelines.
 - Drag-and-drop graph composition with typed elastic cables and deterministic topology-aware XY placement that preserves parallel lanes and minimizes crossings.
 - Two-way graph/PyTorch synchronization for supported semantic atoms.
 - Dedicated modal card builder with category-aware auto-composition, visual input/operation/output blocks, typed plugs, and a safe generated `nn.Module` preview.

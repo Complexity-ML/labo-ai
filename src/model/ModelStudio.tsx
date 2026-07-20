@@ -26,7 +26,7 @@ import { connectCable } from '../core/cables'
 import { cloneArchitectureGraph, emptyModelWorkspace, loadModelWorkspace, parseModelWorkspace, saveModelWorkspace, saveModelWorkspaceCache, type ModelPresetDraft } from '../core/model-workspace'
 import { modelAtomRegistry, type ModelAtomDefinition } from '../core/model-atoms'
 import { blankStarterPreset, complexityDeepPreset, gptLikeStarterPreset, tokenMoePreset, trBasicPreset } from '../core/presets'
-import { multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../core/media-presets'
+import { audioEncoderPreset, multimodalImageEditorPreset, videoTransformerPreset, visionTransformerPreset } from '../core/media-presets'
 import { researchBpePreset } from '../core/tokenizer-presets'
 import { parsePyTorchDialect, type PyTorchDialectDiagnostic } from '../core/pytorch-dialect'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
@@ -60,7 +60,7 @@ function isCustomCard(value: unknown): value is CustomPyTorchCard {
   return typeof card.id === 'string' && typeof card.label === 'string' && typeof card.code === 'string' && validCustomPyTorchModule(card.code)
 }
 
-const builtInModelPresets = [blankStarterPreset, gptLikeStarterPreset, trBasicPreset, tokenMoePreset, complexityDeepPreset, visionTransformerPreset, multimodalImageEditorPreset, videoTransformerPreset]
+const builtInModelPresets = [blankStarterPreset, gptLikeStarterPreset, trBasicPreset, tokenMoePreset, complexityDeepPreset, visionTransformerPreset, multimodalImageEditorPreset, videoTransformerPreset, audioEncoderPreset]
 const presetMenuLabels: Record<string, string> = {
   [blankStarterPreset.id]: 'Blank starter',
   [gptLikeStarterPreset.id]: 'GPT-like',
@@ -70,6 +70,7 @@ const presetMenuLabels: Record<string, string> = {
   [visionTransformerPreset.id]: 'Vision',
   [multimodalImageEditorPreset.id]: 'Image edit',
   [videoTransformerPreset.id]: 'Video',
+  [audioEncoderPreset.id]: 'Audio',
 }
 
 function loadCustomCards(): CustomPyTorchCard[] {
@@ -86,6 +87,7 @@ const graphInputDefinitions: Array<{ role: TensorRole; label: string }> = [
   { role: 'token-ids', label: 'Token IDs' },
   { role: 'image', label: 'Image Tensor' },
   { role: 'video', label: 'Video Tensor' },
+  { role: 'audio', label: 'Audio Waveform' },
   { role: 'hidden', label: 'Hidden State' },
   { role: 'labels', label: 'Training Labels' },
 ]
@@ -364,7 +366,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const addModelAtom = (definition: ModelAtomDefinition, desiredPosition?: { x: number; y: number }, variant?: { label: string; attributes: Record<string, number | string | boolean> }) => {
     const sequence = graph.nodes.filter((node) => node.id.startsWith(`${definition.id}-`)).length + 1
     const outputTensor = definition.outputs[0]?.tensor
-    const role: TensorRole = outputTensor === 'query' || outputTensor === 'key' || outputTensor === 'value' || outputTensor === 'image' || outputTensor === 'video'
+    const role: TensorRole = outputTensor === 'query' || outputTensor === 'key' || outputTensor === 'value' || outputTensor === 'image' || outputTensor === 'video' || outputTensor === 'audio'
       ? outputTensor
       : outputTensor === 'logits' || outputTensor === 'scalar' ? 'output' : 'hidden'
     const id = `${definition.id}-${sequence}`
@@ -397,7 +399,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const addGraphInput = (role: TensorRole, desiredPosition?: { x: number; y: number }) => {
     const definition = graphInputDefinitions.find((candidate) => candidate.role === role)
     if (!definition) return
-    const baseId = role === 'token-ids' ? 'token-ids' : role === 'labels' ? 'labels' : role === 'image' ? 'image-tensor' : role === 'video' ? 'video-tensor' : 'hidden-state'
+    const baseId = role === 'token-ids' ? 'token-ids' : role === 'labels' ? 'labels' : role === 'image' ? 'image-tensor' : role === 'video' ? 'video-tensor' : role === 'audio' ? 'audio-waveform' : 'hidden-state'
     let sequence = 1
     let id = baseId
     while (graph.nodes.some((node) => node.id === id)) id = `${baseId}-${++sequence}`
@@ -709,6 +711,14 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     {
       label: 'Video inputs & tokenization',
       matches: (id) => /^(video-(channel-normalization|spatial-resize|tubelet-embedding|vq-tokenizer|codebook-embedding))$/.test(id),
+    },
+    {
+      label: 'Audio inputs & tokenization',
+      matches: (id) => /^audio-(waveform-normalization|preemphasis|resample|frame-embedding|vq-tokenizer|codebook-embedding)$/.test(id),
+    },
+    {
+      label: 'Audio processing & outputs',
+      matches: (id) => /^audio-/.test(id),
     },
     {
       label: 'Media generation & outputs',

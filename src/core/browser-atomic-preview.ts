@@ -6,6 +6,7 @@ const inputRanks: Partial<Record<TensorRole, number>> = {
   labels: 2,
   image: 4,
   video: 5,
+  audio: 3,
   hidden: 3,
 }
 

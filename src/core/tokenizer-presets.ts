@@ -59,4 +59,20 @@ export const videoVqPreset = createTokenizerPipeline({
   ],
 })
 
-export const builtInTokenizerPresets = [researchBpePreset, o200kBasePreset, imageVqPreset, videoVqPreset]
+export const audioVqPreset = createTokenizerPipeline({
+  id: 'audio-vq',
+  name: 'Audio VQ · tokenizer + embedding',
+  steps: [
+    { id: 'audio-normalize', atom: 'audio-normalize', settings: { epsilon: 1e-6 } },
+    { id: 'audio-encode', atom: 'audio-vq-encode', settings: { inputChannels: 1, hiddenSize: 256, frameSize: 400, hopSize: 160, codebookSize: 1024 } },
+    { id: 'audio-embedding', atom: 'audio-codebook-embedding', settings: { codebookSize: 1024, hiddenSize: 256 } },
+    { id: 'audio-decode', atom: 'audio-vq-decode', settings: { hiddenSize: 256, outputChannels: 1, frameSize: 400, hopSize: 160 } },
+  ],
+  links: [
+    { id: 'audio-normalized', kind: 'audio', source: 'audio-normalize', target: 'audio-encode' },
+    { id: 'audio-token-ids', kind: 'token-ids', source: 'audio-encode', target: 'audio-embedding' },
+    { id: 'audio-latents', kind: 'hidden', source: 'audio-embedding', target: 'audio-decode' },
+  ],
+})
+
+export const builtInTokenizerPresets = [researchBpePreset, o200kBasePreset, imageVqPreset, videoVqPreset, audioVqPreset]

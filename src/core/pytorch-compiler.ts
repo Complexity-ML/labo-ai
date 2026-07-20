@@ -49,6 +49,7 @@ function inputArgument(node: ArchitectureNode): string {
   if (['label', 'labels', 'training-labels'].includes(node.id.toLowerCase())) return 'labels'
   if (node.role === 'image') return identifier(node.id).includes('image') ? identifier(node.id) : `${identifier(node.id)}_image`
   if (node.role === 'video') return identifier(node.id).includes('video') ? identifier(node.id) : `${identifier(node.id)}_video`
+  if (node.role === 'audio') return identifier(node.id).includes('audio') ? identifier(node.id) : `${identifier(node.id)}_audio`
   return identifier(node.id)
 }
 
@@ -82,6 +83,7 @@ function sourceRank(graph: ArchitectureGraph, edge: ArchitectureEdge): number | 
     if (source.role === 'token-ids' || source.role === 'labels') return 2
     if (source.role === 'image') return 4
     if (source.role === 'video') return 5
+    if (source.role === 'audio') return 3
     if (source.role === 'hidden') return 3
     return undefined
   }

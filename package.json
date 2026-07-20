@@ -5,7 +5,7 @@
   "author": "LABO AI",
   "license": "Apache-2.0",
   "private": true,
-  "version": "0.1.36",
+  "version": "0.1.37",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -57,7 +57,7 @@
       "category": "public.app-category.developer-tools"
     },
     "win": {
-      "icon": "build/icon.png",
+      "icon": "apps/bootstrap-installer/src-tauri/icons/icon.ico",
       "artifactName": "LABO-AI-${version}-${arch}-win.${ext}",
       "target": [
         "nsis",

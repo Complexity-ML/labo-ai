@@ -85,7 +85,9 @@ fn latest_release() -> Result<GitHubRelease, String> {
             .get(format!("https://github.com/{REPOSITORY}/releases/latest"))
             .send()
             .and_then(|response| response.error_for_status())
-            .map_err(|fallback_error| format!("Unable to check GitHub: {api_error}; fallback failed: {fallback_error}"))?;
+            .map_err(|fallback_error| {
+                format!("Unable to check GitHub: {api_error}; fallback failed: {fallback_error}")
+            })?;
         let tag_name = response
             .url()
             .path_segments()
@@ -100,12 +102,16 @@ fn latest_release() -> Result<GitHubRelease, String> {
             "LABO-AI-Setup-x64-helper.exe.sha256",
         ];
         Ok(GitHubRelease {
-            tarball_url: format!("https://github.com/{REPOSITORY}/archive/refs/tags/{tag_name}.tar.gz"),
+            tarball_url: format!(
+                "https://github.com/{REPOSITORY}/archive/refs/tags/{tag_name}.tar.gz"
+            ),
             assets: asset_names
                 .iter()
                 .map(|name| GitHubAsset {
                     name: (*name).to_string(),
-                    browser_download_url: format!("https://github.com/{REPOSITORY}/releases/download/{tag_name}/{name}"),
+                    browser_download_url: format!(
+                        "https://github.com/{REPOSITORY}/releases/download/{tag_name}/{name}"
+                    ),
                 })
                 .collect(),
             tag_name,
@@ -114,6 +120,13 @@ fn latest_release() -> Result<GitHubRelease, String> {
 }
 
 fn install_root() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return dirs::data_local_dir()
+            .map(|path| path.join("LABO AI").join("setup-data"))
+            .ok_or_else(|| "No local application-data directory is available".to_string());
+    }
+    #[cfg(not(target_os = "windows"))]
     dirs::data_local_dir()
         .map(|path| path.join("LABO AI Setup"))
         .ok_or_else(|| "No local application-data directory is available".to_string())
@@ -538,6 +551,128 @@ fn launch_application(destination: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn powershell_literal(value: &Path) -> String {
+    value.display().to_string().replace('\'', "''")
+}
+
+#[cfg(target_os = "windows")]
+fn run_powershell(script: &str) -> Result<(), String> {
+    let status = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .status()
+        .map_err(|error| format!("Unable to configure the Windows application entry: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Windows application integration failed with status {status}"
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn install_windows_integration(destination: &Path, release_tag: &str) -> Result<(), String> {
+    let executable = destination.join("LABO AI.exe");
+    if !executable.is_file() {
+        return Err(format!(
+            "The installed Windows executable is missing at {}",
+            executable.display()
+        ));
+    }
+
+    let uninstall_script = install_root()?.join("uninstall-labo-ai.ps1");
+    let uninstall_body = format!(
+        "$ErrorActionPreference = 'SilentlyContinue'\n\
+         Stop-Process -Name 'LABO AI' -Force\n\
+         Start-Sleep -Milliseconds 400\n\
+         Remove-Item -LiteralPath '{}' -Recurse -Force\n\
+         $shell = New-Object -ComObject WScript.Shell\n\
+         Remove-Item -LiteralPath ([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'LABO AI.lnk')) -Force\n\
+         Remove-Item -LiteralPath ([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'LABO AI.lnk')) -Force\n\
+         Remove-Item -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\LABO AI' -Recurse -Force\n",
+        powershell_literal(destination)
+    );
+    fs::write(&uninstall_script, uninstall_body)
+        .map_err(|error| format!("Unable to create the LABO AI uninstaller: {error}"))?;
+
+    let executable_literal = powershell_literal(&executable);
+    let destination_literal = powershell_literal(destination);
+    let uninstall_literal = powershell_literal(&uninstall_script);
+    let display_version = release_tag.trim_start_matches('v').replace('\'', "''");
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $exe = '{executable_literal}'; \
+         $shell = New-Object -ComObject WScript.Shell; \
+         foreach ($link in @([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'LABO AI.lnk'), [IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'LABO AI.lnk'))) {{ \
+           $shortcut = $shell.CreateShortcut($link); \
+           $shortcut.TargetPath = $exe; \
+           $shortcut.WorkingDirectory = '{destination_literal}'; \
+           $shortcut.IconLocation = \"$exe,0\"; \
+           $shortcut.Description = 'LABO AI neural architecture laboratory'; \
+           $shortcut.Save(); \
+         }}; \
+         $key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\LABO AI'; \
+         New-Item -Path $key -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name DisplayName -Value 'LABO AI' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name DisplayVersion -Value '{display_version}' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name Publisher -Value 'Complexity-ML' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name InstallLocation -Value '{destination_literal}' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name DisplayIcon -Value \"$exe,0\" -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name URLInfoAbout -Value 'https://www.complexity-ai.fr/labo-ai' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name UninstallString -Value 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{uninstall_literal}\"' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null; \
+         New-ItemProperty -Path $key -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null"
+    );
+    run_powershell(&script)
+}
+
+#[cfg(target_os = "windows")]
+fn schedule_windows_setup_cleanup() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+
+    let process_id = std::process::id();
+    let script = format!(
+        "$ErrorActionPreference = 'SilentlyContinue'; \
+         Wait-Process -Id {process_id}; \
+         Start-Sleep -Milliseconds 500; \
+         Remove-Item -LiteralPath ([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'LABO AI Setup.lnk')) -Force; \
+         Remove-Item -LiteralPath ([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'LABO AI Setup.lnk')) -Force; \
+         $setupDirectories = @(); \
+         Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | \
+           Where-Object {{ $_.DisplayName -eq 'LABO AI Setup' }} | \
+           ForEach-Object {{ \
+             if ($_.InstallLocation -and ([IO.Path]::GetFileName($_.InstallLocation.TrimEnd('\\')) -eq 'LABO AI Setup')) {{ $setupDirectories += $_.InstallLocation }}; \
+             Remove-Item -LiteralPath $_.PSPath -Recurse -Force \
+           }}; \
+         foreach ($directory in $setupDirectories) {{ \
+           if (Test-Path -LiteralPath $directory) {{ Remove-Item -LiteralPath $directory -Recurse -Force }} \
+         }}"
+    );
+    Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(0x08000000)
+        .spawn()
+        .map_err(|error| format!("Unable to schedule Setup cleanup: {error}"))?;
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 fn prepare_application_handoff(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -553,6 +688,11 @@ fn prepare_application_handoff(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn prepare_application_handoff(_app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = _app.get_webview_window("main") {
+        window
+            .hide()
+            .map_err(|error| format!("Unable to hide LABO AI Setup: {error}"))?;
+    }
     Ok(())
 }
 
@@ -566,7 +706,43 @@ fn restore_setup_after_handoff_failure(app: &AppHandle) {
 }
 
 #[cfg(target_os = "windows")]
-fn restore_setup_after_handoff_failure(_app: &AppHandle) {}
+fn restore_setup_after_handoff_failure(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn stop_running_application() {
+    let _ = Command::new("taskkill")
+        .args(["/IM", "LABO AI.exe", "/T", "/F"])
+        .output();
+    thread::sleep(Duration::from_millis(300));
+}
+
+#[cfg(not(target_os = "windows"))]
+fn stop_running_application() {}
+
+fn activate_application(next: &Path, destination: &Path, previous: &Path) -> Result<(), String> {
+    if previous.exists() {
+        fs::remove_dir_all(previous).map_err(|error| error.to_string())?;
+    }
+    let had_previous = destination.exists();
+    if had_previous {
+        fs::rename(destination, previous)
+            .map_err(|error| format!("Unable to preserve the previous LABO AI build: {error}"))?;
+    }
+    if let Err(error) = fs::rename(next, destination) {
+        if had_previous && previous.exists() {
+            let _ = fs::rename(previous, destination);
+        }
+        return Err(format!(
+            "Unable to activate the new LABO AI build; the previous build was restored: {error}"
+        ));
+    }
+    Ok(())
+}
 
 fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
     fs::create_dir_all(install_root()?).map_err(|error| error.to_string())?;
@@ -655,15 +831,11 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
         88,
     );
     copy_application(&built, &next)?;
-    if previous.exists() {
-        fs::remove_dir_all(&previous).map_err(|error| error.to_string())?;
-    }
-    if destination.exists() {
-        fs::rename(&destination, &previous)
-            .map_err(|error| format!("Unable to preserve the previous LABO AI build: {error}"))?;
-    }
-    fs::rename(&next, &destination)
-        .map_err(|error| format!("Unable to activate the new LABO AI build: {error}"))?;
+    stop_running_application();
+    activate_application(&next, &destination, &previous)?;
+
+    #[cfg(target_os = "windows")]
+    install_windows_integration(&destination, &release.tag_name)?;
 
     #[cfg(target_os = "macos")]
     {
@@ -704,6 +876,8 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
         restore_setup_after_handoff_failure(app);
         return Err(error);
     }
+    #[cfg(target_os = "windows")]
+    schedule_windows_setup_cleanup()?;
     Ok(InstallResult {
         tag: release.tag_name,
         path: destination.display().to_string(),
