@@ -5,7 +5,7 @@
   "author": "LABO AI",
   "license": "Apache-2.0",
   "private": true,
-  "version": "0.1.41",
+  "version": "0.1.42",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "package:win:dir": "npm run build && npm run build:electron && electron-builder --win dir --x64 --publish never",
     "package:win:arm64": "npm run build && npm run build:electron && electron-builder --win nsis zip --arm64 --publish never",
     "package:linux:dir": "npm run build && npm run build:electron && electron-builder --linux dir --publish never",
+    "version": "node scripts/sync-release-version.mjs",
     "lint": "oxlint",
     "test": "vitest run",
     "test:ci": "vitest run --exclude electron/atomic-runtime.test.ts --exclude electron/generated-pytorch.test.ts --exclude electron/runtime.test.ts",
