@@ -125,4 +125,23 @@ describe('AtomicPlayer', () => {
     expect(restarts).toBe(1)
     expect(player.snapshot.status).toBe('completed')
   })
+
+  it('clears completed and in-flight execution state when stopped', async () => {
+    let releaseExecution: (() => void) | undefined
+    const player = new AtomicPlayer(['q', 'k'], (atomId) => atomId === 'q'
+      ? new Promise<{ summary: string }>((resolve) => { releaseExecution = () => resolve({ summary: 'late result' }) })
+      : Promise.resolve({ summary: 'ok' }))
+
+    const playing = player.play()
+    expect(player.snapshot.results[0].status).toBe('running')
+
+    player.stop()
+    expect(player.snapshot.status).toBe('idle')
+    expect(player.snapshot.results.map((result) => result.status)).toEqual(['pending', 'pending'])
+
+    releaseExecution?.()
+    await playing
+    expect(player.snapshot.status).toBe('idle')
+    expect(player.snapshot.results.map((result) => result.status)).toEqual(['pending', 'pending'])
+  })
 })

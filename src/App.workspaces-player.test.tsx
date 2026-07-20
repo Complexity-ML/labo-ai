@@ -152,4 +152,27 @@ describe('LABO AI workspaces player', () => {
     expect(screen.getByText('embedding + fixed-routes')).toBeInTheDocument()
     delete window.labo
   })
+
+  it('resets every green execution highlight when Stop is pressed', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      runAtomic: async (payload) => {
+        if (payload.kind === 'tokenizer') return { engine: 'tokenizers', status: 'completed', tokenIds: [1, 2, 3], results: [] }
+        const nodes = payload.kind === 'model' ? (payload.graph as { nodes: { id: string }[] }).nodes : []
+        return { engine: 'pytorch', status: 'completed', results: nodes.map((node) => ({ atomId: node.id, status: 'passed', summary: `${node.id} ok` })) }
+      },
+    }
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play model atoms' }))
+    await waitFor(() => expect(screen.getAllByText('completed')).toHaveLength(2))
+    expect(document.querySelectorAll('.architecture-node.status-passed').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop model atoms' }))
+    expect(document.querySelectorAll('.architecture-node.status-passed')).toHaveLength(0)
+    expect(document.querySelectorAll('.architecture-node.status-pending')).toHaveLength(20)
+    expect(screen.getAllByText('idle')).toHaveLength(2)
+    delete window.labo
+  })
 })

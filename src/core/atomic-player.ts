@@ -31,6 +31,7 @@ export class AtomicPlayer {
   private readonly listeners = new Set<PlayerListener>()
   private readonly atomIds: string[]
   private cursor = 0
+  private executionGeneration = 0
   private firstFailure?: { atomId: string; message: string }
   private state: AtomicPlayerSnapshot
 
@@ -82,8 +83,8 @@ export class AtomicPlayer {
   }
 
   stop(): void {
-    if (this.state.status === 'completed' || this.state.status === 'failed') return
-    this.setState({ status: 'stopped' })
+    this.executionGeneration += 1
+    this.reset()
   }
 
   private isTerminal(): boolean {
@@ -91,6 +92,11 @@ export class AtomicPlayer {
   }
 
   private restart(): void {
+    this.executionGeneration += 1
+    this.reset()
+  }
+
+  private reset(): void {
     this.cursor = 0
     this.firstFailure = undefined
     this.onRestart?.()
@@ -105,6 +111,7 @@ export class AtomicPlayer {
   }
 
   private async executeCurrent(pauseAfterSuccess: boolean): Promise<void> {
+    const executionGeneration = this.executionGeneration
     const stage = this.stages[this.cursor]
     if (!stage?.length) {
       this.setState({ status: 'completed', currentAtomId: undefined, currentAtomIds: undefined })
@@ -116,6 +123,7 @@ export class AtomicPlayer {
     this.emit()
 
     const outputs = await Promise.allSettled(stage.map((atomId) => this.executor(atomId)))
+    if (executionGeneration !== this.executionGeneration) return
     const completed = [...this.state.results]
     let failure: { atomId: string; message: string } | undefined
     for (const [stageIndex, atomId] of stage.entries()) {

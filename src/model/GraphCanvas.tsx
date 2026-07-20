@@ -219,6 +219,12 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   const beginCanvasSelection = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
     const interactive = target.closest('button,input,select,textarea,[data-graph-node],.card-context-menu,.graph-selection-toolbar,.graph-viewport-controls')
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+    if (event.button === 0 && !interactive && !additive) {
+      setSelectedNodeId('')
+      setSelectedNodeIds(new Set())
+      setConfirmSelectionDelete(false)
+    }
     if (!editMode || event.button !== 0 || interactive) {
       camera.onPointerDown(event)
       return
@@ -227,7 +233,6 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     const bounds = event.currentTarget.getBoundingClientRect()
     const x = event.clientX - bounds.left
     const y = event.clientY - bounds.top
-    const additive = event.shiftKey || event.metaKey || event.ctrlKey
     selectionDrag.current = { pointerId: event.pointerId, startX: x, startY: y, base: additive ? new Set(selectedNodeIds) : new Set() }
     if (!additive) setSelectedNodeIds(new Set())
     setConfirmSelectionDelete(false)
@@ -405,6 +410,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           setCardMenu(undefined)
+          setSelectedNodeId('')
           setSelectedNodeIds(new Set())
           setConfirmSelectionDelete(false)
         }
@@ -426,7 +432,7 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       {selectionBox && <div aria-hidden="true" className="graph-selection-box" style={selectionBox} />}
       {editMode && selectedNodeIds.size > 0 && <div aria-label="Selected graph cards" className="graph-selection-toolbar">
         <strong>{selectedNodeIds.size} card{selectedNodeIds.size === 1 ? '' : 's'} selected</strong>
-        <button onClick={() => { setSelectedNodeIds(new Set()); setConfirmSelectionDelete(false) }} type="button">Clear</button>
+        <button onClick={() => { setSelectedNodeId(''); setSelectedNodeIds(new Set()); setConfirmSelectionDelete(false) }} type="button">Clear</button>
         <button className={confirmSelectionDelete ? 'confirm-delete' : ''} onClick={() => {
           if (!confirmSelectionDelete) {
             setConfirmSelectionDelete(true)

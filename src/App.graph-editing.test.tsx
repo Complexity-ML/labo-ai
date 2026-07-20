@@ -6,6 +6,17 @@ import { describe, expect, it } from 'vitest'
 import App from './App'
 
 describe('LABO AI graph editing', () => {
+  it('clears the purple card selection when clicking empty canvas space', () => {
+    render(<App />)
+    const card = screen.getByRole('button', { name: 'Select Attention RMSNorm' }).closest('.architecture-node')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select Attention RMSNorm' }))
+    expect(card).toHaveClass('selected')
+
+    fireEvent.pointerDown(screen.getByLabelText('Architecture graph canvas'), { button: 0, pointerId: 1, clientX: 900, clientY: 500 })
+    expect(card).not.toHaveClass('selected')
+  })
+
   it('selects, edits, and adds freely manipulable model atoms', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Split' }))
