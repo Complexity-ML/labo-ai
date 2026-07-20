@@ -128,14 +128,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" release-assets/* --repo "${GITHUB_REPOSITORY}" --clobber
-          else
-            gh release create "${GITHUB_REF_NAME}" release-assets/* \
+          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --title "LABO AI ${GITHUB_REF_NAME}" \
               --generate-notes \
+              --draft \
               --verify-tag
+          fi
+
+          upload_complete=false
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "${GITHUB_REF_NAME}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber; then
+              upload_complete=true
+              break
+            fi
+
+            if (( attempt < 5 )); then
+              echo "Release upload failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 10))
+            fi
+          done
+
+          test "${upload_complete}" = true
+
+          if [[ "$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft')" == "true" ]]; then
+            gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
           fi
       - name: Keep the latest 10 desktop releases
         env:
