@@ -6,6 +6,7 @@ import type { CustomPyTorchCard } from '../model/custom-card'
 import { architectureComponents } from './graph-components'
 import { modelAtomRegistry, type ModelAtomDefinition } from './model-atoms'
 import { validCustomPyTorchModule } from './pytorch-compiler'
+import { customCardInputPorts, customCardOutputPorts, validateCustomCardGraph } from './custom-card-graph'
 
 export interface AgentPortSnapshot {
   id: string
@@ -42,6 +43,7 @@ export interface AgentCreatedBlockProposal {
   inputRole?: TensorRole
   outputRole?: TensorRole
   reason: string
+  cardGraph?: ArchitectureGraph
 }
 
 export interface AgentUpdatedBlockProposal {
@@ -160,12 +162,16 @@ function snapshotNode(graph: ArchitectureGraph, node: ArchitectureNode): AgentNo
     label: node.label,
     inputs: node.kind === 'input' ? [] : definition
       ? definition.inputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
-      : node.kind === 'custom-pytorch' ? [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden' }] : uniquePorts(edgeInputs),
+      : node.kind === 'custom-pytorch' ? node.customCardGraph
+        ? customCardInputPorts(node.customCardGraph).map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
+        : [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden' }] : uniquePorts(edgeInputs),
     outputs: node.kind === 'input'
       ? [{ id: node.role === 'token-ids' ? 'tokenIds' : node.role === 'labels' ? 'labels' : node.role, tensor: node.role, rank: node.role === 'token-ids' || node.role === 'labels' ? 2 : node.role === 'image' ? 4 : node.role === 'video' ? 5 : 3 }]
       : definition
       ? definition.outputs.map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
-      : node.kind === 'custom-pytorch' ? [{ id: 'output', tensor: node.role }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
+      : node.kind === 'custom-pytorch' ? node.customCardGraph
+        ? customCardOutputPorts(node.customCardGraph).map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) }))
+        : [{ id: 'output', tensor: node.role }] : uniquePorts(edgeOutputs.length > 0 ? edgeOutputs : [fallbackOutput(node)]),
   }
 }
 
@@ -218,6 +224,11 @@ export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGra
       code: card.code,
       inputRole: card.inputRole ?? 'hidden',
       outputRole: card.outputRole ?? 'hidden',
+      ...(card.graph ? {
+        graph: card.graph,
+        inputs: customCardInputPorts(card.graph).map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) })),
+        outputs: customCardOutputPorts(card.graph).map(({ id, tensor, rank }) => ({ id, tensor, ...(rank ? { rank } : {}) })),
+      } : {}),
     })),
     architectures: architectureComponents(graph).map((architecture) => ({ id: architecture.id, label: architecture.label, nodeIds: architecture.nodeIds })),
   }
@@ -450,7 +461,11 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       rejectedBlocks.push({ block, reason: 'Generated card must have a short label' })
       continue
     }
-    if (!validCustomPyTorchModule(block.pytorchModule)) {
+    if (block.cardGraph && validateCustomCardGraph(block.cardGraph).length > 0) {
+      rejectedBlocks.push({ block, reason: 'Generated composite card graph is invalid' })
+      continue
+    }
+    if (!block.cardGraph && !validCustomPyTorchModule(block.pytorchModule)) {
       rejectedBlocks.push({ block, reason: 'Generated PyTorch card is outside the safe nn.Module subset' })
       continue
     }
@@ -462,6 +477,7 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       position: findOpenGraphPosition(nextGraph),
       code: block.pytorchModule.trim(),
       attributes: { inputRole: block.inputRole ?? 'hidden' },
+      ...(block.cardGraph ? { customCardGraph: structuredClone(block.cardGraph) } : {}),
     })
     acceptedCreatedBlocks.push(block)
   }

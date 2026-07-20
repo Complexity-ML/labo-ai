@@ -51,11 +51,13 @@ describe('LABO AI graph editing', () => {
     fireEvent.click(screen.getByText(/Activations/))
   
     const values = new Map<string, string>()
+    let dragImage: Element | undefined
     const dataTransfer = {
       dropEffect: 'none',
       effectAllowed: 'none',
       getData: (type: string) => values.get(type) ?? '',
       setData: (type: string, value: string) => values.set(type, value),
+      setDragImage: (element: Element) => { dragImage = element },
       get types() { return [...values.keys()] },
     }
     const libraryCard = screen.getByRole('button', { name: 'Add ReLU' })
@@ -63,6 +65,8 @@ describe('LABO AI graph editing', () => {
   
     expect(libraryCard).toHaveAttribute('draggable', 'true')
     fireEvent.dragStart(libraryCard, { dataTransfer })
+    expect(dragImage).toHaveClass('library-drag-preview')
+    expect(dragImage).toHaveTextContent('ReLU')
     fireEvent.dragOver(canvas, { clientX: 740, clientY: 260, dataTransfer })
     expect(canvas).toHaveClass('accepts-library-drop')
     const dropEvent = new Event('drop', { bubbles: true, cancelable: true })

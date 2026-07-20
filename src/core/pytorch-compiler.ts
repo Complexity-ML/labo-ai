@@ -1,4 +1,5 @@
 import type { ArchitectureEdge, ArchitectureGraph, ArchitectureNode } from './ir'
+import { customCardInputPorts, customCardOutputPorts } from './custom-card-graph'
 import { modelAtomRegistry, type ModelAtomDefinition } from './model-atoms'
 
 function identifier(value: string): string {
@@ -73,6 +74,7 @@ function sourcePort(graph: ArchitectureGraph, edge: ArchitectureEdge): string {
   if (edge.sourcePort) return edge.sourcePort
   const source = graph.nodes.find((node) => node.id === edge.source)
   if (source?.kind === 'semantic' && source.atomId) return modelAtomRegistry[source.atomId]?.outputs[0]?.id ?? 'output'
+  if (source?.kind === 'custom-pytorch' && source.customCardGraph) return customCardOutputPorts(source.customCardGraph)[0]?.id ?? 'output'
   return 'output'
 }
 
@@ -87,6 +89,7 @@ function sourceRank(graph: ArchitectureGraph, edge: ArchitectureEdge): number | 
     if (source.role === 'hidden') return 3
     return undefined
   }
+  if (source.kind === 'custom-pytorch' && source.customCardGraph) return customCardOutputPorts(source.customCardGraph).find((port) => port.id === sourcePort(graph, edge))?.rank
   if (source.kind !== 'semantic' || !source.atomId) return undefined
   return modelAtomRegistry[source.atomId]?.outputs.find((port) => port.id === sourcePort(graph, edge))?.rank
 }
@@ -171,6 +174,33 @@ export function compileRegistryGraph(graph: ArchitectureGraph, options: Registry
   for (const node of executableNodes) {
     if (node.kind === 'custom-pytorch') {
       const module = identifier(node.id)
+      if (node.customCardGraph) {
+        const inputPorts = customCardInputPorts(node.customCardGraph)
+        const outputPorts = customCardOutputPorts(node.customCardGraph)
+        if (inputPorts.length === 0 || outputPorts.length === 0) throw new Error(`Composite card ${node.id} has no external ports`)
+        const className = `_LaboCard_${module}`
+        const nestedSource = compileRegistryGraph(node.customCardGraph).replace('class GeneratedModel(nn.Module):', `class ${className}(nn.Module):`)
+        helpers.add(nestedSource)
+        declarations.push(`        # labo:node=${node.id} kind=custom-card-graph`)
+        declarations.push(`        self.${module} = ${className}()`)
+        const incoming = graph.edges.filter((edge) => edge.target === node.id)
+        const argumentsByPort = new Map(incoming.map((edge) => [edge.targetPort ?? inputPorts[0]?.id, { edge, value: values.get(`${edge.source}:${sourcePort(graph, edge)}`) }]))
+        const missing = inputPorts.find((port) => !argumentsByPort.get(port.id)?.value)
+        if (missing) {
+          if (options.disconnectedInputs === 'skip') continue
+          throw new Error(`Missing connected input port ${missing.id} on ${node.id}`)
+        }
+        for (const edge of incoming) forward.push(`        ${edgeMarker(edge)}`)
+        const outputVariables = outputPorts.map((port) => `${module}_${identifier(port.id)}`)
+        const callTarget = outputVariables.length === 1 ? outputVariables[0] : `(${outputVariables.join(', ')})`
+        const argumentsList = inputPorts.map((port) => argumentsByPort.get(port.id)!.value).join(', ')
+        forward.push(`        ${callTarget} = self.${module}(${argumentsList})`)
+        outputPorts.forEach((port, index) => values.set(`${node.id}:${port.id}`, outputVariables[index]))
+        values.set(`${node.id}:output`, outputVariables[0])
+        values.set(`${node.id}:${node.role}`, outputVariables[0])
+        nodeOutputs.set(node.id, outputVariables)
+        continue
+      }
       const code = node.code?.trim() ?? ''
       if (!validCustomPyTorchModule(code)) throw new Error(`Invalid custom PyTorch module on ${node.id}`)
       declarations.push(`        # labo:node=${node.id} kind=custom-pytorch`)

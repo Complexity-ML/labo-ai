@@ -3,6 +3,7 @@ import { Blocks, Cable, Minus, MousePointer2, Pencil, Plus, Scan, Sparkles, Tras
 import type { AtomicPlayerSnapshot } from '../core/atomic-player'
 import { moveGroup, moveNode, type ArchitectureGraph, type ArchitectureNode, type TensorRole } from '../core/ir'
 import { modelAtomRegistry } from '../core/model-atoms'
+import { customCardInputPorts, customCardOutputPorts } from '../core/custom-card-graph'
 import { useElasticCables, type CablePath, type PortDirection } from './useElasticCables'
 import { useGraphViewport } from './useGraphViewport'
 import { screenToWorld } from './viewport'
@@ -49,6 +50,15 @@ function NodePorts({ graph, node, onPointerDown }: { graph: ArchitectureGraph; n
     </>
   }
   if (node.kind === 'custom-pytorch') {
+    if (node.customCardGraph) {
+      const inputs = customCardInputPorts(node.customCardGraph)
+      const outputs = customCardOutputPorts(node.customCardGraph)
+      const label = (role: TensorRole) => ({ 'token-ids': 'IDs', image: 'IMG', video: 'VID', audio: 'AUD', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[role])
+      return <>
+        {inputs.map((port, index) => <Port direction="input" id={`${node.id}-${port.id}-input`} key={`in-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (inputs.length + 1)) * 100}%` }} />)}
+        {outputs.map((port, index) => <Port direction="output" id={`${node.id}-${port.id}-output`} key={`out-${port.id}`} label={label(port.tensor)} nodeId={node.id} onPointerDown={onPointerDown} portId={port.id} role={port.tensor} style={{ left: `${((index + 1) / (outputs.length + 1)) * 100}%` }} />)}
+      </>
+    }
     const inputRole = (node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden'
     const label = (role: TensorRole) => ({ 'token-ids': 'IDs', image: 'IMG', video: 'VID', audio: 'AUD', hidden: 'H', query: 'Q', key: 'K', value: 'V', logits: 'L', labels: 'Y', scalar: 'S', 'routing-logits': 'R', 'expert-indices': 'I', 'routing-weights': 'W', attention: 'A', output: 'O' }[role])
     return <>

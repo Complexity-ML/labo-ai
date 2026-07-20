@@ -5,6 +5,7 @@ import { OptimizerCreator } from './OptimizerCreator'
 import { parseTrainingWorkspace } from './training-workspace'
 import { StudioSettingsModal } from '../StudioSettingsModal'
 import { PythonCodePreview } from '../model/PythonCodeEditor'
+import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioToolbar, StudioViewSwitcher, StudioWorkspace } from '../studio/StudioShell'
 
 function formatValue(value: OptimizerValue): string {
   if (Array.isArray(value)) return value.map((item) => item === null ? 'None' : String(item)).join(', ')
@@ -114,18 +115,12 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
   }, [definitions, onRequestedOptimizerHandled, requestedOptimizer, selectOptimizer, storageReady])
 
   return <>
-    <section className="workspace-toolbar">
-      <div aria-label="Training editor view" className="view-switcher">
-        <button aria-pressed={view === 'graph'} onClick={() => setView('graph')}><Blocks size={14} />Training graph</button>
-        <button aria-pressed={view === 'pytorch'} onClick={() => setView('pytorch')}><Braces size={14} />PyTorch</button>
-        <button aria-pressed={view === 'split'} onClick={() => setView('split')}><SplitSquareHorizontal size={14} />Split</button>
-      </div>
-      <div className="toolbar-meta"><span><span className="status-dot" /> Training IR synchronized</span></div>
-    </section>
+    <StudioToolbar meta={<span><span className="status-dot" /> Training IR synchronized</span>}>
+      <StudioViewSwitcher<'graph' | 'pytorch' | 'split'> ariaLabel="Training editor view" onChange={setView} options={[{ id: 'graph', label: 'Training graph', icon: <Blocks size={14} /> }, { id: 'pytorch', label: 'PyTorch', icon: <Braces size={14} /> }, { id: 'split', label: 'Split', icon: <SplitSquareHorizontal size={14} /> }]} value={view} />
+    </StudioToolbar>
 
-    {creatorOpen ? <OptimizerCreator definition={editingOptimizer} onCancel={() => { setCreatorOpen(false); setEditingOptimizer(undefined) }} onSave={saveOptimizer} view={view} /> : <div className="workspace-grid training-workspace">
-      <aside className="block-library">
-        <div className="panel-heading"><Settings2 size={14} /><span>OPTIMIZERS</span></div>
+    {creatorOpen ? <OptimizerCreator definition={editingOptimizer} onCancel={() => { setCreatorOpen(false); setEditingOptimizer(undefined) }} onSave={saveOptimizer} view={view} /> : <StudioWorkspace className="training-workspace">
+      <StudioLibrary heading="OPTIMIZERS" icon={<Settings2 size={14} />}>
         <section className="block-group optimizer-library">
           <h3>PyTorch 2.13</h3>
           {Object.values(optimizerRegistry).map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)}>
@@ -137,9 +132,9 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
             <span className="block-glyph glyph-objective" />{optimizer.label}
           </button>)}
         </section>
-      </aside>
+      </StudioLibrary>
 
-      <section className={`editor-grid view-${view === 'graph' ? 'blocks' : view}`}>
+      <StudioEditor className={`view-${view === 'graph' ? 'blocks' : view}`}>
         {view !== 'pytorch' && <div className="canvas-panel">
           <div className="panel-tab"><Blocks size={13} /> training.optimizer</div>
           <div className="training-canvas">
@@ -164,14 +159,13 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
           <div className="panel-tab"><Braces size={13} /> optimizer.py <span>GENERATED</span></div>
           <PythonCodePreview value={code} />
         </div>}
-      </section>
+      </StudioEditor>
 
-      <aside className="inspector">
-        <div className="panel-heading"><Cpu size={14} /><span>TRAINING INSPECTOR</span></div>
+      <StudioInspector heading="TRAINING INSPECTOR" icon={<Cpu size={14} />}>
         <section className="inspector-section"><div className="section-title">Selection</div><div className="selection-card"><span className="selection-icon"><Play size={15} /></span><div><strong>{definition.label}</strong><small>{definition.notes ?? optimizerReference(definition)}</small></div></div></section>
-      </aside>
-    </div>}
-    <footer className="statusbar"><span><span className="status-dot" /> Training IR valid</span><span>optimizer · {Object.keys(config.settings).length} settings</span><span className="status-spacer" /><span>PyTorch 2.13</span></footer>
+      </StudioInspector>
+    </StudioWorkspace>}
+    <StudioStatusbar><span><span className="status-dot" /> Training IR valid</span><span>optimizer · {Object.keys(config.settings).length} settings</span><span className="status-spacer" /><span>PyTorch 2.13</span></StudioStatusbar>
     {optimizerMenu && (() => {
       const optimizer = customOptimizers.find((candidate) => candidate.id === optimizerMenu.optimizerId)
       if (!optimizer) return null

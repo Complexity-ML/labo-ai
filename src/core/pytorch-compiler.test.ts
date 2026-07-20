@@ -140,6 +140,43 @@ describe('registry-driven PyTorch compiler', () => {
     expect(code).toContain('user_linear_output = self.user_linear(hidden_states)')
   })
 
+  it('compiles a reusable branched card graph with multiple typed inputs as one outer atom', () => {
+    const cardGraph: ArchitectureGraph = {
+      ...normReluGraph,
+      id: 'residual-card',
+      nodes: [
+        { id: 'residual', kind: 'input', label: 'Residual', role: 'hidden', position: { x: 0, y: 0 } },
+        { id: 'branch', kind: 'input', label: 'Branch', role: 'hidden', position: { x: 200, y: 0 } },
+        { id: 'merge', kind: 'semantic', atomId: 'residual-add', label: 'Residual add', role: 'hidden', position: { x: 100, y: 120 } },
+        { id: 'activation', kind: 'semantic', atomId: 'silu', label: 'SiLU', role: 'hidden', position: { x: 100, y: 240 } },
+      ],
+      edges: [
+        { id: 'residual-merge', source: 'residual', sourcePort: 'hidden', target: 'merge', targetPort: 'residual' },
+        { id: 'branch-merge', source: 'branch', sourcePort: 'hidden', target: 'merge', targetPort: 'branch' },
+        { id: 'merge-activation', source: 'merge', sourcePort: 'output', target: 'activation', targetPort: 'hidden' },
+      ],
+    }
+    const graph: ArchitectureGraph = {
+      ...normReluGraph,
+      id: 'outer-composite-card',
+      nodes: [
+        { id: 'left', kind: 'input', label: 'Left', role: 'hidden', position: { x: 0, y: 0 } },
+        { id: 'right', kind: 'input', label: 'Right', role: 'hidden', position: { x: 200, y: 0 } },
+        { id: 'card', kind: 'custom-pytorch', label: 'Residual activation', role: 'hidden', position: { x: 100, y: 120 }, code: 'nn.Identity()', customCardGraph: cardGraph },
+      ],
+      edges: [
+        { id: 'left-card', source: 'left', sourcePort: 'hidden', target: 'card', targetPort: 'residual' },
+        { id: 'right-card', source: 'right', sourcePort: 'hidden', target: 'card', targetPort: 'branch' },
+      ],
+    }
+
+    const code = compileRegistryGraph(graph)
+    expect(code).toContain('class _LaboCard_card(nn.Module):')
+    expect(code).toContain('self.card = _LaboCard_card()')
+    expect(code).toContain('card_activation__output = self.card(left, right)')
+    expect(code).toContain('return card_activation__output')
+  })
+
   it('uses a neutral token-embedding and MoE graph as the product preset', () => {
     expect(tokenMoePreset.architecture).toBe('custom')
     expect(tokenMoePreset.groups).toBeUndefined()

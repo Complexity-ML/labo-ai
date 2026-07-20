@@ -15,6 +15,7 @@ import {
 import { builtInTokenizerPresets, researchBpePreset } from './core/tokenizer-presets'
 import { TokenizerCardCreator } from './tokenizer/TokenizerCardCreator'
 import type { CustomTokenizerCard } from './tokenizer/custom-tokenizer-card'
+import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioToolbar, StudioViewSwitcher, StudioWorkspace } from './studio/StudioShell'
 
 type TokenizerView = 'blocks' | 'split'
 
@@ -186,11 +187,8 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
 
   return (
     <>
-      <section className="workspace-toolbar">
-        <div className="view-switcher" aria-label="Tokenizer editor view">
-          <button aria-pressed={view === 'blocks'} onClick={() => setView('blocks')}><Blocks size={14} />Blocks</button>
-          <button aria-pressed={view === 'split'} onClick={() => setView('split')}><Code2 size={14} />Split</button>
-        </div>
+      <StudioToolbar>
+        <StudioViewSwitcher<TokenizerView> ariaLabel="Tokenizer editor view" onChange={setView} options={[{ id: 'blocks', label: 'Blocks', icon: <Blocks size={14} /> }, { id: 'split', label: 'Split', icon: <Code2 size={14} /> }]} value={view} />
         <details className="preset-menu tokenizer-preset-menu" ref={presetMenuRef}>
           <summary aria-label="Tokenizer preset">{pipeline.name}</summary>
           <div>{builtInTokenizerPresets.map((preset) => <button aria-pressed={pipeline.id === preset.id} key={preset.id} onClick={() => {
@@ -207,11 +205,10 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
           <button aria-label="Stop atomic pipeline" onClick={() => playerRef.current?.stop()}><Square size={12} /></button>
           <span className={`player-status status-${playerSnapshot.status}`}>{playerSnapshot.status}</span>
         </div>
-      </section>
+      </StudioToolbar>
 
-      <div className="workspace-grid tokenizer-workspace">
-        <aside className="block-library">
-          <div className="panel-heading"><Blocks size={14} /><span>TOKENIZER ATOMS</span></div>
+      <StudioWorkspace className="tokenizer-workspace">
+        <StudioLibrary heading="TOKENIZER ATOMS" icon={<Blocks size={14} />}>
           {Object.entries(tokenizerAtomDefinitions).filter(([atom]) => atom !== 'custom-tokenizer').map(([atom, metadata]) => {
             return (
               <button aria-label={`Add ${metadata.label}`} className="library-block tokenizer-library-block" key={atom} onClick={() => addAtom(atom as TokenizerStep['atom'])}>
@@ -231,9 +228,9 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
             <span className="block-glyph glyph-transforms" />
             <span><strong>{card.label}</strong><small>{card.category} · My cards</small></span>
           </button>)}
-        </aside>
+        </StudioLibrary>
 
-        <section className={`editor-grid tokenizer-editor view-${view}`}>
+        <StudioEditor className={`tokenizer-editor view-${view}`}>
           <div className="canvas-panel">
             <div className="panel-tab"><Blocks size={13} /> tokenizer.pipeline</div>
             <div className="tokenizer-canvas">
@@ -264,10 +261,9 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
               <PythonCodePreview value={code} />
             </div>
           )}
-        </section>
+        </StudioEditor>
 
-        <aside className="inspector">
-          <div className="panel-heading"><Cpu size={14} /><span>ATOM INSPECTOR</span></div>
+        <StudioInspector heading="ATOM INSPECTOR" icon={<Cpu size={14} />}>
           {selected && <TokenizerAtomInspector
             onDelete={deleteSelected}
             onSettingChange={(key, value) => setPipeline((current) => updateTokenizerStepSettings(current, selected.id, { [key]: value }))}
@@ -281,16 +277,16 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
             <div className="check-row"><span>Typed links</span><b>{pipeline.links.length}</b></div>
             <div className="check-row"><span>Python lowering</span><b className="passed">READY</b></div>
           </section>
-        </aside>
-      </div>
+        </StudioInspector>
+      </StudioWorkspace>
 
-      <footer className="statusbar">
+      <StudioStatusbar>
         <span><span className="status-dot" /> Tokenizer IR valid</span>
         <span>{pipeline.steps.length} atoms · {pipeline.links.length} typed links</span>
         <span className="status-spacer" />
         <span>Python backend</span>
         <span>LABO Runtime · local</span>
-      </footer>
+      </StudioStatusbar>
       {cardMenu && (() => {
         const card = customCards.find((candidate) => candidate.id === cardMenu.cardId)
         if (!card) return null

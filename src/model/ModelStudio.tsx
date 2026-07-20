@@ -30,9 +30,10 @@ import { audioEncoderPreset, multimodalImageEditorPreset, videoTransformerPreset
 import { researchBpePreset } from '../core/tokenizer-presets'
 import { parsePyTorchDialect, type PyTorchDialectDiagnostic } from '../core/pytorch-dialect'
 import { validCustomPyTorchModule } from '../core/pytorch-compiler'
+import { customCardInputPorts, customCardOutputPorts, validateCustomCardGraph } from '../core/custom-card-graph'
 import { deriveGraphStats } from '../core/stats'
 import { GraphCanvas } from './GraphCanvas'
-import { PythonCodeEditor } from './PythonCodeEditor'
+import { PythonCodeEditor, PythonCodePreview } from './PythonCodeEditor'
 import { AskLaboPanel } from './AskLaboPanel'
 import type { AgentGraphAction } from '../core/agentic-graph'
 import type { CustomCardDestination, CustomCardCreateResult } from './CustomCardCreator'
@@ -40,6 +41,8 @@ import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 import { previewModelAtom } from '../core/browser-atomic-preview'
+import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioViewSwitcher, StudioWorkspace } from '../studio/StudioShell'
+import { setLibraryDragPreview } from '../studio/libraryDragPreview'
 
 const CustomCardCreator = lazy(() => import('./CustomCardCreator').then((module) => ({ default: module.CustomCardCreator })))
 
@@ -57,7 +60,9 @@ const CUSTOM_CARDS_STORAGE_KEY = 'labo.custom-pytorch-cards.v1'
 function isCustomCard(value: unknown): value is CustomPyTorchCard {
   if (!value || typeof value !== 'object') return false
   const card = value as Partial<CustomPyTorchCard>
-  return typeof card.id === 'string' && typeof card.label === 'string' && typeof card.code === 'string' && validCustomPyTorchModule(card.code)
+  const legacyModule = typeof card.code === 'string' && validCustomPyTorchModule(card.code)
+  const compositeGraph = card.graph && typeof card.graph === 'object' && validateCustomCardGraph(card.graph).length === 0
+  return typeof card.id === 'string' && typeof card.label === 'string' && (legacyModule || Boolean(compositeGraph))
 }
 
 const builtInModelPresets = [blankStarterPreset, gptLikeStarterPreset, trBasicPreset, tokenMoePreset, complexityDeepPreset, visionTransformerPreset, multimodalImageEditorPreset, videoTransformerPreset, audioEncoderPreset]
@@ -414,19 +419,22 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     const id = `custom-${card.id}-${customCardSequenceRef.current++}`
     setGraph((current) => {
       const position = desiredPosition ?? findOpenGraphPosition(current)
-      return addNode(current, { id, kind: 'custom-pytorch', label: card.label, role: card.outputRole ?? 'hidden', position, code: card.code, attributes: { inputRole: card.inputRole ?? 'hidden' } })
+      const firstOutput = card.graph ? customCardOutputPorts(card.graph)[0]?.tensor : undefined
+      return addNode(current, { id, kind: 'custom-pytorch', label: card.label, role: firstOutput ?? card.outputRole ?? 'hidden', position, code: card.code, attributes: { inputRole: card.inputRole ?? 'hidden' }, ...(card.graph ? { customCardGraph: structuredClone(card.graph) } : {}) })
     })
     setSelectedNodeId(id)
   }
 
-  const createCustomCard = ({ label, code, inputRole, outputRole }: Omit<CustomPyTorchCard, 'id'>, destination: CustomCardDestination): CustomCardCreateResult => {
+  const createCustomCard = ({ label, code, inputRole, outputRole, graph: cardGraph }: Omit<CustomPyTorchCard, 'id'>, destination: CustomCardDestination): CustomCardCreateResult => {
     const baseId = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pytorch'
     let id = baseId
     let sequence = 2
     while (customCards.some((card) => card.id === id)) id = `${baseId}-${sequence++}`
-    const card: CustomPyTorchCard = { id, label, code, ...(inputRole ? { inputRole } : {}), ...(outputRole ? { outputRole } : {}) }
-    const inputTensor = inputRole ?? 'hidden'
-    const outputTensor = outputRole ?? 'hidden'
+    const card: CustomPyTorchCard = { id, label, code, ...(inputRole ? { inputRole } : {}), ...(outputRole ? { outputRole } : {}), ...(cardGraph ? { graph: structuredClone(cardGraph) } : {}) }
+    const cardInputs = cardGraph ? customCardInputPorts(cardGraph) : []
+    const cardOutputs = cardGraph ? customCardOutputPorts(cardGraph) : []
+    const inputTensor = cardInputs[0]?.tensor ?? inputRole ?? 'hidden'
+    const outputTensor = cardOutputs[0]?.tensor ?? outputRole ?? 'hidden'
     const current = latestGraphRef.current
     const graphNodeId = (() => {
       const base = `custom-${card.id}`
@@ -435,7 +443,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       while (current.nodes.some((node) => node.id === candidate)) candidate = `${base}-${suffix++}`
       return candidate
     })()
-    const customNode: ArchitectureNode = { id: graphNodeId, kind: 'custom-pytorch', label: card.label, role: outputTensor, position: findOpenGraphPosition(current), code: card.code, attributes: { inputRole: inputTensor } }
+    const customNode: ArchitectureNode = { id: graphNodeId, kind: 'custom-pytorch', label: card.label, role: outputTensor, position: findOpenGraphPosition(current), code: card.code, attributes: { inputRole: inputTensor }, ...(cardGraph ? { customCardGraph: structuredClone(cardGraph) } : {}) }
 
     if (destination === 'selected') {
       const source = current.nodes.find((node) => node.id === selectedNodeId)
@@ -443,18 +451,15 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       const output = source?.kind === 'input'
         ? { id: source.role === 'token-ids' ? 'tokenIds' : source.role, tensor: source.role }
         : source?.kind === 'custom-pytorch'
-          ? { id: 'output', tensor: source.role }
+          ? source.customCardGraph ? customCardOutputPorts(source.customCardGraph).find((port) => port.tensor === inputTensor) : { id: 'output', tensor: source.role }
           : definition?.outputs.find((port) => port.tensor === inputTensor)
       if (!source || !output || output.tensor !== inputTensor) return { ok: false, message: `${source?.label ?? 'The selected card'} has no ${inputTensor} output for this card.` }
       const withNode = addNode(current, customNode)
-      const connected = connectCable(withNode, { sourceId: source.id, sourcePort: inputTensor, sourcePortId: output.id, targetId: graphNodeId, targetPort: inputTensor, targetPortId: 'input' })
+      const connected = connectCable(withNode, { sourceId: source.id, sourcePort: inputTensor, sourcePortId: output.id, targetId: graphNodeId, targetPort: inputTensor, targetPortId: cardInputs[0]?.id ?? 'input' })
       if (!connected.ok) return { ok: false, message: connected.message }
       setGraph(layoutArchitectureGraph(connected.graph, [graphNodeId]))
       setSelectedNodeId(graphNodeId)
     } else if (destination === 'new-architecture') {
-      let inputId = `${graphNodeId}-input`
-      let suffix = 2
-      while (current.nodes.some((node) => node.id === inputId)) inputId = `${graphNodeId}-input-${suffix++}`
       const metadata = {
         laboArchitectureName: `Custom · ${label}`,
         laboArchitectureHiddenSize: current.config.hiddenSize,
@@ -462,11 +467,20 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         laboArchitectureKeyValueHeads: current.config.keyValueHeads,
         laboArchitectureHeadDim: current.config.headDim,
       }
-      const inputNode: ArchitectureNode = { id: inputId, kind: 'input', label: `${label} input`, role: inputTensor, position: findOpenGraphPosition(current), attributes: metadata }
-      const withNodes = addNode(addNode(current, inputNode), { ...customNode, attributes: { ...customNode.attributes, ...metadata } })
-      const connected = connectCable(withNodes, { sourceId: inputId, sourcePort: inputTensor, sourcePortId: inputTensor === 'token-ids' ? 'tokenIds' : inputTensor, targetId: graphNodeId, targetPort: inputTensor, targetPortId: 'input' })
-      if (!connected.ok) return { ok: false, message: connected.message }
-      setGraph(layoutParallelArchitecture(connected.graph, [inputId, graphNodeId]))
+      const externalInputs = cardInputs.length > 0 ? cardInputs : [{ id: 'input', label: `${label} input`, tensor: inputTensor }]
+      let withNodes = addNode(current, { ...customNode, attributes: { ...customNode.attributes, ...metadata } })
+      const inputIds: string[] = []
+      for (const [index, port] of externalInputs.entries()) {
+        let inputId = `${graphNodeId}-${port.id}-input`
+        let suffix = 2
+        while (withNodes.nodes.some((node) => node.id === inputId)) inputId = `${graphNodeId}-${port.id}-input-${suffix++}`
+        inputIds.push(inputId)
+        withNodes = addNode(withNodes, { id: inputId, kind: 'input', label: port.label, role: port.tensor, position: { ...findOpenGraphPosition(withNodes), x: findOpenGraphPosition(withNodes).x + index * 180 }, attributes: metadata })
+        const connected = connectCable(withNodes, { sourceId: inputId, sourcePort: port.tensor, sourcePortId: port.tensor === 'token-ids' ? 'tokenIds' : port.tensor, targetId: graphNodeId, targetPort: port.tensor, targetPortId: port.id })
+        if (!connected.ok) return { ok: false, message: connected.message }
+        withNodes = connected.graph
+      }
+      setGraph(layoutParallelArchitecture(withNodes, [...inputIds, graphNodeId]))
       setSelectedNodeId(graphNodeId)
     }
     setCustomCards((current) => [...current, card])
@@ -498,7 +512,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     if (!editingNode || !cardEditDraft) return
     const label = cardEditDraft.label.trim()
     if (!label) return setCardEditError('Give the card a name.')
-    if (editingNode.kind === 'custom-pytorch' && !validCustomPyTorchModule(cardEditDraft.code ?? '')) {
+    if (editingNode.kind === 'custom-pytorch' && !editingNode.customCardGraph && !validCustomPyTorchModule(cardEditDraft.code ?? '')) {
       return setCardEditError('Use one safe nn.Module constructor with literal arguments only.')
     }
     setGraph((current) => ({
@@ -769,6 +783,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       event.dataTransfer.effectAllowed = 'copy'
       event.dataTransfer.setData('application/x-labo-model-atom', definition.id)
       event.dataTransfer.setData('text/plain', definition.label)
+      setLibraryDragPreview(event.dataTransfer, definition.label, `glyph-${definition.category}`)
     }}
     onClick={() => addModelAtom(definition)}
     title="Click to add automatically, or drag onto the graph"
@@ -787,6 +802,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
       event.dataTransfer.effectAllowed = 'copy'
       event.dataTransfer.setData('application/x-labo-model-atom', 'lm-head:tied')
       event.dataTransfer.setData('text/plain', 'Tied language-model head')
+      setLibraryDragPreview(event.dataTransfer, 'Tied language-model head', 'glyph-output')
     }}
     title="Click to add automatically, or drag onto the graph"
   >
@@ -794,23 +810,18 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     Tied language-model head
   </button>
 
-
   return (
     <>
       <section className="workspace-toolbar">
         <div className="toolbar-controls">
-          <div className="view-switcher" aria-label="Editor view">
-            <button aria-pressed={view === 'blocks'} onClick={() => setView('blocks')}><Blocks size={14} />Blocks</button>
-            <button aria-pressed={view === 'pytorch'} onClick={() => setView('pytorch')}><Braces size={14} />PyTorch</button>
-            <button aria-pressed={view === 'split'} onClick={() => setView('split')}><SplitSquareHorizontal size={14} />Split</button>
-          </div>
+          <StudioViewSwitcher<ViewMode> ariaLabel="Editor view" onChange={setView} options={[{ id: 'blocks', label: 'Blocks', icon: <Blocks size={14} /> }, { id: 'pytorch', label: 'PyTorch', icon: <Braces size={14} /> }, { id: 'split', label: 'Split', icon: <SplitSquareHorizontal size={14} /> }]} value={view} />
           <div className="interaction-switcher" aria-label="Canvas interaction mode">
-            <button aria-pressed={interactionMode === 'add'} onClick={() => setInteractionMode('add')}><Blocks size={13} />Add blocks</button>
-            <button aria-pressed={interactionMode === 'edit'} onClick={() => setInteractionMode('edit')}><Pencil size={13} />Edit cards</button>
-            <button aria-haspopup="dialog" onClick={openCardCreator} title="Build a reusable PyTorch card, then choose exactly where it goes"><Code2 size={13} />New reusable card</button>
+            <button aria-pressed={!createCardOpen && interactionMode === 'add'} onClick={() => { setInteractionMode('add'); setCreateCardOpen(false) }}><Blocks size={13} />Add blocks</button>
+            <button aria-pressed={!createCardOpen && interactionMode === 'edit'} onClick={() => { setInteractionMode('edit'); setCreateCardOpen(false) }}><Pencil size={13} />Edit cards</button>
+            <button aria-pressed={createCardOpen} onClick={() => { if (!createCardOpen) openCardCreator() }} title="Open the dedicated reusable card workspace"><Code2 size={13} />Reusable card</button>
           </div>
-          <details className="preset-menu"><summary>{presetMenuLabels[graph.id] ?? graph.name}</summary><div aria-label="Model preset">{builtInModelPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{presetMenuLabels[preset.id] ?? preset.name}</button>)}{userPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{preset.name}</button>)}</div></details>
-          <details className="model-prompt-menu"><summary>Prompt</summary><label className="model-prompt-control"><span>Generation prompt</span><input aria-label="Model generation prompt" onChange={(event) => { setSampleText(event.target.value); setPromptTokenCount(undefined); setModelOutput(undefined) }} value={sampleText} /><small>{acceptsTokenIds ? (promptTokenCount === undefined ? 'Research BPE' : `${promptTokenCount} Token IDs`) : 'Add a Token IDs input'}</small></label></details>
+          {!createCardOpen && <details className="preset-menu"><summary>{presetMenuLabels[graph.id] ?? graph.name}</summary><div aria-label="Model preset">{builtInModelPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{presetMenuLabels[preset.id] ?? preset.name}</button>)}{userPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{preset.name}</button>)}</div></details>}
+          {!createCardOpen && <details className="model-prompt-menu"><summary>Prompt</summary><label className="model-prompt-control"><span>Generation prompt</span><input aria-label="Model generation prompt" onChange={(event) => { setSampleText(event.target.value); setPromptTokenCount(undefined); setModelOutput(undefined) }} value={sampleText} /><small>{acceptsTokenIds ? (promptTokenCount === undefined ? 'Research BPE' : `${promptTokenCount} Token IDs`) : 'Add a Token IDs input'}</small></label></details>}
         </div>
         <div className="toolbar-meta">
           <span><span className={`status-dot ${pytorchDraftAvailable || blankGraph ? '' : 'invalid'}`} /> {blankGraph ? 'Blank canvas ready' : pytorchMappingComplete ? 'PyTorch graph executable' : pytorchDraftAvailable ? 'Atomic PyTorch draft' : 'PyTorch compile error'}</span>
@@ -829,9 +840,9 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         </div>
       </section>
 
-      <div className={`workspace-grid ${libraryOpen ? '' : 'library-hidden'} ${inspectorOpen ? '' : 'inspector-hidden'}`}>
-        {libraryOpen && <aside className={`block-library mode-${interactionMode}`}>
-          <div className="panel-heading"><PanelLeft size={14} /><span>BLOCK LIBRARY</span></div>
+      {createCardOpen ? <Suspense fallback={null}><CustomCardCreator editMode={interactionMode === 'edit'} inspectorOpen={inspectorOpen} libraryOpen={libraryOpen} onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} view={view} /></Suspense> : <>
+      <StudioWorkspace inspectorOpen={inspectorOpen} libraryOpen={libraryOpen}>
+        {libraryOpen && <StudioLibrary className={`mode-${interactionMode}`} heading="BLOCK LIBRARY" icon={<PanelLeft size={14} />}>
           <section className="block-group">
             <details className="library-family graph-input-family">
               <summary>Graph inputs <span>{graphInputDefinitions.length}</span></summary>
@@ -847,6 +858,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                   event.dataTransfer.effectAllowed = 'copy'
                   event.dataTransfer.setData('application/x-labo-graph-input', definition.role)
                   event.dataTransfer.setData('text/plain', definition.label)
+                  setLibraryDragPreview(event.dataTransfer, definition.label, 'glyph-input')
                 }}
                 title="Click to add automatically, or drag onto the graph"
               >
@@ -868,6 +880,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                     event.dataTransfer.effectAllowed = 'copy'
                     event.dataTransfer.setData('application/x-labo-custom-card', card.id)
                     event.dataTransfer.setData('text/plain', card.label)
+                    setLibraryDragPreview(event.dataTransfer, card.label, 'glyph-custom')
                   }}
                   title={`${card.code} · Click or drag onto the graph`}
                 >
@@ -909,9 +922,9 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
               {activationAtoms.map(atomButton)}
             </details>
           </section>
-        </aside>}
+        </StudioLibrary>}
 
-        <section className={`editor-grid view-${view}`}>
+        <StudioEditor className={`view-${view}`}>
           {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} onDeleteNode={deleteGraphCard} onDeleteNodes={deleteGraphCards} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
             const card = customCards.find((candidate) => candidate.id === cardId)
             if (card) addCustomCard(card, position)
@@ -929,10 +942,9 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
               {!blankGraph && parseDiagnostics.length > 0 && <div className="code-diagnostics">{parseDiagnostics.map((diagnostic) => <p key={`${diagnostic.nodeId}-${diagnostic.code}`}>{diagnostic.message}</p>)}</div>}
             </div>
           )}
-        </section>
+        </StudioEditor>
 
-        <aside className="inspector" hidden={!inspectorOpen}>
-          <div className="panel-heading"><Cpu size={14} /><span>INSPECTOR</span></div>
+        <StudioInspector heading="INSPECTOR" hidden={!inspectorOpen} icon={<Cpu size={14} />}>
           <section className="inspector-section">
             <div className="section-title">Selection</div>
             <div className="selection-card">
@@ -955,8 +967,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
               {modelOutput?.topTokenIds && <div><span>Top 5</span><code>{modelOutput.topTokenIds.map((tokenId, index) => `${tokenId} (${(((modelOutput.topProbabilities?.[index]) ?? 0) * 100).toFixed(2)}%)`).join(' · ')}</code></div>}
             </div>
           </section>
-        </aside>
-      </div>
+        </StudioInspector>
+      </StudioWorkspace>
 
       {editingNode && cardEditDraft && <div className="model-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) closeCardEditor() }}>
         <section aria-label="Edit model card" aria-modal="true" className={`model-card-modal ${editingNode.kind === 'custom-pytorch' ? 'code-card-modal' : ''}`} onPointerDown={(event) => event.stopPropagation()} role="dialog">
@@ -964,7 +976,9 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           <p className="model-card-modal-hint">Edit this existing graph card. No new Blockly card is added in this mode.</p>
           <label><span>Name</span><input aria-label="Model card name" onChange={(event) => setCardEditDraft((current) => current ? { ...current, label: event.target.value } : current)} value={cardEditDraft.label} /></label>
           <label><span>Block ID</span><input aria-label="Model card ID" disabled value={editingNode.id} /></label>
-          {editingNode.kind === 'custom-pytorch' ? <label className="model-card-code-field"><span>PyTorch module</span><PythonCodeEditor ariaLabel="Model card PyTorch module" className="compact-python-editor model-card-python-editor" onChange={(value) => setCardEditDraft((current) => current ? { ...current, code: value } : current)} value={cardEditDraft.code ?? ''} /></label> : <div className="model-card-modal-settings">
+          {editingNode.kind === 'custom-pytorch' ? editingNode.customCardGraph
+            ? <div className="model-card-code-field"><span>Generated composite PyTorch</span><PythonCodePreview className="compact-python-editor model-card-python-editor" value={cardEditDraft.code ?? ''} /><small>Composite topology is preserved as a reusable internal graph.</small></div>
+            : <label className="model-card-code-field"><span>PyTorch module</span><PythonCodeEditor ariaLabel="Model card PyTorch module" className="compact-python-editor model-card-python-editor" onChange={(value) => setCardEditDraft((current) => current ? { ...current, code: value } : current)} value={cardEditDraft.code ?? ''} /></label> : <div className="model-card-modal-settings">
             {modelAtomRegistry[editingNode.atomId ?? '']?.settings.map((setting) => {
               const value = cardEditDraft.attributes?.[setting.id] ?? setting.default
               return <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean'
@@ -974,16 +988,14 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                   : <input aria-label={`Model card setting ${setting.id}`} onChange={(event) => setCardEditDraft((current) => current ? { ...current, attributes: { ...current.attributes, [setting.id]: setting.type === 'number' ? Number(event.target.value) : event.target.value } } : current)} type={setting.type === 'number' ? 'number' : 'text'} value={String(value)} />}</label>
             })}
           </div>}
-          {editingNode.kind === 'custom-pytorch' && <small className={validCustomPyTorchModule(cardEditDraft.code ?? '') ? 'custom-code-valid' : 'custom-code-invalid'}>{validCustomPyTorchModule(cardEditDraft.code ?? '') ? 'Valid safe nn.Module constructor' : 'Invalid or unsupported nn.Module constructor'}</small>}
+          {editingNode.kind === 'custom-pytorch' && <small className={editingNode.customCardGraph || validCustomPyTorchModule(cardEditDraft.code ?? '') ? 'custom-code-valid' : 'custom-code-invalid'}>{editingNode.customCardGraph ? 'Valid reusable composite graph' : validCustomPyTorchModule(cardEditDraft.code ?? '') ? 'Valid safe nn.Module constructor' : 'Invalid or unsupported nn.Module constructor'}</small>}
           {cardEditError && <p className="model-card-modal-error" role="alert">{cardEditError}</p>}
           <footer><button className="model-card-delete" onClick={deleteEditingCard}><Trash2 size={12} />Delete card</button><span /><button onClick={closeCardEditor}>Cancel</button><button className="model-card-save" onClick={saveCardEditor}>Save changes</button></footer>
         </section>
       </div>}
 
-      {createCardOpen && <Suspense fallback={null}><CustomCardCreator onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} /></Suspense>}
-
-      <footer className="statusbar model-statusbar">
-      <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<>
+      <StudioStatusbar className="model-statusbar">
+      <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<>
         <div className="workspace-management-column">
           <div className="model-preset-builder">
             <div className="workspace-current-target"><span>CURRENT WORKSPACE</span><strong>{presetMenuLabels[graph.id] ?? graph.name}</strong><small>{graph.nodes.length} cards · edits auto-saved for this user</small></div>
@@ -1014,7 +1026,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
         <span className="status-spacer" />
         <span>PyTorch 2.7</span>
         <span>LABO Runtime · local</span>
-      </footer>
+      </StudioStatusbar>
+      </>}
     </>
   )
 }

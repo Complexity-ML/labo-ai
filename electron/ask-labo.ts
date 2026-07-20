@@ -8,7 +8,7 @@ export interface AskLaboPayload {
 export interface AskLaboPlan {
   summary: string
   addedBlocks: Array<{ atomId: string; nodeId: string; reason: string }>
-  createdBlocks: Array<{ nodeId: string; label: string; pytorchModule: string; inputRole: string; outputRole: string; reason: string }>
+  createdBlocks: Array<{ nodeId: string; label: string; pytorchModule: string; inputRole: string; outputRole: string; reason: string; cardGraph?: unknown }>
   connections: Array<{ sourceId: string; sourcePortId: string; targetId: string; targetPortId: string; reason: string }>
   updatedBlocks: Array<{ nodeId: string; label: string | null; settings: Record<string, number | string | boolean> | null; pytorchModule: string | null; reason: string }>
   deletedBlocks: Array<{ nodeId: string; reason: string }>
@@ -157,7 +157,7 @@ class AgentToolSession {
   readonly plan: AskLaboPlan = { summary: '', addedBlocks: [], createdBlocks: [], connections: [], updatedBlocks: [], deletedBlocks: [], movedBlocks: [], actions: [], missingBlocks: [], warnings: [], toolTrace: [] }
   private readonly initialNodeIds: Set<string>
   private readonly atomics: AtomicSnapshot[]
-  private readonly savedCards: Array<{ id: string; label: string; code: string; inputRole?: string; outputRole?: string }>
+  private readonly savedCards: Array<{ id: string; label: string; code: string; inputRole?: string; outputRole?: string; inputs?: Array<{ id: string; tensor: string; rank?: number }>; outputs?: Array<{ id: string; tensor: string; rank?: number }>; graph?: unknown }>
   private readonly nodes: NodeSnapshot[]
   private readonly connections: ConnectionSnapshot[]
   private readonly architectures: Array<{ id: string; label: string; nodeIds: string[] }>
@@ -294,8 +294,8 @@ class AgentToolSession {
   call(name: string, args: Record<string, unknown>): Record<string, unknown> {
     if (this.finished) return this.reject(name, 'The plan is already finished')
     const text = (key: string) => typeof args[key] === 'string' ? String(args[key]).trim() : ''
-    if (this.context.cardBuilderMode === true && !['search_cards', 'compose_card', 'create_card', 'finish_plan'].includes(name)) {
-      return this.reject(name, 'Card Builder mode can only inspect, compose and finish one reusable card')
+    if (this.context.cardBuilderMode === true && !['search_cards', 'inspect_graph', 'add_block', 'add_saved_card', 'compose_card', 'create_card', 'connect_blocks', 'connect_compatible', 'remove_queued_connection', 'validate_graph', 'move_card', 'layout_graph', 'finish_plan'].includes(name)) {
+      return this.reject(name, 'Card Builder mode only allows composing and validating a reusable internal graph')
     }
     if (name === 'search_cards') {
       const tokens = text('query').toLowerCase().split(/\W+/).filter(Boolean)
@@ -343,6 +343,13 @@ class AgentToolSession {
     if (name === 'add_saved_card') {
       const card = this.savedCards.find((item) => item.id === text('card_id'))
       if (!card) return this.reject(name, `Unknown saved card ${text('card_id')}`)
+      if (card.graph && card.inputs?.length && card.outputs?.length) {
+        const nodeId = text('node_id'), reason = text('reason')
+        if (!/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(nodeId) || this.node(nodeId)) return this.reject(name, `Invalid or duplicate node id ${nodeId}`)
+        this.plan.createdBlocks.push({ nodeId, label: card.label, pytorchModule: card.code, inputRole: card.inputs[0].tensor, outputRole: card.outputs[0].tensor, reason, cardGraph: card.graph })
+        this.nodes.push({ id: nodeId, label: card.label, inputs: card.inputs, outputs: card.outputs })
+        return this.trace(name, 'accepted', `Queued reusable composite card ${card.label}`)
+      }
       return this.call('create_card', { node_id: text('node_id'), label: card.label, pytorch_module: card.code, input_role: card.inputRole ?? 'hidden', output_role: card.outputRole ?? 'hidden', reason: text('reason') })
     }
     if (name === 'compose_card') {
@@ -471,7 +478,7 @@ class AgentToolSession {
     }
     if (name === 'finish_plan') {
       const validation = this.validateVirtualGraph()
-      if (this.context.cardBuilderMode !== true && this.hasGraphMutations && !validation.valid) return { ...this.reject(name, `Plan is not ready: ${validation.errors.slice(0, 4).join('; ')}`), validation }
+      if (this.hasGraphMutations && !validation.valid) return { ...this.reject(name, `Plan is not ready: ${validation.errors.slice(0, 4).join('; ')}`), validation }
       this.plan.summary = text('summary') || 'LABO agent plan'
       const missing = Array.isArray(args.missing_blocks) ? args.missing_blocks.map(record) : []
       this.plan.missingBlocks = missing.map((item) => ({ atomId: typeof item.atom_id === 'string' ? item.atom_id : null, label: String(item.label ?? ''), reason: String(item.reason ?? '') }))
@@ -518,7 +525,7 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
             'Never merely describe a mutation: call its exact tool. Search cards before creating one or reporting it missing.',
             'When search_cards finds no suitable card, use compose_card for supported projection, normalization, activation, regularization or utility capabilities. Use raw create_card only when the deterministic composer cannot express the required safe unary nn.Module.',
             payload.context.cardBuilderMode === true
-              ? 'Card Builder mode is active. Produce exactly one reusable unary card with compose_card, or create_card only if the composer cannot express it. Do not add native blocks, connect, move, edit, delete, run, save a preset, lay out or export a graph.'
+              ? 'Card Builder mode is active. Build one complete reusable INTERNAL graph. Add its typed graph inputs, native atoms or safe custom atoms, connect every required port, validate it, optionally lay it out, then finish. Branches, multiple inputs and multiple terminal outputs are allowed. Do not run, save a preset or export.'
               : 'Graph Builder mode is active. Construct the requested graph with explicit tools.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
             'Prefer connect_compatible over guessing port ids. Use connect_all=true for Q/K/V or another multi-port group. If a queued connection is wrong, remove it with remove_queued_connection.',

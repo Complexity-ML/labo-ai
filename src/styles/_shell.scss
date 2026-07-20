@@ -99,42 +99,6 @@
   background: linear-gradient(180deg, rgb(156 148 255 / 18%), rgb(156 148 255 / 8%));
 }
 
-.workspace-toolbar {
-  gap: 14px;
-  padding-inline: 14px;
-  border-color: var(--labo-line);
-  background: rgb(10 13 14 / 96%);
-  box-shadow: 0 7px 24px rgb(0 0 0 / 12%);
-}
-
-.toolbar-controls,
-.toolbar-meta { gap: 9px; }
-
-.view-switcher,
-.interaction-switcher,
-.target-switcher {
-  padding: 4px;
-  border-color: var(--labo-line);
-  border-radius: 9px;
-  background: rgb(4 7 8 / 72%);
-}
-
-.view-switcher button,
-.interaction-switcher button,
-.target-switcher button {
-  height: 31px;
-  border-radius: 6px;
-  padding-inline: 10px;
-  font-size: 10px;
-}
-
-.view-switcher button[aria-pressed='true'],
-.interaction-switcher button[aria-pressed='true'] {
-  color: #eff5f3;
-  background: linear-gradient(180deg, rgb(112 224 173 / 13%), rgb(111 199 212 / 7%));
-  box-shadow: inset 0 0 0 1px rgb(112 224 173 / 20%);
-}
-
 .preset-menu > summary,
 .model-prompt-menu > summary {
   min-height: 32px;
@@ -144,13 +108,6 @@
   color: #c5cecb;
   background: var(--labo-panel);
   font-size: 9px;
-}
-
-.toolbar-meta {
-  color: #77827f;
-  font-size: 9px;
-
-  > span:first-child { color: #9ca7a4; }
 }
 
 .panel-visibility-button,
@@ -182,30 +139,9 @@
   font-size: 9px;
 }
 
-.statusbar {
-  padding-inline: 13px;
-  gap: 20px;
-  border-color: var(--labo-line);
-  color: #68736f;
-  background: rgb(8 11 12 / 96%);
-  font-size: 9px;
-}
-
-.model-statusbar {
-  position: relative;
-  align-items: center;
-  padding-bottom: 0;
-}
-
 @media (max-width: 1560px) {
   .brand,
   .header-actions { width: 235px; }
-
-  .toolbar-meta > span { display: none; }
-  .workspace-toolbar { gap: 8px; padding-inline: 10px; }
-  .toolbar-controls,
-  .toolbar-meta { gap: 6px; }
-  .interaction-switcher button { padding-inline: 8px; font-size: 9px; }
 }
 
 @media (min-width: 2100px) {
@@ -216,8 +152,7 @@
     --labo-tab-height: 44px;
   }
 
-  .topbar,
-  .workspace-toolbar { padding-inline: 22px; }
+  .topbar { padding-inline: 22px; }
   .brand { font-size: 17px; }
   .studio-navigation button,
   .ghost-button,

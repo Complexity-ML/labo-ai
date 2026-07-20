@@ -1,5 +1,6 @@
 import type { ArchitectureGraph, ArchitectureNode, TensorRole } from './ir'
 import { modelAtomRegistry, type AtomPort } from './model-atoms'
+import { customCardInputPorts, customCardOutputPorts } from './custom-card-graph'
 
 const inputRanks: Partial<Record<TensorRole, number>> = {
   'token-ids': 2,
@@ -23,13 +24,14 @@ function outputPorts(node: ArchitectureNode): AtomPort[] {
     }]
   }
   if (node.atomId && modelAtomRegistry[node.atomId]) return modelAtomRegistry[node.atomId].outputs
+  if (node.kind === 'custom-pytorch' && node.customCardGraph) return customCardOutputPorts(node.customCardGraph).map(({ id, tensor, rank }) => ({ id, tensor: portTensor(tensor), rank }))
   return [{ id: 'output', tensor: portTensor(node.role), rank: inputRanks[node.role] }]
 }
 
 function missingInputs(graph: ArchitectureGraph, node: ArchitectureNode): AtomPort[] {
   const definition = node.atomId ? modelAtomRegistry[node.atomId] : undefined
   const inputs: AtomPort[] = definition?.inputs ?? (node.kind === 'custom-pytorch'
-    ? [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: portTensor((node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden') }]
+    ? node.customCardGraph ? customCardInputPorts(node.customCardGraph).map(({ id, tensor, rank }) => ({ id, tensor: portTensor(tensor), rank })) : [{ id: node.attributes?.inputRole === 'hidden' || !node.attributes?.inputRole ? 'hidden' : 'input', tensor: portTensor((node.attributes?.inputRole as TensorRole | undefined) ?? 'hidden') }]
     : [])
   return inputs.filter((port) => !graph.edges.some((edge) => edge.target === node.id
     && (edge.targetPort === port.id || (!edge.targetPort && inputs.length === 1))))

@@ -5,11 +5,24 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 
+function connectCardAgent(atomId: string, label: string) {
+  window.labo = { platform: 'web', runtime: 'web', askLabo: async () => ({
+    summary: `Compose ${label}.`,
+    addedBlocks: [
+      { atomId: 'hidden-state-input', nodeId: 'builder-input', reason: 'Card input.' },
+      { atomId, nodeId: `builder-${atomId}`, reason: label },
+    ],
+    createdBlocks: [],
+    connections: [{ sourceId: 'builder-input', sourcePortId: 'hidden', targetId: `builder-${atomId}`, targetPortId: 'hidden', reason: 'Connect card input.' }],
+    missingBlocks: [], warnings: [],
+  }) }
+}
+
 describe('LABO AI card builder', () => {
   it('keeps card editing distinct from Blockly adding and uses the central modal', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-  
+
     expect(screen.getByRole('button', { name: 'Add Token IDs' })).toBeDisabled()
     expect(screen.getAllByLabelText(/Editable card:/).length).toBeGreaterThan(10)
     expect(screen.getAllByLabelText('Editable card: settings').length).toBeGreaterThan(5)
@@ -30,60 +43,78 @@ describe('LABO AI card builder', () => {
     expect(screen.getByRole('textbox', { name: 'Model card name' })).toHaveValue('Tied token embedding')
   })
   
-  it('creates a reusable custom PyTorch card and keeps its code editable', async () => {
+  it('creates a reusable composite graph and keeps its generated PyTorch inspectable', async () => {
+    connectCardAgent('linear-projection', 'My projection')
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Split' }))
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
     expect(screen.queryByRole('textbox', { name: 'Custom card name' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    expect(await screen.findByRole('dialog', { name: 'Create model card' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Card destination' })).toHaveValue('new-architecture')
-    expect(screen.getByRole('option', { name: /After selected card/ })).toBeDisabled()
-    fireEvent.click(screen.getByText('Advanced settings'))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My RMSNorm' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create as new architecture' }))
-  
-    expect(screen.getByRole('button', { name: 'Add My RMSNorm' })).toHaveAttribute('draggable', 'true')
-    expect(screen.getByRole('button', { name: 'Select My RMSNorm' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    expect(await screen.findByRole('region', { name: 'Create model card' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reusable card' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Add blocks' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Edit cards' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Split' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Card inputs')).toBeInTheDocument()
+    expect(screen.getByText('Card atoms')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Card destination' })).toHaveTextContent('New architecture')
+    expect(screen.queryByRole('button', { name: /Choose Place after/ })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a linear projection card' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('Linear projection'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My projection' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create reusable architecture' }))
+
+    expect(screen.getByRole('button', { name: 'Add My projection' })).toHaveAttribute('draggable', 'true')
+    expect(screen.getByRole('button', { name: 'Select My projection' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
-    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select My RMSNorm' }))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Select My projection' }))
     expect(screen.getByRole('dialog', { name: 'Edit model card' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Model card PyTorch module' })).toHaveValue('nn.RMSNorm(768)')
-    expect(screen.getByText('Valid safe nn.Module constructor')).toBeInTheDocument()
+    expect(screen.getByText('Valid reusable composite graph')).toBeInTheDocument()
     const code = (screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value
-    expect(code).toContain('kind=custom-pytorch')
-    expect(code).toContain('self.custom_my_rmsnorm = nn.RMSNorm(768)')
-  
-    fireEvent.change(screen.getByRole('textbox', { name: 'Model card PyTorch module' }), { target: { value: 'torch.load("unsafe.pt")' } })
-    expect(screen.getByText('Invalid or unsupported nn.Module constructor')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('safe nn.Module')
-    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).not.toContain('class GeneratedInvalidGraph')
-    expect(JSON.parse(window.localStorage.getItem('labo.custom-pytorch-cards.v1') ?? '[]')).toEqual([
-      { id: 'my-rmsnorm', label: 'My RMSNorm', code: 'nn.RMSNorm(768)' },
-    ])
+    expect(code).toContain('kind=custom-card-graph')
+    expect(screen.getByRole('button', { name: 'Select My projection' })).toBeInTheDocument()
   })
   
-  it('closes the Card Builder when its backdrop is clicked', async () => {
+  it('returns from the dedicated Card Builder workspace to Model Studio', async () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Create model card' })
-  
-    fireEvent.pointerDown(dialog.parentElement!)
-  
-    expect(screen.queryByRole('dialog', { name: 'Create model card' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('region', { name: 'Create model card' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reusable card' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('switches cleanly between model construction, card editing, and reusable-card creation', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add blocks' }))
+    expect(screen.queryByRole('region', { name: 'Create model card' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add blocks' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }))
+    expect(screen.queryByRole('region', { name: 'Create model card' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit cards' })).toHaveAttribute('aria-pressed', 'true')
   })
   
   it('can save a reusable card to the library without mutating the graph', async () => {
+    connectCardAgent('rms-norm', 'Library RMSNorm')
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
-    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    await screen.findByRole('dialog', { name: 'Create model card' })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Card destination' }), { target: { value: 'library' } })
-    fireEvent.click(screen.getByText('Advanced settings'))
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create an RMSNorm card' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('RMSNorm'))
+    fireEvent.click(screen.getByRole('button', { name: 'Card destination' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Reusable library card' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'Library RMSNorm' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card PyTorch code' }), { target: { value: 'nn.RMSNorm(768)' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save to My cards' }))
   
     expect(screen.getByRole('button', { name: 'Add Library RMSNorm' })).toBeInTheDocument()
@@ -92,56 +123,51 @@ describe('LABO AI card builder', () => {
   })
   
   it('auto-composes category-specific Blockly card construction blocks', async () => {
+    connectCardAgent('silu', 'Use a SiLU activation for the expert branch')
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    await screen.findByRole('dialog', { name: 'Create model card' })
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Use a SiLU activation for the expert branch' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Compose card' }))
-  
-    expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU')
-    fireEvent.click(screen.getByText('Advanced settings'))
-    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.SiLU()')
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+
+    await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU'))
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
+    expect(screen.getByRole('button', { name: 'PyTorch' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Python code preview')).toHaveTextContent('atom=silu')
     expect((screen.getByRole('textbox', { name: 'Custom card name' }) as HTMLInputElement).value).toMatch(/^Use a SiLU activation/)
     expect(screen.queryByText('Create PyTorch card')).not.toBeInTheDocument()
   })
   
   it('prompts Ask LABO directly from the Card Builder without mutating the graph', async () => {
     const askLabo = vi.fn(async () => ({
-      summary: 'One reusable card.', addedBlocks: [],
+      summary: 'One reusable card.', addedBlocks: [{ atomId: 'hidden-state-input', nodeId: 'builder-input', reason: 'input' }],
       createdBlocks: [{ nodeId: 'builder-gelu', label: 'Expert GELU', pytorchModule: 'nn.GELU()', inputRole: 'hidden' as const, outputRole: 'hidden' as const, reason: 'Requested in Card Builder.' }],
-      connections: [], missingBlocks: [], warnings: [],
+      connections: [{ sourceId: 'builder-input', sourcePortId: 'hidden', targetId: 'builder-gelu', targetPortId: 'hidden', reason: 'connect' }], missingBlocks: [], warnings: [],
     }))
     window.labo = { platform: 'web', runtime: 'web', askLabo }
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    await screen.findByRole('dialog', { name: 'Create model card' })
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a GELU expert activation' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Compose card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
   
     await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('GELU'))
-    fireEvent.click(screen.getByText('Advanced settings'))
-    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.GELU()')
     expect(screen.getByRole('textbox', { name: 'Custom card name' })).toHaveValue('Expert GELU')
     expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ cardBuilderMode: true }) }))
-    expect(screen.queryByRole('button', { name: 'Select Expert GELU' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Create model card' })).getByRole('button', { name: 'Select Expert GELU' })).toBeInTheDocument()
   })
   
-  it('changes the available card blocks and plugs with the selected category', async () => {
+  it('changes the real atomic palette with the selected family', async () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'New reusable card' }))
-    await screen.findByRole('dialog', { name: 'Create model card' })
-    fireEvent.click(screen.getByText('Advanced settings'))
-    const palette = screen.getByLabelText('Card operation palette')
-  
-    expect(within(palette).getByRole('button', { name: 'Linear' })).toBeInTheDocument()
-    expect(within(palette).queryByRole('button', { name: 'Dropout' })).not.toBeInTheDocument()
-    fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'normalization' } })
-    expect(within(palette).getAllByRole('button').map((button) => button.textContent)).toEqual(['RMSNorm', 'LayerNorm'])
-    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.RMSNorm(768)')
-    expect(screen.getByRole('combobox', { name: 'Custom card output type' })).toBeDisabled()
-    fireEvent.change(screen.getByRole('combobox', { name: 'Custom card category' }), { target: { value: 'utility' } })
-    expect(within(palette).getAllByRole('button').map((button) => button.textContent)).toEqual(['Identity'])
-    expect(screen.getByRole('textbox', { name: 'Custom card PyTorch code' })).toHaveValue('nn.Identity()')
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+    const palette = screen.getByLabelText('Atomic card palette')
+    expect(within(palette).getByRole('button', { name: /Linear projection/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Custom card category' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Normalization' }))
+    expect(within(palette).getByRole('button', { name: /RMSNorm/ })).toBeInTheDocument()
+    expect(within(palette).getByRole('button', { name: /LayerNorm/ })).toBeInTheDocument()
+    expect(within(palette).queryByRole('button', { name: /Dropout/ })).not.toBeInTheDocument()
   })
   
   it('exports the Blockly diagram or generated PyTorch through the desktop save bridge', async () => {

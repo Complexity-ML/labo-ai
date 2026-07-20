@@ -27,6 +27,8 @@ export interface ArchitectureNode {
   attributes?: Record<string, number | string | boolean>
   code?: string
   atomId?: string
+  /** Internal typed graph carried by a reusable composite card. Legacy custom cards omit it. */
+  customCardGraph?: ArchitectureGraph
 }
 
 export interface ArchitectureGroup {

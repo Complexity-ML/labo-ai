@@ -1,4 +1,4 @@
-import type { TensorRole } from '../core/ir'
+import type { ArchitectureGraph, TensorRole } from '../core/ir'
 
 export interface CustomPyTorchCard {
   id: string
@@ -6,6 +6,8 @@ export interface CustomPyTorchCard {
   code: string
   inputRole?: TensorRole
   outputRole?: TensorRole
+  /** A real reusable subgraph. `code` remains for legacy unary cards and previews. */
+  graph?: ArchitectureGraph
 }
 
 export type CustomCardOperation = 'linear' | 'rmsnorm' | 'layernorm' | 'dropout' | 'gelu' | 'silu' | 'relu' | 'sigmoid' | 'tanh' | 'mish' | 'identity'
