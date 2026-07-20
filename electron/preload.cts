@@ -11,6 +11,7 @@ const testOpenAIKeyChannel = 'labo:openai-key-test'
 const chatGPTSessionChannel = 'labo:chatgpt-session'
 const connectChatGPTChannel = 'labo:chatgpt-connect'
 const disconnectChatGPTChannel = 'labo:chatgpt-disconnect'
+const configureChatGPTChannel = 'labo:chatgpt-configure'
 const exportFileChannel = 'labo:export-file'
 const windowStateChannel = 'labo:window-state'
 const loadDesktopStateChannel = 'labo:desktop-state-load'
@@ -31,11 +32,12 @@ contextBridge.exposeInMainWorld('labo', {
   getChatGPTSession: () => ipcRenderer.invoke(chatGPTSessionChannel),
   connectChatGPT: () => ipcRenderer.invoke(connectChatGPTChannel),
   disconnectChatGPT: () => ipcRenderer.invoke(disconnectChatGPTChannel),
+  configureChatGPT: (configuration: { model: string; effort: string }) => ipcRenderer.invoke(configureChatGPTChannel, configuration),
   exportFile: (payload: { filename: string; content: string; kind: 'svg' | 'python' }) => ipcRenderer.invoke(exportFileChannel, payload),
-  loadDesktopState: (scope: 'model' | 'training' | 'tokenizer') => ipcRenderer.invoke(loadDesktopStateChannel, { scope }),
-  saveDesktopState: (scope: 'model' | 'training' | 'tokenizer', data: unknown) => ipcRenderer.invoke(saveDesktopStateChannel, { scope, data }),
-  getDesktopUpdateStatus: () => ipcRenderer.invoke(desktopUpdateStatusChannel),
-  launchDesktopUpdate: () => ipcRenderer.invoke(launchDesktopUpdateChannel),
+  loadDesktopState: (scope: 'model' | 'training' | 'tokenizer' | 'settings') => ipcRenderer.invoke(loadDesktopStateChannel, { scope }),
+  saveDesktopState: (scope: 'model' | 'training' | 'tokenizer' | 'settings', data: unknown) => ipcRenderer.invoke(saveDesktopStateChannel, { scope, data }),
+  getDesktopUpdateStatus: (channel?: 'stable' | 'main') => ipcRenderer.invoke(desktopUpdateStatusChannel, { channel }),
+  launchDesktopUpdate: (channel?: 'stable' | 'main') => ipcRenderer.invoke(launchDesktopUpdateChannel, { channel }),
   openDesktopSetup: () => ipcRenderer.invoke(openDesktopSetupChannel),
   getWindowState: () => ipcRenderer.invoke(windowStateChannel),
   onWindowStateChange: (callback: (state: { fullScreen: boolean }) => void) => {

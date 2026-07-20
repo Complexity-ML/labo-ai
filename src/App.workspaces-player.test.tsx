@@ -62,7 +62,8 @@ describe('LABO AI workspaces player', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     expect(screen.getByText('0 atoms')).toBeInTheDocument()
     expect(screen.getAllByText('Blank canvas 1').length).toBeGreaterThan(0)
-  
+
+    fireEvent.click(screen.getByText('Add an architecture for comparison'))
     fireEvent.click(screen.getByRole('button', { name: 'Add GPT-like beside current graph' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add TR Basic beside current graph' }))
     expect(screen.getByText('21 atoms')).toBeInTheDocument()

@@ -50,6 +50,7 @@
     &[data-status='failed'] { box-shadow: inset 2px 0 var(--pastel-rose); }
     &[data-status='running'] { box-shadow: inset 2px 0 var(--pastel-blue); }
     &[data-status='review'] { box-shadow: inset 2px 0 var(--pastel-lavender); }
+    &[data-status='answered'] { box-shadow: inset 2px 0 var(--pastel-blue); }
     &[data-status='applied'] { box-shadow: inset 2px 0 var(--pastel-sage); }
   }
 }

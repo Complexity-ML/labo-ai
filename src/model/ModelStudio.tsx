@@ -43,6 +43,7 @@ import { StudioCodePanel, StudioPanelTab } from '../studio/StudioPanels'
 import { ModelInteractionSwitcher, ModelPanelControls, ModelPlayerControls } from './ModelToolbarControls'
 import { ModelPresetMenu, ModelPromptMenu } from './ModelPresetControls'
 import { setLibraryDragPreview } from '../studio/libraryDragPreview'
+import { WorkspaceSettingsContent } from '../studio/WorkspaceSettingsContent'
 
 const CustomCardCreator = lazy(() => import('./CustomCardCreator').then((module) => ({ default: module.CustomCardCreator })))
 
@@ -971,31 +972,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
       </div>}
 
       <StudioStatusbar className="model-statusbar">
-      <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<>
-        <div className="workspace-management-column">
-          <div className="model-preset-builder">
-            <div className="workspace-current-target"><span>CURRENT WORKSPACE</span><strong>{presetMenuLabels[graph.id] ?? graph.name}</strong><small>{graph.nodes.length} cards · edits auto-saved for this user</small></div>
-            <label><span>Name for the saved copy</span><input aria-label="New model preset name" onChange={(event) => setPresetName(event.target.value)} value={presetName} /></label>
-            {presetError && <p role="alert">{presetError}</p>}
-            <button aria-label={`Save a named copy of ${presetMenuLabels[graph.id] ?? graph.name}`} onClick={createUserPreset}>Save current graph as a workspace</button>
-            <button onClick={createBlankWorkspace}>Create and open a blank workspace</button>
-            <button className={`reset-model-preset-button${confirmPresetReset ? ' confirm-reset' : ''}`} disabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} onClick={resetCurrentPreset}>{confirmPresetReset ? `Confirm restore ${presetMenuLabels[graph.id] ?? graph.name}` : `Restore ${presetMenuLabels[graph.id] ?? graph.name}`}</button>
-            <small>Opening another workspace preserves this draft. Restore discards only the current workspace edits and requires confirmation.</small>
-          </div>
-          {userPresets.length > 0 && <div className="user-preset-list">
-            <strong>YOUR SAVED WORKSPACES</strong>
-            {userPresets.map((preset) => <div key={preset.id}>
-              <button aria-label={`Load preset ${preset.name}`} aria-pressed={graph.id === preset.id} onClick={() => loadPreset(preset, preset.nodes[0]?.id ?? '')}><strong>{preset.name}</strong><small>{preset.nodes.length} blocks</small></button>
-              <button aria-label={`Delete preset ${preset.name}`} onClick={() => deleteUserPreset(preset)} title="Delete workspace"><Trash2 size={12} /></button>
-            </div>)}
-          </div>}
-        </div>
-        <div className="preset-comparison-list">
-          <strong>ADD FOR COMPARISON</strong>
-          <small>Add a complete architecture beside the current graph without switching workspace.</small>
-          {[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)].map((preset) => <button aria-label={`Add ${presetMenuLabels[preset.id] ?? preset.name} beside current graph`} key={`compare-${preset.id}`} onClick={() => addPresetForComparison(preset)}><strong>+ {presetMenuLabels[preset.id] ?? preset.name}</strong><span>{preset.nodes.length} cards</span></button>)}
-        </div>
-      </>} />
+      <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<WorkspaceSettingsContent comparisonPresets={[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)]} currentGraph={graph} currentLabel={presetMenuLabels[graph.id] ?? graph.name} error={presetError} name={presetName} onAddComparison={addPresetForComparison} onCreateBlank={createBlankWorkspace} onDeleteWorkspace={deleteUserPreset} onLoadWorkspace={(preset) => loadPreset(preset, preset.nodes[0]?.id ?? '')} onNameChange={setPresetName} onReset={resetCurrentPreset} onSave={createUserPreset} presetLabel={(preset) => presetMenuLabels[preset.id] ?? preset.name} resetConfirming={confirmPresetReset} resetDisabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} savedWorkspaces={userPresets} />} />
 
         <span><span className={`status-dot ${validation.valid || blankGraph ? '' : 'invalid'}`} /> Neural IR {blankGraph ? 'blank' : validation.valid ? 'valid' : 'invalid'}</span>
         <span>{stats.nodeCount} nodes · {stats.edgeCount} links</span>

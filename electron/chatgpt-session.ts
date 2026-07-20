@@ -12,7 +12,24 @@ export interface ChatGPTSessionStatus {
   connected: boolean
   email?: string
   planType?: string
+  models?: ChatGPTModelOption[]
+  selectedModel?: string
+  selectedEffort?: string
   error?: string
+}
+
+export interface ChatGPTModelOption {
+  id: string
+  label: string
+  description?: string
+  efforts: string[]
+  defaultEffort?: string
+  isDefault: boolean
+}
+
+export interface ChatGPTAgentConfiguration {
+  model?: string
+  effort?: string
 }
 
 type JsonRecord = Record<string, unknown>
@@ -26,7 +43,7 @@ const turnTimeoutMs = 3 * 60_000
 const string = { type: 'string' }
 const nullableString = { anyOf: [string, { type: 'null' }] }
 const reason = { type: 'string' }
-const planSchema = {
+export const chatGPTPlanSchema = {
   type: 'object', additionalProperties: false,
   properties: {
     summary: string,
@@ -37,10 +54,10 @@ const planSchema = {
     deletedBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, reason }, required: ['nodeId', 'reason'] } },
     movedBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, x: { type: 'number' }, y: { type: 'number' }, reason }, required: ['nodeId', 'x', 'y', 'reason'] } },
     actions: { type: 'array', items: { anyOf: [
-      { type: 'object', additionalProperties: false, properties: { type: { const: 'layout' }, scope: { type: 'string', enum: ['all', 'new'] }, reason }, required: ['type', 'scope', 'reason'] },
-      { type: 'object', additionalProperties: false, properties: { type: { const: 'run' }, mode: { type: 'string', enum: ['play', 'step'] }, reason }, required: ['type', 'mode', 'reason'] },
-      { type: 'object', additionalProperties: false, properties: { type: { const: 'save-preset' }, name: string, reason }, required: ['type', 'name', 'reason'] },
-      { type: 'object', additionalProperties: false, properties: { type: { const: 'export' }, kind: { type: 'string', enum: ['svg', 'python', 'both'] }, reason }, required: ['type', 'kind', 'reason'] },
+      { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'layout' }, scope: { type: 'string', enum: ['all', 'new'] }, reason }, required: ['type', 'scope', 'reason'] },
+      { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'run' }, mode: { type: 'string', enum: ['play', 'step'] }, reason }, required: ['type', 'mode', 'reason'] },
+      { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'save-preset' }, name: string, reason }, required: ['type', 'name', 'reason'] },
+      { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'export' }, kind: { type: 'string', enum: ['svg', 'python', 'both'] }, reason }, required: ['type', 'kind', 'reason'] },
     ] } },
     missingBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { atomId: nullableString, label: string, reason }, required: ['atomId', 'label', 'reason'] } },
     warnings: { type: 'array', items: string },
@@ -204,9 +221,26 @@ export class CodexAppServer {
       await this.start()
       const response = asRecord(await this.request('account/read', { refreshToken: false }))
       const account = asRecord(response.account)
-      return account.type === 'chatgpt'
-        ? { available: true, connected: true, email: typeof account.email === 'string' ? account.email : undefined, planType: typeof account.planType === 'string' ? account.planType : undefined }
-        : { available: true, connected: false }
+      if (account.type !== 'chatgpt') return { available: true, connected: false }
+      let models: ChatGPTModelOption[] | undefined
+      try {
+        const response = asRecord(await this.request('model/list', { limit: 100, includeHidden: false }))
+        models = Array.isArray(response.data) ? response.data.map((item) => {
+          const model = asRecord(item)
+          const efforts = Array.isArray(model.supportedReasoningEfforts)
+            ? model.supportedReasoningEfforts.map((option) => asRecord(option).reasoningEffort).filter((effort): effort is string => typeof effort === 'string')
+            : []
+          return {
+            id: typeof model.model === 'string' ? model.model : String(model.id ?? ''),
+            label: typeof model.displayName === 'string' ? model.displayName : String(model.model ?? model.id ?? ''),
+            description: typeof model.description === 'string' ? model.description : undefined,
+            efforts,
+            defaultEffort: typeof model.defaultReasoningEffort === 'string' ? model.defaultReasoningEffort : undefined,
+            isDefault: model.isDefault === true,
+          }
+        }).filter((model) => model.id) : undefined
+      } catch { /* Account status remains usable when the model catalog is temporarily unavailable. */ }
+      return { available: true, connected: true, email: typeof account.email === 'string' ? account.email : undefined, planType: typeof account.planType === 'string' ? account.planType : undefined, models }
     } catch (error) {
       return { available: false, connected: false, error: error instanceof Error ? error.message : String(error) }
     }
@@ -229,14 +263,15 @@ export class CodexAppServer {
     return { available: true, connected: false }
   }
 
-  async ask(payload: AskLaboPayload): Promise<AskLaboPlan> {
+  async ask(payload: AskLaboPayload, configuration: ChatGPTAgentConfiguration = {}): Promise<AskLaboPlan> {
     validateAskLaboPayload(payload)
     const status = await this.status()
     if (!status.connected) throw new Error('Connect your ChatGPT account from Settings → Agent first')
     const threadResponse = asRecord(await this.request('thread/start', {
       cwd: tmpdir(), approvalPolicy: 'never', sandbox: 'read-only', ephemeral: true,
-      baseInstructions: 'You are LABO AI, a bounded neural graph planner. Never run commands, inspect files, browse, or mutate the computer. Return only the requested structured graph plan.',
-      developerInstructions: 'Use only atom IDs and exact port IDs present in the supplied context. Prefer existing cards, keep IDs alphanumeric with hyphens, preserve current work unless asked, and include a layout action after graph mutations. If a capability is absent, report it in missingBlocks instead of inventing an atom.',
+      model: configuration.model || null,
+      baseInstructions: 'You are LABO AI, a bounded neural architecture assistant. Never run commands, inspect files, browse, or mutate the computer. Return only the requested structured response.',
+      developerInstructions: 'Answer greetings, questions, explanations, and architecture advice naturally in summary, with every mutation array empty. Only create a graph plan when the user explicitly asks to build, edit, arrange, run, save, or export. For graph plans, use only atom IDs and exact port IDs present in the supplied context. Prefer existing cards, keep IDs alphanumeric with hyphens, preserve current work unless asked, and include a layout action after graph mutations. If a capability is absent, report it in missingBlocks instead of inventing an atom.',
     }))
     const thread = asRecord(threadResponse.thread)
     if (typeof thread.id !== 'string') throw new Error('Codex did not start a LABO planning thread')
@@ -244,7 +279,7 @@ export class CodexAppServer {
     await this.request('turn/start', {
       threadId: thread.id,
       input: [{ type: 'text', text: JSON.stringify({ request: payload.request.trim(), context: payload.context }), text_elements: [] }],
-      approvalPolicy: 'never', outputSchema: planSchema,
+      approvalPolicy: 'never', effort: configuration.effort || null, outputSchema: chatGPTPlanSchema,
     }, turnTimeoutMs)
     const notification = await completed
     const turn = asRecord(notification.turn)

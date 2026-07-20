@@ -4,15 +4,47 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rendererWebPreferences } from './security.js'
 import { runAtomicRuntime, type AtomicRuntimePayload } from './atomic-runtime.js'
-import { askLaboChannel, atomicRuntimeChannel, chatGPTSessionChannel, connectChatGPTChannel, deleteOpenAIKeyChannel, desktopUpdateStatusChannel, disconnectChatGPTChannel, exportFileChannel, launchDesktopUpdateChannel, loadDesktopStateChannel, openAISettingsChannel, openDesktopSetupChannel, saveDesktopStateChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract.js'
+import { askLaboChannel, atomicRuntimeChannel, chatGPTSessionChannel, configureChatGPTChannel, connectChatGPTChannel, deleteOpenAIKeyChannel, desktopUpdateStatusChannel, disconnectChatGPTChannel, exportFileChannel, launchDesktopUpdateChannel, loadDesktopStateChannel, openAISettingsChannel, openDesktopSetupChannel, saveDesktopStateChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract.js'
 import { askLabo } from './ask-labo.js'
 import { loadDesktopState, saveDesktopState } from './desktop-state.js'
 import { deleteOpenAIApiKey, getOpenAISettingsStatus, saveOpenAIApiKey, testOpenAIConnection } from './openai-credentials.js'
-import { desktopSetupReleaseUrl, getDesktopUpdateStatus, launchDesktopUpdate } from './desktop-updates.js'
+import { desktopSetupReleaseUrl, getDesktopUpdateStatus, launchDesktopUpdate, validDesktopUpdateChannel } from './desktop-updates.js'
 import { CodexAppServer } from './chatgpt-session.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 const chatGPT = new CodexAppServer((url) => shell.openExternal(url), app.getVersion())
+
+interface ChatGPTPreferences { model?: string; effort?: string }
+
+async function chatGPTPreferences(): Promise<ChatGPTPreferences> {
+  const value = await loadDesktopState(app.getPath('userData'), 'settings')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const preferences = (value as { chatGPT?: unknown }).chatGPT
+  if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) return {}
+  const record = preferences as Record<string, unknown>
+  return {
+    model: typeof record.model === 'string' ? record.model : undefined,
+    effort: typeof record.effort === 'string' ? record.effort : undefined,
+  }
+}
+
+async function desktopUpdateChannelPreference() {
+  const value = await loadDesktopState(app.getPath('userData'), 'settings')
+  return validDesktopUpdateChannel(value && typeof value === 'object' && !Array.isArray(value) ? (value as { desktopUpdateChannel?: unknown }).desktopUpdateChannel : undefined)
+}
+
+async function saveDesktopUpdateChannelPreference(channel: 'stable' | 'main') {
+  const current = await loadDesktopState(app.getPath('userData'), 'settings')
+  const settings = current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : {}
+  await saveDesktopState(app.getPath('userData'), 'settings', { ...settings, desktopUpdateChannel: channel })
+}
+
+async function configuredChatGPTStatus() {
+  const [status, preferences] = await Promise.all([chatGPT.status(), chatGPTPreferences()])
+  const selectedModel = status.models?.find((model) => model.id === preferences.model) ?? status.models?.find((model) => model.isDefault) ?? status.models?.[0]
+  const selectedEffort = selectedModel?.efforts.includes(preferences.effort ?? '') ? preferences.effort : selectedModel?.defaultEffort ?? selectedModel?.efforts[0]
+  return { ...status, selectedModel: selectedModel?.id, selectedEffort }
+}
 
 function createMainWindow(): BrowserWindow {
   const platformFrame: BrowserWindowConstructorOptions = process.platform === 'darwin'
@@ -50,21 +82,38 @@ app.whenReady().then(() => {
   ipcMain.handle(atomicRuntimeChannel, (_event, payload: AtomicRuntimePayload) => runAtomicRuntime(payload))
   ipcMain.handle(askLaboChannel, async (_event, payload) => {
     const session = await chatGPT.status()
-    return session.connected ? chatGPT.ask(payload) : askLabo(payload)
+    return session.connected ? chatGPT.ask(payload, await chatGPTPreferences()) : askLabo(payload)
   })
   ipcMain.handle(openAISettingsChannel, () => getOpenAISettingsStatus())
   ipcMain.handle(saveOpenAIKeyChannel, (_event, payload) => saveOpenAIApiKey(payload))
   ipcMain.handle(deleteOpenAIKeyChannel, () => deleteOpenAIApiKey())
   ipcMain.handle(testOpenAIKeyChannel, () => testOpenAIConnection())
-  ipcMain.handle(chatGPTSessionChannel, () => chatGPT.status())
-  ipcMain.handle(connectChatGPTChannel, () => chatGPT.connect())
+  ipcMain.handle(chatGPTSessionChannel, () => configuredChatGPTStatus())
+  ipcMain.handle(connectChatGPTChannel, async () => { await chatGPT.connect(); return configuredChatGPTStatus() })
   ipcMain.handle(disconnectChatGPTChannel, () => chatGPT.disconnect())
+  ipcMain.handle(configureChatGPTChannel, async (_event, payload: { model?: unknown; effort?: unknown }) => {
+    const status = await chatGPT.status()
+    if (!status.connected) throw new Error('Connect ChatGPT before choosing a model')
+    const model = status.models?.find((candidate) => candidate.id === payload?.model)
+    if (!model) throw new Error('Choose a model available to this ChatGPT account')
+    const effort = typeof payload?.effort === 'string' && model.efforts.includes(payload.effort) ? payload.effort : model.defaultEffort ?? model.efforts[0]
+    const current = await loadDesktopState(app.getPath('userData'), 'settings')
+    const settings = current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : {}
+    await saveDesktopState(app.getPath('userData'), 'settings', { ...settings, chatGPT: { model: model.id, effort } })
+    return configuredChatGPTStatus()
+  })
   ipcMain.handle(windowStateChannel, (event) => ({ fullScreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
   ipcMain.handle(loadDesktopStateChannel, (_event, payload: { scope?: unknown }) => loadDesktopState(app.getPath('userData'), payload?.scope))
   ipcMain.handle(saveDesktopStateChannel, (_event, payload: { scope?: unknown; data?: unknown }) => saveDesktopState(app.getPath('userData'), payload?.scope, payload?.data))
-  ipcMain.handle(desktopUpdateStatusChannel, () => getDesktopUpdateStatus(app.getPath('userData'), app.getVersion()))
-  ipcMain.handle(launchDesktopUpdateChannel, async () => {
-    const result = await launchDesktopUpdate(app.getPath('userData'))
+  ipcMain.handle(desktopUpdateStatusChannel, async (_event, payload: { channel?: unknown } | undefined) => {
+    const channel = payload?.channel === undefined ? await desktopUpdateChannelPreference() : validDesktopUpdateChannel(payload.channel)
+    await saveDesktopUpdateChannelPreference(channel)
+    return getDesktopUpdateStatus(app.getPath('userData'), app.getVersion(), channel)
+  })
+  ipcMain.handle(launchDesktopUpdateChannel, async (_event, payload: { channel?: unknown } | undefined) => {
+    const channel = payload?.channel === undefined ? await desktopUpdateChannelPreference() : validDesktopUpdateChannel(payload.channel)
+    await saveDesktopUpdateChannelPreference(channel)
+    const result = await launchDesktopUpdate(app.getPath('userData'), channel)
     setTimeout(() => app.quit(), 350)
     return result
   })

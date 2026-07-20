@@ -13,6 +13,7 @@ describe('LABO AI studios', () => {
       runAtomic: async () => ({ engine: 'pytorch', status: 'completed', results: [] }),
       getDesktopUpdateStatus: async () => ({
         currentVersion: '0.1.26',
+        channel: 'stable',
         installedTag: 'v0.1.26',
         latestTag: 'v0.1.27',
         helperInstalled: true,
@@ -24,9 +25,10 @@ describe('LABO AI studios', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
 
     expect(await screen.findByText('Desktop updates')).toBeInTheDocument()
-    expect(screen.getByText('Installed v0.1.26 · latest v0.1.27. Updates are built locally from the tagged source.')).toBeInTheDocument()
+    expect(screen.getByText('v0.1.26')).toBeInTheDocument()
+    expect(screen.getByText('v0.1.27')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Update and restart' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Install update' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
     expect(await screen.findByText('v0.1.27 is ready to install.')).toBeInTheDocument()
     delete window.labo

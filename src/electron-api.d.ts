@@ -35,13 +35,14 @@ interface Window {
     getChatGPTSession?(): Promise<ChatGPTSessionStatus>
     connectChatGPT?(): Promise<ChatGPTSessionStatus>
     disconnectChatGPT?(): Promise<ChatGPTSessionStatus>
+    configureChatGPT?(configuration: { model: string; effort: string }): Promise<ChatGPTSessionStatus>
     loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; training?: unknown; tokenizer?: unknown; updatedAt?: number; warning?: string }>
     saveWebWorkspace?(payload: { workspace?: unknown; customCards?: unknown[]; training?: unknown; tokenizer?: unknown }): Promise<{ saved: true; updatedAt: number }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
-    loadDesktopState?(scope: 'model' | 'training' | 'tokenizer'): Promise<unknown>
-    saveDesktopState?(scope: 'model' | 'training' | 'tokenizer', data: unknown): Promise<{ saved: true }>
-    getDesktopUpdateStatus?(): Promise<DesktopUpdateStatus>
-    launchDesktopUpdate?(): Promise<{ launched: true }>
+    loadDesktopState?(scope: 'model' | 'training' | 'tokenizer' | 'settings'): Promise<unknown>
+    saveDesktopState?(scope: 'model' | 'training' | 'tokenizer' | 'settings', data: unknown): Promise<{ saved: true }>
+    getDesktopUpdateStatus?(channel?: DesktopUpdateChannel): Promise<DesktopUpdateStatus>
+    launchDesktopUpdate?(channel?: DesktopUpdateChannel): Promise<{ launched: true }>
     openDesktopSetup?(): Promise<void>
     getWindowState?(): Promise<{ fullScreen: boolean }>
     onWindowStateChange?(callback: (state: { fullScreen: boolean }) => void): () => void
@@ -61,11 +62,15 @@ interface ChatGPTSessionStatus {
   connected: boolean
   email?: string
   planType?: string
+  models?: Array<{ id: string; label: string; description?: string; efforts: string[]; defaultEffort?: string; isDefault: boolean }>
+  selectedModel?: string
+  selectedEffort?: string
   error?: string
 }
 
 interface DesktopUpdateStatus {
   currentVersion: string
+  channel: DesktopUpdateChannel
   installedTag?: string
   latestTag?: string
   helperInstalled: boolean
@@ -73,3 +78,5 @@ interface DesktopUpdateStatus {
   setupUrl: string
   error?: string
 }
+
+type DesktopUpdateChannel = 'stable' | 'main'

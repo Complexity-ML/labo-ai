@@ -2,14 +2,14 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-export type DesktopStateScope = 'model' | 'training' | 'tokenizer'
+export type DesktopStateScope = 'model' | 'training' | 'tokenizer' | 'settings'
 
 const stateDirectoryName = 'labo-ai'
 const databaseFilename = 'workspaces.sqlite'
 let writeQueue: Promise<void> = Promise.resolve()
 
 function validScope(value: unknown): value is DesktopStateScope {
-  return value === 'model' || value === 'training' || value === 'tokenizer'
+  return value === 'model' || value === 'training' || value === 'tokenizer' || value === 'settings'
 }
 
 export function desktopStateDatabasePath(userDataDirectory: string): string {

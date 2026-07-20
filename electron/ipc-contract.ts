@@ -7,6 +7,7 @@ export const testOpenAIKeyChannel = 'labo:openai-key-test' as const
 export const chatGPTSessionChannel = 'labo:chatgpt-session' as const
 export const connectChatGPTChannel = 'labo:chatgpt-connect' as const
 export const disconnectChatGPTChannel = 'labo:chatgpt-disconnect' as const
+export const configureChatGPTChannel = 'labo:chatgpt-configure' as const
 export const exportFileChannel = 'labo:export-file' as const
 export const windowStateChannel = 'labo:window-state' as const
 export const loadDesktopStateChannel = 'labo:desktop-state-load' as const

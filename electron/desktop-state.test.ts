@@ -12,13 +12,15 @@ afterEach(async () => {
 })
 
 describe('desktop SQLite workspace state', () => {
-  it('keeps independent model, training and tokenizer records across database reopen', async () => {
+  it('keeps independent studio and settings records across database reopen', async () => {
     directory = await mkdtemp(join(tmpdir(), 'labo-ai-state-'))
     await saveDesktopState(directory, 'model', { preset: 'my-model', nodes: 12 })
     await saveDesktopState(directory, 'training', { optimizer: 'my-muon' })
+    await saveDesktopState(directory, 'settings', { chatGPT: { model: 'gpt-5.6-sol', effort: 'high' } })
 
     expect(await loadDesktopState(directory, 'model')).toEqual({ preset: 'my-model', nodes: 12 })
     expect(await loadDesktopState(directory, 'training')).toEqual({ optimizer: 'my-muon' })
+    expect(await loadDesktopState(directory, 'settings')).toEqual({ chatGPT: { model: 'gpt-5.6-sol', effort: 'high' } })
     expect(await loadDesktopState(directory, 'tokenizer')).toBeUndefined()
   })
 

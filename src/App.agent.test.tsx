@@ -7,13 +7,27 @@ import App from './App'
 
 describe('LABO AI agent', () => {
   it('connects a desktop ChatGPT session from the shared Agent settings', async () => {
-    const connectChatGPT = vi.fn(async () => ({ available: true, connected: true, email: 'judge@example.com', planType: 'plus' }))
+    const connectedSession = {
+      available: true,
+      connected: true,
+      email: 'judge@example.com',
+      planType: 'plus',
+      models: [
+        { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', description: 'Frontier coding model.', efforts: ['medium', 'high'], defaultEffort: 'medium', isDefault: true },
+        { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', efforts: ['low', 'medium'], defaultEffort: 'medium', isDefault: false },
+      ],
+      selectedModel: 'gpt-5.6-sol',
+      selectedEffort: 'medium',
+    }
+    const connectChatGPT = vi.fn(async () => connectedSession)
+    const configureChatGPT = vi.fn(async ({ model, effort }: { model: string; effort: string }) => ({ ...connectedSession, selectedModel: model, selectedEffort: effort }))
     window.labo = {
       platform: 'darwin',
       runtime: 'electron',
       getOpenAISettings: async () => ({ configured: false, source: 'none', encryptionAvailable: true }),
       getChatGPTSession: async () => ({ available: true, connected: false }),
       connectChatGPT,
+      configureChatGPT,
       disconnectChatGPT: async () => ({ available: true, connected: false }),
     }
     render(<App />)
@@ -25,6 +39,37 @@ describe('LABO AI agent', () => {
     expect(await screen.findByText('judge@example.com')).toBeInTheDocument()
     expect(screen.getByText(/plus plan/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Disconnect ChatGPT/ })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('ChatGPT model'), { target: { value: 'gpt-5.6-terra' } })
+    await waitFor(() => expect(configureChatGPT).toHaveBeenCalledWith({ model: 'gpt-5.6-terra', effort: 'medium' }))
+    delete window.labo
+  })
+
+  it('answers conversational prompts without opening an empty graph-plan review', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      getOpenAISettings: async () => ({ configured: true, source: 'secure-storage', encryptionAvailable: true }),
+      askLabo: async () => ({
+        summary: 'Hello! I can explain the current graph or help you edit it when you are ready.',
+        addedBlocks: [],
+        createdBlocks: [],
+        connections: [],
+        updatedBlocks: [],
+        deletedBlocks: [],
+        movedBlocks: [],
+        actions: [],
+        missingBlocks: [],
+        warnings: [],
+        toolTrace: [],
+      }),
+    }
+    render(<App />)
+    fireEvent.change(screen.getByLabelText('What should these blocks build?'), { target: { value: 'hello' } })
+    fireEvent.keyDown(screen.getByLabelText('What should these blocks build?'), { key: 'Enter' })
+
+    expect(await screen.findByLabelText('Agent activity')).toHaveTextContent('Hello! I can explain the current graph')
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('answered')
+    expect(screen.queryByText('Review graph plan')).not.toBeInTheDocument()
     delete window.labo
   })
 

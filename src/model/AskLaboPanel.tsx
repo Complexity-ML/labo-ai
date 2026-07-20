@@ -93,6 +93,12 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
   }, [open])
 
   useEffect(() => {
+    if (!error) return
+    const timeout = window.setTimeout(() => setError(''), 7_000)
+    return () => window.clearTimeout(timeout)
+  }, [error])
+
+  useEffect(() => {
     if (window.labo?.runtime !== 'web') window.localStorage.setItem(AGENT_AUTO_APPLY_STORAGE_KEY, String(autoApply))
   }, [autoApply])
 
@@ -114,8 +120,8 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
   }, [activityOpen, onClose, open, plan])
 
   useEffect(() => {
-    if (open || plan) setActivityOpen(false)
-  }, [open, plan])
+    if (open) setActivityOpen(false)
+  }, [open])
 
   const updateActivity = (id: string, patch: Partial<AgentActivityItem>) => {
     setActivities((current) => current.map((activity) => activity.id === id ? { ...activity, ...patch } : activity))
@@ -156,6 +162,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       const response = repairAgentGraphPlan(graph, rawResponse)
       const responsePreview = previewAgentGraphPlan(graph, response, graphMode)
       const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0 || (response.updatedBlocks?.length ?? 0) > 0 || (response.deletedBlocks?.length ?? 0) > 0 || (response.movedBlocks?.length ?? 0) > 0 || responsePreview.acceptedActions.some((action) => action.type !== 'layout')
+      const hasPlan = hasAcceptedChanges || responsePreview.rejectedBlocks.length > 0 || responsePreview.rejected.length > 0 || responsePreview.rejectedMutations.length > 0 || response.missingBlocks.length > 0 || response.warnings.length > 0
       const accepted = responsePreview.acceptedBlocks.length + responsePreview.acceptedCreatedBlocks.length + responsePreview.accepted.length + (response.updatedBlocks?.length ?? 0) + (response.deletedBlocks?.length ?? 0) + (response.movedBlocks?.length ?? 0)
       const rejected = responsePreview.rejectedBlocks.length + responsePreview.rejected.length + responsePreview.rejectedMutations.length + response.warnings.length
       const activityResult = {
@@ -166,7 +173,11 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
         tools: response.toolTrace?.map((item) => item.tool) ?? [],
         plan: response,
       }
-      if (autoApply && hasAcceptedChanges) {
+      if (!hasPlan) {
+        updateActivity(activityId, { ...activityResult, status: 'answered', plan: undefined })
+        setRequest('')
+        setActivityOpen(true)
+      } else if (autoApply && hasAcceptedChanges) {
         updateActivity(activityId, { ...activityResult, status: 'applied' })
         onApply(responsePreview.graph, responsePreview.acceptedActions)
         setActivityOpen(true)
@@ -181,6 +192,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       setError(message)
       updateActivity(activityId, { status: 'failed', error: message })
       setActivityOpen(true)
+      window.setTimeout(() => setActivityOpen(false), 7_000)
     } finally {
       setLoading(false)
     }
@@ -324,6 +336,20 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
     }
   }
 
+  const configureChatGPT = async (configuration: { model: string; effort: string }) => {
+    if (!window.labo?.configureChatGPT || credentialBusy) return
+    setCredentialBusy(true)
+    setCredentialMessage('')
+    try {
+      setChatGPT(await window.labo.configureChatGPT(configuration))
+      setCredentialMessage('ChatGPT model settings saved for this desktop profile.')
+    } catch (reason) {
+      setCredentialMessage(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setCredentialBusy(false)
+    }
+  }
+
   const closeOverlay = () => {
     if (plan) {
       if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' })
@@ -344,16 +370,16 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
 
     {activityOpen && !open && !plan && <AgentActivityPanel activities={activities} busy={loading} onClear={clearActivities} onClose={() => setActivityOpen(false)} onRetry={(activity) => { setRequest(activity.prompt); setActivityOpen(false); void runAgentRequest(activity.prompt) }} onReview={reviewFullPlan} />}
 
-    <AgentPrompt busy={loading} context={settings?.configured === false && chatGPT?.connected !== true ? 'Connect an agent in Settings' : `${autoApply ? 'Auto apply' : 'Review'} · ${graphMode === 'parallel' ? 'New parallel' : 'Extend current'}`} details={{ active: activityOpen, count: activities.length > 0 ? (activities.find((activity) => activity.status === 'running') ? '…' : activities.length) : undefined, label: 'Open agent activity', onToggle: () => setActivityOpen((current) => !current) }} disabled={settings?.configured === false && chatGPT?.connected !== true} mode={interactionMode === 'edit' ? 'card-editing' : 'architecture'} onChange={setRequest} onSubmit={submit} value={request} />
+    <AgentPrompt busy={loading} context={settings?.configured === false && chatGPT?.connected !== true ? 'Connect an agent in Settings' : `${autoApply ? 'Auto apply' : 'Review'} · ${graphMode === 'parallel' ? 'New parallel' : 'Extend current'}`} details={{ active: activityOpen, count: activities.length > 0 ? (activities.find((activity) => activity.status === 'running') ? '…' : activities.length) : undefined, label: 'Open agent activity', onToggle: () => setActivityOpen((current) => !current) }} disabled={settings?.configured === false && chatGPT?.connected !== true} mode={interactionMode === 'edit' ? 'card-editing' : 'architecture'} onChange={(value) => { setRequest(value); if (error) setError('') }} onSubmit={submit} value={request} />
 
     {open && <StudioSettingsModal onClose={closeOverlay} sections={[
       { id: 'workspaces', label: 'Workspaces', icon: <FolderKanban size={13} />, content: <div className="ask-labo-workspace-settings">{workspaceSettings}</div> },
-      { id: 'agent', label: 'Agent', icon: <Sparkles size={13} />, content: <AgentSettingsContent apiKey={apiKey} autoApply={autoApply} chatGPT={chatGPT} confirmDelete={confirmDelete} credentialBusy={credentialBusy} credentialMessage={credentialMessage} graphMode={graphMode} loading={loading} onApiKeyChange={setApiKey} onAutoApplyChange={setAutoApply} onConnectChatGPT={() => void connectChatGPT()} onDeleteApiKey={() => void deleteApiKey()} onDisconnectChatGPT={() => void disconnectChatGPT()} onGraphModeChange={(mode) => { setGraphMode(mode); setPlan(undefined) }} onSaveApiKey={(event) => void saveApiKey(event)} onShowApiKeyChange={setShowApiKey} onTestApiKey={() => void testApiKey()} settings={settings} showApiKey={showApiKey} /> },
+      { id: 'agent', label: 'Agent', icon: <Sparkles size={13} />, content: <AgentSettingsContent apiKey={apiKey} autoApply={autoApply} chatGPT={chatGPT} confirmDelete={confirmDelete} credentialBusy={credentialBusy} credentialMessage={credentialMessage} graphMode={graphMode} loading={loading} onApiKeyChange={setApiKey} onAutoApplyChange={setAutoApply} onChatGPTConfigurationChange={(configuration) => void configureChatGPT(configuration)} onConnectChatGPT={() => void connectChatGPT()} onDeleteApiKey={() => void deleteApiKey()} onDisconnectChatGPT={() => void disconnectChatGPT()} onGraphModeChange={(mode) => { setGraphMode(mode); setPlan(undefined) }} onSaveApiKey={(event) => void saveApiKey(event)} onShowApiKeyChange={setShowApiKey} onTestApiKey={() => void testApiKey()} settings={settings} showApiKey={showApiKey} /> },
       { id: 'studio', label: 'Application', icon: <Settings2 size={13} />, content: <div className="studio-settings-empty"><strong>One LABO AI workspace</strong><p>Model, Training and Tokenizer Studio share this private profile, these settings and the same automatic-save policy.</p></div> },
       { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <StudioEditingTips /> },
     ]} />}
 
-    {error && <div className="ask-labo-error"><AlertTriangle size={14} /><span>{error}</span></div>}
+    {error && <div className="ask-labo-error"><AlertTriangle size={14} /><span>{error}</span><button aria-label="Dismiss agent error" onClick={() => setError('')} type="button"><X size={12} /></button></div>}
 
     {activePlan && preview && <div className="ask-labo-result">
       <section>

@@ -7,6 +7,7 @@ use std::{
     io::{self, Cursor, Read},
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::Duration,
     time::{SystemTime, UNIX_EPOCH},
@@ -16,12 +17,36 @@ use tempfile::TempDir;
 
 const REPOSITORY: &str = "Complexity-ML/labo-ai";
 const NODE_VERSION: &str = "v22.14.0";
+static INSTALL_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+struct InstallGuard;
+
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        INSTALL_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
+
+fn begin_install() -> Result<InstallGuard, String> {
+    INSTALL_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .map(|_| InstallGuard)
+        .map_err(|_| {
+            "LABO AI Setup is already installing. Keep this window open to follow its progress."
+                .to_string()
+        })
+}
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
     tag_name: String,
     tarball_url: String,
     assets: Vec<GitHubAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubCommit {
+    sha: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +59,7 @@ struct GitHubAsset {
 #[serde(rename_all = "camelCase")]
 struct InstallState {
     installed_tag: Option<String>,
+    installed_channel: Option<String>,
     installed_at: Option<u64>,
     app_path: Option<String>,
 }
@@ -43,9 +69,11 @@ struct InstallState {
 struct SetupStatus {
     installed_tag: Option<String>,
     latest_tag: Option<String>,
+    channel: String,
     app_path: String,
     platform: &'static str,
     setup_version: &'static str,
+    installing: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,6 +149,53 @@ fn latest_release() -> Result<GitHubRelease, String> {
     })
 }
 
+fn main_source() -> Result<GitHubRelease, String> {
+    let commit = client()?
+        .get(format!(
+            "https://api.github.com/repos/{REPOSITORY}/commits/main"
+        ))
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| format!("Unable to check the main branch: {error}"))?
+        .json::<GitHubCommit>()
+        .map_err(|error| format!("Invalid GitHub main-branch response: {error}"))?;
+    if commit.sha.len() < 7
+        || !commit
+            .sha
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Err("GitHub returned an invalid main commit".to_string());
+    }
+    Ok(GitHubRelease {
+        tag_name: format!("main@{}", &commit.sha[..7]),
+        tarball_url: format!(
+            "https://github.com/{REPOSITORY}/archive/{}.tar.gz",
+            commit.sha
+        ),
+        assets: Vec::new(),
+    })
+}
+
+fn normalized_channel(value: Option<&str>) -> &'static str {
+    if value == Some("main") {
+        "main"
+    } else {
+        "stable"
+    }
+}
+
+fn requested_channel() -> &'static str {
+    let arguments = env::args().collect::<Vec<_>>();
+    let explicit = arguments
+        .windows(2)
+        .find_map(|pair| (pair[0] == "--channel").then_some(pair[1].as_str()));
+    if explicit.is_some() {
+        return normalized_channel(explicit);
+    }
+    normalized_channel(read_state().installed_channel.as_deref())
+}
+
 fn install_root() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     {
@@ -192,21 +267,30 @@ fn read_state() -> InstallState {
         .unwrap_or_default()
 }
 
-fn status() -> Result<SetupStatus, String> {
+fn status(channel: &str) -> Result<SetupStatus, String> {
     let state = read_state();
-    let latest_tag = latest_release().ok().map(|release| release.tag_name);
+    let channel = normalized_channel(Some(channel));
+    let latest_tag = if channel == "main" {
+        main_source()
+    } else {
+        latest_release()
+    }
+    .ok()
+    .map(|release| release.tag_name);
     Ok(SetupStatus {
         installed_tag: state.installed_tag,
         latest_tag,
+        channel: channel.to_string(),
         app_path: app_destination()?.display().to_string(),
         platform: env::consts::OS,
         setup_version: env!("CARGO_PKG_VERSION"),
+        installing: INSTALL_IN_PROGRESS.load(Ordering::Acquire),
     })
 }
 
 #[tauri::command]
-fn setup_status() -> Result<SetupStatus, String> {
-    status()
+fn setup_status(channel: Option<String>) -> Result<SetupStatus, String> {
+    status(normalized_channel(channel.as_deref()))
 }
 
 fn emit(app: &AppHandle, stage: &str, message: impl Into<String>, percent: u8) {
@@ -275,7 +359,11 @@ fn release_is_newer(tag: &str) -> bool {
     }
 }
 
-fn relaunch_latest_setup(app: &AppHandle, release: &GitHubRelease) -> Result<bool, String> {
+fn relaunch_latest_setup(
+    app: &AppHandle,
+    release: &GitHubRelease,
+    channel: &str,
+) -> Result<bool, String> {
     if !release_is_newer(&release.tag_name) {
         return Ok(false);
     }
@@ -334,6 +422,8 @@ fn relaunch_latest_setup(app: &AppHandle, release: &GitHubRelease) -> Result<boo
     command.env("APPIMAGE_EXTRACT_AND_RUN", "1");
     command
         .arg("--auto-install")
+        .arg("--channel")
+        .arg(channel)
         .spawn()
         .map_err(|error| format!("Unable to relaunch the updated Setup: {error}"))?;
     Ok(true)
@@ -801,15 +891,33 @@ fn restore_setup_after_handoff_failure(app: &AppHandle) {
 }
 
 #[cfg(target_os = "windows")]
-fn stop_running_application() {
+fn stop_running_application() -> Result<(), String> {
     let _ = Command::new("taskkill")
         .args(["/IM", "LABO AI.exe", "/T", "/F"])
         .output();
-    thread::sleep(Duration::from_millis(300));
+    for _ in 0..50 {
+        let running = Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq LABO AI.exe", "/NH"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .to_ascii_lowercase()
+                    .contains("labo ai.exe")
+            })
+            .unwrap_or(false);
+        if !running {
+            thread::sleep(Duration::from_millis(350));
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    Err("LABO AI is still running. Close the application, then retry the update.".to_string())
 }
 
 #[cfg(not(target_os = "windows"))]
-fn stop_running_application() {}
+fn stop_running_application() -> Result<(), String> {
+    Ok(())
+}
 
 fn activate_application(next: &Path, destination: &Path, previous: &Path) -> Result<(), String> {
     if previous.exists() {
@@ -831,17 +939,32 @@ fn activate_application(next: &Path, destination: &Path, previous: &Path) -> Res
     Ok(())
 }
 
-fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
+fn perform_install(app: &AppHandle, channel: &str) -> Result<InstallResult, String> {
     fs::create_dir_all(install_root()?).map_err(|error| error.to_string())?;
-    emit(app, "Release", "Checking the latest LABO AI release…", 5);
-    let release = latest_release()?;
-    if relaunch_latest_setup(app, &release)? {
+    let channel = normalized_channel(Some(channel));
+    emit(
+        app,
+        "Release",
+        if channel == "main" {
+            "Checking the latest LABO AI main commit…"
+        } else {
+            "Checking the latest LABO AI release…"
+        },
+        5,
+    );
+    let helper_release = latest_release()?;
+    if relaunch_latest_setup(app, &helper_release, channel)? {
         return Ok(InstallResult {
-            tag: release.tag_name,
+            tag: helper_release.tag_name,
             path: String::new(),
             setup_relaunched: true,
         });
     }
+    let release = if channel == "main" {
+        main_source()?
+    } else {
+        helper_release
+    };
 
     emit(
         app,
@@ -933,7 +1056,7 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
         88,
     );
     copy_application(&built, &next)?;
-    stop_running_application();
+    stop_running_application()?;
     activate_application(&next, &destination, &previous)?;
 
     #[cfg(target_os = "windows")]
@@ -961,6 +1084,7 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
         .as_secs();
     let state = InstallState {
         installed_tag: Some(release.tag_name.clone()),
+        installed_channel: Some(channel.to_string()),
         installed_at: Some(installed_at),
         app_path: Some(destination.display().to_string()),
     };
@@ -990,11 +1114,15 @@ fn perform_install(app: &AppHandle) -> Result<InstallResult, String> {
 }
 
 #[tauri::command]
-async fn install_latest(app: AppHandle) -> Result<InstallResult, String> {
+async fn install_latest(app: AppHandle, channel: Option<String>) -> Result<InstallResult, String> {
     let worker_app = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || perform_install(&worker_app))
-        .await
-        .map_err(|error| error.to_string())??;
+    let channel = normalized_channel(channel.as_deref()).to_string();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = begin_install()?;
+        perform_install(&worker_app, &channel)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.close();
     }
@@ -1007,7 +1135,7 @@ async fn install_latest(app: AppHandle) -> Result<InstallResult, String> {
 
 pub fn run() {
     if env::args().any(|argument| argument == "--status") {
-        match status()
+        match status(requested_channel())
             .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
         {
             Ok(value) => println!("{value}"),
@@ -1020,6 +1148,7 @@ pub fn run() {
     }
 
     let automatic_install = env::args().any(|argument| argument == "--auto-install");
+    let automatic_channel = requested_channel().to_string();
     tauri::Builder::default()
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -1033,18 +1162,24 @@ pub fn run() {
 
             if automatic_install {
                 let handle = app.handle().clone();
-                thread::spawn(move || {
-                    thread::sleep(Duration::from_millis(700));
-                    if let Err(error) = perform_install(&handle) {
-                        emit(&handle, "Failed", error, 100);
-                        return;
+                match begin_install() {
+                    Ok(install_guard) => {
+                        thread::spawn(move || {
+                            let _guard = install_guard;
+                            thread::sleep(Duration::from_millis(700));
+                            if let Err(error) = perform_install(&handle, &automatic_channel) {
+                                emit(&handle, "Failed", error, 100);
+                                return;
+                            }
+                            if let Some(window) = handle.get_webview_window("main") {
+                                let _ = window.close();
+                            }
+                            thread::sleep(Duration::from_millis(50));
+                            handle.exit(0);
+                        });
                     }
-                    if let Some(window) = handle.get_webview_window("main") {
-                        let _ = window.close();
-                    }
-                    thread::sleep(Duration::from_millis(50));
-                    handle.exit(0);
-                });
+                    Err(error) => emit(&handle, "Failed", error, 100),
+                }
             }
             Ok(())
         })

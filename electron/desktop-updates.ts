@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 export interface DesktopUpdateStatus {
   currentVersion: string
+  channel: DesktopUpdateChannel
   installedTag?: string
   latestTag?: string
   helperInstalled: boolean
@@ -13,8 +14,14 @@ export interface DesktopUpdateStatus {
   error?: string
 }
 
+export type DesktopUpdateChannel = 'stable' | 'main'
+
 export const desktopSetupReleaseUrl = 'https://github.com/Complexity-ML/labo-ai/releases/latest'
-export const desktopUpdateArguments = ['--auto-install'] as const
+export const desktopUpdateArguments = (channel: DesktopUpdateChannel) => ['--auto-install', '--channel', channel] as const
+
+export function validDesktopUpdateChannel(value: unknown): DesktopUpdateChannel {
+  return value === 'main' ? 'main' : 'stable'
+}
 
 export function desktopUpdateHelperPath(userData: string, platform = process.platform): string {
   return join(userData, 'installer', platform === 'win32' ? 'labo-ai-setup.exe' : 'labo-ai-setup')
@@ -45,9 +52,9 @@ async function findDesktopUpdateHelper(userData: string, platform = process.plat
   return undefined
 }
 
-function readHelperStatus(helper: string, platform = process.platform): Promise<{ installedTag?: string; latestTag?: string }> {
+function readHelperStatus(helper: string, channel: DesktopUpdateChannel, platform = process.platform): Promise<{ installedTag?: string; latestTag?: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(helper, ['--status'], {
+    const child = spawn(helper, ['--status', '--channel', channel], {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       ...(platform === 'linux' ? { env: { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' } } : {}),
@@ -77,24 +84,27 @@ function readHelperStatus(helper: string, platform = process.platform): Promise<
   })
 }
 
-export async function getDesktopUpdateStatus(userData: string, currentVersion: string, platform = process.platform, home = homedir(), appData = process.env.APPDATA): Promise<DesktopUpdateStatus> {
+export async function getDesktopUpdateStatus(userData: string, currentVersion: string, channel: DesktopUpdateChannel = 'stable', platform = process.platform, home = homedir(), appData = process.env.APPDATA): Promise<DesktopUpdateStatus> {
   const helper = await findDesktopUpdateHelper(userData, platform, home, appData)
   if (!helper) {
-    return { currentVersion, helperInstalled: false, updateAvailable: false, setupUrl: desktopSetupReleaseUrl }
+    return { currentVersion, channel, helperInstalled: false, updateAvailable: false, setupUrl: desktopSetupReleaseUrl }
   }
   try {
-    const status = await readHelperStatus(helper, platform)
+    const status = await readHelperStatus(helper, channel, platform)
+    const installedRef = status.installedTag ?? (channel === 'stable' ? `v${currentVersion}` : undefined)
     return {
       currentVersion,
+      channel,
       installedTag: status.installedTag,
       latestTag: status.latestTag,
       helperInstalled: true,
-      updateAvailable: Boolean(status.latestTag && status.latestTag !== `v${currentVersion}`),
+      updateAvailable: Boolean(status.latestTag && status.latestTag !== installedRef),
       setupUrl: desktopSetupReleaseUrl,
     }
   } catch (error) {
     return {
       currentVersion,
+      channel,
       helperInstalled: true,
       updateAvailable: false,
       setupUrl: desktopSetupReleaseUrl,
@@ -103,10 +113,10 @@ export async function getDesktopUpdateStatus(userData: string, currentVersion: s
   }
 }
 
-export async function launchDesktopUpdate(userData: string, platform = process.platform): Promise<{ launched: true }> {
+export async function launchDesktopUpdate(userData: string, channel: DesktopUpdateChannel = 'stable', platform = process.platform): Promise<{ launched: true }> {
   const helper = await findDesktopUpdateHelper(userData, platform)
   if (!helper) throw new Error('LABO AI Setup is not installed yet')
-  const child = spawn(helper, [...desktopUpdateArguments], {
+  const child = spawn(helper, [...desktopUpdateArguments(channel)], {
     detached: true,
     stdio: 'ignore',
     windowsHide: false,

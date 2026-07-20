@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, getDesktopUpdateStatus } from './desktop-updates'
+import { desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, getDesktopUpdateStatus, validDesktopUpdateChannel } from './desktop-updates'
 
 describe('desktop source-first updates', () => {
   it('uses a private Electron profile helper path on every desktop platform', () => {
@@ -20,12 +20,16 @@ describe('desktop source-first updates', () => {
   })
 
   it('uses the automatic-install argument understood by LABO AI Setup', () => {
-    expect(desktopUpdateArguments).toEqual(['--auto-install'])
+    expect(desktopUpdateArguments('stable')).toEqual(['--auto-install', '--channel', 'stable'])
+    expect(desktopUpdateArguments('main')).toEqual(['--auto-install', '--channel', 'main'])
+    expect(validDesktopUpdateChannel('main')).toBe('main')
+    expect(validDesktopUpdateChannel('unexpected')).toBe('stable')
   })
 
   it('sends a legacy desktop build to the latest Setup release', async () => {
-    await expect(getDesktopUpdateStatus('/definitely/missing/labo-profile', '0.1.26', 'darwin', '/definitely/missing/home')).resolves.toEqual({
+    await expect(getDesktopUpdateStatus('/definitely/missing/labo-profile', '0.1.26', 'stable', 'darwin', '/definitely/missing/home')).resolves.toEqual({
       currentVersion: '0.1.26',
+      channel: 'stable',
       helperInstalled: false,
       updateAvailable: false,
       setupUrl: desktopSetupReleaseUrl,

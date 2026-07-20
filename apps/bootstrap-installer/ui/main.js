@@ -22,7 +22,8 @@ async function refresh() {
   try {
     const state = await invoke('setup_status')
     version.textContent = state.latestTag ? `Latest ${state.latestTag}` : `Installed ${state.installedTag || 'none'}`
-    button.textContent = state.installedTag === state.latestTag ? 'Reinstall latest' : state.installedTag ? 'Update LABO AI' : 'Install latest'
+    button.disabled = state.installing
+    button.textContent = state.installing ? 'Installing…' : state.installedTag === state.latestTag ? 'Reinstall latest' : state.installedTag ? 'Update LABO AI' : 'Install latest'
   } catch (error) {
     version.textContent = 'GitHub check unavailable'
     message.textContent = String(error)
@@ -30,6 +31,9 @@ async function refresh() {
 }
 
 listen('setup-progress', ({ payload }) => {
+  const failed = payload.stage === 'Failed'
+  button.disabled = !failed
+  button.textContent = failed ? 'Retry installation' : 'Installing…'
   stage.textContent = payload.stage
   message.textContent = payload.message
   progress.style.width = `${payload.percent}%`
@@ -54,10 +58,16 @@ button.addEventListener('click', async () => {
     progress.style.width = '100%'
     button.textContent = 'Installed'
   } catch (error) {
-    stage.textContent = 'Failed'
-    message.textContent = String(error)
-    button.disabled = false
-    button.textContent = 'Retry installation'
+    const detail = String(error)
+    if (detail.includes('already installing')) {
+      stage.textContent = 'Installing'
+      message.textContent = 'The active installation is still running in this Setup window.'
+    } else {
+      stage.textContent = 'Failed'
+      message.textContent = detail
+      button.disabled = false
+      button.textContent = 'Retry installation'
+    }
   }
 })
 
