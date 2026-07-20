@@ -16,6 +16,10 @@ import { builtInTokenizerPresets, researchBpePreset } from './core/tokenizer-pre
 import { TokenizerCardCreator } from './tokenizer/TokenizerCardCreator'
 import type { CustomTokenizerCard } from './tokenizer/custom-tokenizer-card'
 import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioToolbar, StudioViewSwitcher, StudioWorkspace } from './studio/StudioShell'
+import { StudioLibraryItem } from './studio/StudioLibraryParts'
+import { InspectorMetric } from './studio/StudioInspectorParts'
+import { StudioCanvasPanel, StudioCodePanel, StudioPanelTab } from './studio/StudioPanels'
+import { StudioContextMenu, StudioContextMenuItem } from './studio/StudioContextMenu'
 
 type TokenizerView = 'blocks' | 'split'
 
@@ -211,28 +215,18 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
         <StudioLibrary heading="TOKENIZER ATOMS" icon={<Blocks size={14} />}>
           {Object.entries(tokenizerAtomDefinitions).filter(([atom]) => atom !== 'custom-tokenizer').map(([atom, metadata]) => {
             return (
-              <button aria-label={`Add ${metadata.label}`} className="library-block tokenizer-library-block" key={atom} onClick={() => addAtom(atom as TokenizerStep['atom'])}>
-                <span className="block-glyph glyph-transforms" />
-                <span><strong>{metadata.label}</strong><small>{metadata.category}</small></span>
-              </button>
+              <StudioLibraryItem aria-label={`Add ${metadata.label}`} className="tokenizer-library-block" glyph={<span className="block-glyph glyph-transforms" />} key={atom} meta={metadata.category} onClick={() => addAtom(atom as TokenizerStep['atom'])}>{metadata.label}</StudioLibraryItem>
             )
           })}
-          <button className="library-block tokenizer-library-block" onClick={() => setCardCreatorOpen(true)} type="button">
-            <Plus size={14} />
-            <span><strong>New reusable card</strong><small>Custom Python lowering</small></span>
-          </button>
-          {customCards.map((card) => <button aria-label={`Add ${card.label}`} className="library-block tokenizer-library-block" key={card.id} onClick={() => addCustomTokenizerCard(card)} onContextMenu={(event) => {
+          <StudioLibraryItem className="tokenizer-library-block" glyph={<Plus size={14} />} meta="Custom Python lowering" onClick={() => setCardCreatorOpen(true)}>New reusable card</StudioLibraryItem>
+          {customCards.map((card) => <StudioLibraryItem aria-label={`Add ${card.label}`} className="tokenizer-library-block" glyph={<span className="block-glyph glyph-transforms" />} key={card.id} meta={`${card.category} · My cards`} onClick={() => addCustomTokenizerCard(card)} onContextMenu={(event) => {
             event.preventDefault()
             setCardMenu({ cardId: card.id, x: event.clientX, y: event.clientY })
-          }} title="Right-click to edit or delete" type="button">
-            <span className="block-glyph glyph-transforms" />
-            <span><strong>{card.label}</strong><small>{card.category} · My cards</small></span>
-          </button>)}
+          }} title="Right-click to edit or delete">{card.label}</StudioLibraryItem>)}
         </StudioLibrary>
 
         <StudioEditor className={`tokenizer-editor view-${view}`}>
-          <div className="canvas-panel">
-            <div className="panel-tab"><Blocks size={13} /> tokenizer.pipeline</div>
+          <StudioCanvasPanel tab={<StudioPanelTab icon={<Blocks size={13} />}>tokenizer.pipeline</StudioPanelTab>}>
             <div className="tokenizer-canvas">
               {pipeline.steps.map((step, index) => {
                 const metadata = step.atom === 'custom-tokenizer'
@@ -253,13 +247,12 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
                 )
               })}
             </div>
-          </div>
+          </StudioCanvasPanel>
 
           {view === 'split' && (
-            <div className="code-panel">
-              <div className="panel-tab"><Code2 size={13} /> tokenizer.py <span>GENERATED</span></div>
+            <StudioCodePanel tab={<StudioPanelTab icon={<Code2 size={13} />} status="GENERATED">tokenizer.py</StudioPanelTab>}>
               <PythonCodePreview value={code} />
-            </div>
+            </StudioCodePanel>
           )}
         </StudioEditor>
 
@@ -272,10 +265,10 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
           />}
           <section className="equivalence-card tokenizer-artifact-card">
             <div className="equivalence-title"><PackageCheck size={14} /> Artifact contract</div>
-            <div className="check-row"><span>Vocabulary size</span><b>{vocabSize.toLocaleString('en-US')}</b></div>
-            <div className="check-row"><span>Steps</span><b>{pipeline.steps.length}</b></div>
-            <div className="check-row"><span>Typed links</span><b>{pipeline.links.length}</b></div>
-            <div className="check-row"><span>Python lowering</span><b className="passed">READY</b></div>
+            <InspectorMetric label="Vocabulary size" value={vocabSize.toLocaleString('en-US')} />
+            <InspectorMetric label="Steps" value={pipeline.steps.length} />
+            <InspectorMetric label="Typed links" value={pipeline.links.length} />
+            <InspectorMetric label="Python lowering" value={<span className="passed">READY</span>} />
           </section>
         </StudioInspector>
       </StudioWorkspace>
@@ -290,15 +283,15 @@ export function TokenizerStudio({ onCatalogChange = () => undefined, onRequested
       {cardMenu && (() => {
         const card = customCards.find((candidate) => candidate.id === cardMenu.cardId)
         if (!card) return null
-        return <div className="card-context-menu tokenizer-library-context-menu" role="menu" style={{ left: cardMenu.x, top: cardMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+        return <StudioContextMenu className="tokenizer-library-context-menu" position={cardMenu}>
           <div><span>MY TOKENIZER CARD</span><strong>{card.label}</strong></div>
-          <button onClick={() => { setEditingCard(card); setCardMenu(undefined) }} role="menuitem" type="button"><Pencil size={13} />Edit card</button>
-          <button className={cardMenu.confirmDelete ? 'confirm-delete' : ''} onClick={() => {
+          <StudioContextMenuItem onClick={() => { setEditingCard(card); setCardMenu(undefined) }}><Pencil size={13} />Edit card</StudioContextMenuItem>
+          <StudioContextMenuItem className={cardMenu.confirmDelete ? 'confirm-delete' : ''} onClick={() => {
             if (!cardMenu.confirmDelete) return setCardMenu((current) => current ? { ...current, confirmDelete: true } : current)
             setCustomCards((current) => current.filter((candidate) => candidate.id !== card.id))
             setCardMenu(undefined)
-          }} role="menuitem" type="button"><Trash2 size={13} />{cardMenu.confirmDelete ? 'Confirm delete' : 'Delete card'}</button>
-        </div>
+          }}><Trash2 size={13} />{cardMenu.confirmDelete ? 'Confirm delete' : 'Delete card'}</StudioContextMenuItem>
+        </StudioContextMenu>
       })()}
       {(cardCreatorOpen || editingCard) && <TokenizerCardCreator
         initialCard={editingCard}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject, type WheelEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from 'react'
 import { clampZoom, graphGridStyle, panViewport, screenToWorld, zoomViewportAt, type GraphViewport } from './viewport'
 
 const DEFAULT_VIEWPORT: GraphViewport = { x: 0, y: 0, zoom: 1 }
@@ -25,6 +25,23 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
     })
     observer.observe(canvas)
     return () => observer.disconnect()
+  }, [canvasRef])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const handleWheel = (event: globalThis.WheelEvent) => {
+      event.preventDefault()
+      if (event.ctrlKey || event.metaKey) {
+        const bounds = canvas.getBoundingClientRect()
+        const pointer = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+        setViewport((current) => zoomViewportAt(current, current.zoom * Math.exp(-event.deltaY * 0.002), pointer))
+        return
+      }
+      setViewport((current) => panViewport(current, -event.deltaX, -event.deltaY))
+    }
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', handleWheel)
   }, [canvasRef])
 
   const canvasCenter = () => {
@@ -71,17 +88,6 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
     if (elements.length > 0) fitElements(elements, 1.05)
   }
 
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    if (event.ctrlKey || event.metaKey) {
-      const bounds = event.currentTarget.getBoundingClientRect()
-      const pointer = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
-      setViewport((current) => zoomViewportAt(current, current.zoom * Math.exp(-event.deltaY * 0.002), pointer))
-      return
-    }
-    setViewport((current) => panViewport(current, -event.deltaX, -event.deltaY))
-  }
-
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
     const interactive = target.closest('button,input,select,textarea,.architecture-node,.qkv-composite,.qkv-expanded-group')
@@ -121,7 +127,6 @@ export function useGraphViewport(canvasRef: RefObject<HTMLDivElement | null>) {
     isPanning,
     gridStyle: graphGridStyle(viewport),
     worldStyle: { transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})` },
-    onWheel,
     onPointerDown,
     onPointerMove,
     onPointerUp: endPan,

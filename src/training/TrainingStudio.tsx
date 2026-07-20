@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Blocks, Braces, Cpu, Lightbulb, Pencil, Play, Plus, Settings2, SplitSquareHorizontal, Trash2 } from 'lucide-react'
+import { Blocks, Braces, Cpu, Pencil, Play, Plus, Settings2, SplitSquareHorizontal, Trash2 } from 'lucide-react'
 import { compileOptimizer, createOptimizerConfig, optimizerRegistry, type OptimizerConfig, type OptimizerDefinition, type OptimizerValue } from '../core/optimizer-ir'
 import { OptimizerCreator } from './OptimizerCreator'
 import { parseTrainingWorkspace } from './training-workspace'
-import { StudioSettingsModal } from '../StudioSettingsModal'
 import { PythonCodePreview } from '../model/PythonCodeEditor'
 import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioToolbar, StudioViewSwitcher, StudioWorkspace } from '../studio/StudioShell'
+import { StudioLibraryItem } from '../studio/StudioLibraryParts'
+import { InspectorSection, InspectorSelection } from '../studio/StudioInspectorParts'
+import { StudioCanvasPanel, StudioCodePanel, StudioPanelTab } from '../studio/StudioPanels'
+import { StudioContextMenu, StudioContextMenuItem } from '../studio/StudioContextMenu'
 
 function formatValue(value: OptimizerValue): string {
   if (Array.isArray(value)) return value.map((item) => item === null ? 'None' : String(item)).join(', ')
@@ -17,7 +20,7 @@ function optimizerReference(definition: OptimizerDefinition): string {
   return definition.composition ? definition.torchClass : `torch.optim.${definition.torchClass}`
 }
 
-export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => undefined, onCloseSettings = () => undefined, onRequestedOptimizerHandled = () => undefined, requestedOptimizer }: { settingsOpen?: boolean; onCatalogChange?: (optimizers: OptimizerDefinition[]) => void; onCloseSettings?: () => void; onRequestedOptimizerHandled?: () => void; requestedOptimizer?: { optimizerId: string; requestId: number } }) {
+export function TrainingStudio({ onCatalogChange = () => undefined, onRequestedOptimizerHandled = () => undefined, requestedOptimizer }: { onCatalogChange?: (optimizers: OptimizerDefinition[]) => void; onRequestedOptimizerHandled?: () => void; requestedOptimizer?: { optimizerId: string; requestId: number } }) {
   const [config, setConfig] = useState<OptimizerConfig>(() => createOptimizerConfig('adamw'))
   const [view, setView] = useState<'graph' | 'pytorch' | 'split'>('graph')
   const [customOptimizers, setCustomOptimizers] = useState<OptimizerDefinition[]>([])
@@ -123,20 +126,15 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
       <StudioLibrary heading="OPTIMIZERS" icon={<Settings2 size={14} />}>
         <section className="block-group optimizer-library">
           <h3>PyTorch 2.13</h3>
-          {Object.values(optimizerRegistry).map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)}>
-            <span className="block-glyph glyph-objective" />{optimizer.label}
-          </button>)}
-          <button aria-label="Create optimizer" className="library-block optimizer-create-button" onClick={() => { setEditingOptimizer(undefined); setCreatorOpen(true); setView('graph') }} type="button"><Plus size={13} />Create optimizer</button>
+          {Object.values(optimizerRegistry).map((optimizer) => <StudioLibraryItem aria-label={`Use ${optimizer.label}`} glyph={<span className="block-glyph glyph-objective" />} key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)}>{optimizer.label}</StudioLibraryItem>)}
+          <StudioLibraryItem aria-label="Create optimizer" className="optimizer-create-button" glyph={<Plus size={13} />} onClick={() => { setEditingOptimizer(undefined); setCreatorOpen(true); setView('graph') }}>Create optimizer</StudioLibraryItem>
           {customOptimizers.length > 0 && <h3>Created</h3>}
-          {customOptimizers.map((optimizer) => <button aria-label={`Use ${optimizer.label}`} className="library-block" key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)} onContextMenu={(event) => { event.preventDefault(); setOptimizerMenu({ optimizerId: optimizer.id, x: event.clientX, y: event.clientY }) }} title="Right-click to edit or delete">
-            <span className="block-glyph glyph-objective" />{optimizer.label}
-          </button>)}
+          {customOptimizers.map((optimizer) => <StudioLibraryItem aria-label={`Use ${optimizer.label}`} glyph={<span className="block-glyph glyph-objective" />} key={optimizer.id} onClick={() => selectOptimizer(optimizer.id)} onContextMenu={(event) => { event.preventDefault(); setOptimizerMenu({ optimizerId: optimizer.id, x: event.clientX, y: event.clientY }) }} title="Right-click to edit or delete">{optimizer.label}</StudioLibraryItem>)}
         </section>
       </StudioLibrary>
 
       <StudioEditor className={`view-${view === 'graph' ? 'blocks' : view}`}>
-        {view !== 'pytorch' && <div className="canvas-panel">
-          <div className="panel-tab"><Blocks size={13} /> training.optimizer</div>
+        {view !== 'pytorch' && <StudioCanvasPanel tab={<StudioPanelTab icon={<Blocks size={13} />}>training.optimizer</StudioPanelTab>}>
           <div className="training-canvas">
             <article aria-label={`Optimizer card ${definition.label}`} className="optimizer-block selected" onContextMenu={(event) => { if (!config.kind.startsWith('custom-')) return; event.preventDefault(); setOptimizerMenu({ optimizerId: config.kind, x: event.clientX, y: event.clientY }) }} onDoubleClick={() => openOptimizerEditor(config.kind)}>
               <header><span className="node-type">OPTIMIZER</span><strong>{definition.label}</strong><small>{optimizerReference(definition)}</small></header>
@@ -154,37 +152,24 @@ export function TrainingStudio({ settingsOpen = false, onCatalogChange = () => u
               </div>
             </article>
           </div>
-        </div>}
-        {view !== 'graph' && <div className="code-panel">
-          <div className="panel-tab"><Braces size={13} /> optimizer.py <span>GENERATED</span></div>
+        </StudioCanvasPanel>}
+        {view !== 'graph' && <StudioCodePanel tab={<StudioPanelTab icon={<Braces size={13} />} status="GENERATED">optimizer.py</StudioPanelTab>}>
           <PythonCodePreview value={code} />
-        </div>}
+        </StudioCodePanel>}
       </StudioEditor>
 
       <StudioInspector heading="TRAINING INSPECTOR" icon={<Cpu size={14} />}>
-        <section className="inspector-section"><div className="section-title">Selection</div><div className="selection-card"><span className="selection-icon"><Play size={15} /></span><div><strong>{definition.label}</strong><small>{definition.notes ?? optimizerReference(definition)}</small></div></div></section>
+        <InspectorSection title="Selection"><InspectorSelection detail={definition.notes ?? optimizerReference(definition)} icon={<Play size={15} />} title={definition.label} /></InspectorSection>
       </StudioInspector>
     </StudioWorkspace>}
     <StudioStatusbar><span><span className="status-dot" /> Training IR valid</span><span>optimizer · {Object.keys(config.settings).length} settings</span><span className="status-spacer" /><span>PyTorch 2.13</span></StudioStatusbar>
     {optimizerMenu && (() => {
       const optimizer = customOptimizers.find((candidate) => candidate.id === optimizerMenu.optimizerId)
       if (!optimizer) return null
-      return <div className="card-context-menu optimizer-context-menu" role="menu" style={{ left: optimizerMenu.x, top: optimizerMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
-        <button onClick={() => openOptimizerEditor(optimizer.id)} role="menuitem" type="button"><Pencil size={12} />Edit {optimizer.label}</button>
-        <button onClick={() => deleteOptimizer(optimizer.id)} role="menuitem" type="button"><Trash2 size={12} />Delete {optimizer.label}</button>
-      </div>
+      return <StudioContextMenu className="optimizer-context-menu" position={optimizerMenu}>
+        <StudioContextMenuItem onClick={() => openOptimizerEditor(optimizer.id)}><Pencil size={12} />Edit {optimizer.label}</StudioContextMenuItem>
+        <StudioContextMenuItem onClick={() => deleteOptimizer(optimizer.id)}><Trash2 size={12} />Delete {optimizer.label}</StudioContextMenuItem>
+      </StudioContextMenu>
     })()}
-    {settingsOpen && <StudioSettingsModal onClose={onCloseSettings} sections={[
-      {
-        id: 'studio', label: 'Studio', icon: <Settings2 size={13} />, content: <section className="training-settings-presets">
-          <strong>Optimizer presets</strong>
-          {customOptimizers.length === 0 ? <p>No custom optimizer yet.</p> : customOptimizers.map((optimizer) => <div key={`setting-${optimizer.id}`}>
-            <button onClick={() => selectOptimizer(optimizer.id)} type="button"><span>{optimizer.label}</span><small>{optimizerReference(optimizer)}</small></button>
-            <button aria-label={`Delete optimizer preset ${optimizer.label}`} onClick={() => deleteOptimizer(optimizer.id)} title="Delete optimizer" type="button"><Trash2 size={12} /></button>
-          </div>)}
-        </section>,
-      },
-      { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <div className="studio-settings-tips"><p>Click an optimizer to use it, then tune the active instance directly on its card.</p><p>Double-click or right-click an optimizer you created to edit or delete its reusable definition.</p></div> },
-    ]} />}
   </>
 }

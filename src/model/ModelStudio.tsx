@@ -4,14 +4,9 @@ import {
   Braces,
   Code2,
   Cpu,
-
   PanelLeft,
   SplitSquareHorizontal,
-  Pause,
-  Pencil,
   Play,
-  Square,
-  StepForward,
   Trash2,
   X,
   Zap,
@@ -36,18 +31,24 @@ import { GraphCanvas } from './GraphCanvas'
 import { PythonCodeEditor, PythonCodePreview } from './PythonCodeEditor'
 import { AskLaboPanel } from './AskLaboPanel'
 import type { AgentGraphAction } from '../core/agentic-graph'
-import type { CustomCardDestination, CustomCardCreateResult } from './CustomCardCreator'
+import type { CustomCardCreatorHandle, CustomCardDestination, CustomCardCreateResult } from './CustomCardCreator'
 import type { CustomPyTorchCard } from './custom-card'
 import { ExportMenu } from './ExportMenu'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 import { previewModelAtom } from '../core/browser-atomic-preview'
-import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioViewSwitcher, StudioWorkspace } from '../studio/StudioShell'
+import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioToolbar, StudioViewSwitcher, StudioWorkspace } from '../studio/StudioShell'
+import { StudioLibrarySection } from '../studio/StudioLibraryParts'
+import { InspectorMetric, InspectorSection, InspectorSelection } from '../studio/StudioInspectorParts'
+import { StudioCodePanel, StudioPanelTab } from '../studio/StudioPanels'
+import { ModelInteractionSwitcher, ModelPanelControls, ModelPlayerControls } from './ModelToolbarControls'
+import { ModelPresetMenu, ModelPromptMenu } from './ModelPresetControls'
 import { setLibraryDragPreview } from '../studio/libraryDragPreview'
 
 const CustomCardCreator = lazy(() => import('./CustomCardCreator').then((module) => ({ default: module.CustomCardCreator })))
 
 type ViewMode = 'blocks' | 'pytorch' | 'split'
 type InteractionMode = 'add' | 'edit'
+export type ModelEditorContext = 'architecture-add' | 'architecture-edit' | 'reusable-card'
 
 interface CardEditDraft {
   label: string
@@ -99,7 +100,7 @@ const graphInputDefinitions: Array<{ role: TensorRole; label: string }> = [
 
 
 
-export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, requestedCard, onRequestedCardHandled = () => undefined }: { askOpen?: boolean; onCloseAsk?: () => void; requestedCard?: { atomId: string; requestId: number }; onRequestedCardHandled?: () => void }) {
+export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onEditorContextChange = () => undefined, requestedCard, onRequestedCardHandled = () => undefined }: { askOpen?: boolean; onCloseAsk?: () => void; onEditorContextChange?: (context: ModelEditorContext) => void; requestedCard?: { atomId: string; requestId: number }; onRequestedCardHandled?: () => void }) {
   const webRuntime = window.labo?.runtime === 'web'
   const desktopRuntime = window.labo?.runtime === 'electron'
   const [initialWorkspace] = useState(() => webRuntime || desktopRuntime ? emptyModelWorkspace() : loadModelWorkspace())
@@ -113,10 +114,13 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [view, setView] = useState<ViewMode>('blocks')
   const [selectedArchitectureId, setSelectedArchitectureId] = useState('')
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('add')
+  const [createCardOpen, setCreateCardOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [modelPlayerSnapshot, setModelPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', currentAtomId: initialGraph.nodes[0]?.id, results: initialGraph.nodes.map((node) => ({ atomId: node.id, status: 'pending' })) })
   const modelPlayerRef = useRef<AtomicPlayer | null>(null)
+  const cardPlayerRef = useRef<CustomCardCreatorHandle | null>(null)
+  const [cardPlayerSnapshot, setCardPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', results: [] })
   const pendingAgentRunRef = useRef<'play' | 'step' | undefined>(undefined)
   const presetDraftsRef = useRef(new Map<string, ModelPresetDraft>(Object.entries(initialWorkspace.drafts)))
   const [userPresets, setUserPresets] = useState(() => initialWorkspace.userPresets.map(cloneArchitectureGraph))
@@ -133,6 +137,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const startupUserPresetsRef = useRef(userPresets)
   const latestGraphRef = useRef(graph)
   const latestSelectionRef = useRef(selectedNodeId)
+
+  useEffect(() => onEditorContextChange(createCardOpen ? 'reusable-card' : interactionMode === 'edit' ? 'architecture-edit' : 'architecture-add'), [createCardOpen, interactionMode, onEditorContextChange])
   const latestUserPresetsRef = useRef(userPresets)
   latestGraphRef.current = graph
   latestSelectionRef.current = selectedNodeId
@@ -148,7 +154,6 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
   const [promptTokenCount, setPromptTokenCount] = useState<number>()
   const [modelOutput, setModelOutput] = useState<LaboRuntimeTrace['modelOutput']>()
   const [customCards, setCustomCards] = useState<CustomPyTorchCard[]>(() => webRuntime || desktopRuntime ? [] : loadCustomCards())
-  const [createCardOpen, setCreateCardOpen] = useState(false)
   const [editingNodeId, setEditingNodeId] = useState<string>()
   const [cardEditDraft, setCardEditDraft] = useState<CardEditDraft>()
   const [cardEditError, setCardEditError] = useState('')
@@ -556,6 +561,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
   useEffect(() => {
     if (!requestedCard) return
+    if (createCardOpen) return
     setInteractionMode('add')
     if (requestedCard.atomId === 'token-ids-input') addGraphInput('token-ids')
     else if (requestedCard.atomId === 'hidden-state-input') addGraphInput('hidden')
@@ -567,7 +573,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
     onRequestedCardHandled()
   // The request id is the deliberate one-shot trigger; graph changes must not replay it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedCard?.requestId])
+  }, [requestedCard?.requestId, createCardOpen])
 
   const loadPreset = (preset: ArchitectureGraph, selectedNodeId: string) => {
     presetDraftsRef.current.set(graph.id, { graph, selectedNodeId: selectedNode?.id ?? selectedGroup?.id ?? '' })
@@ -812,40 +818,24 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
 
   return (
     <>
-      <section className="workspace-toolbar">
-        <div className="toolbar-controls">
-          <StudioViewSwitcher<ViewMode> ariaLabel="Editor view" onChange={setView} options={[{ id: 'blocks', label: 'Blocks', icon: <Blocks size={14} /> }, { id: 'pytorch', label: 'PyTorch', icon: <Braces size={14} /> }, { id: 'split', label: 'Split', icon: <SplitSquareHorizontal size={14} /> }]} value={view} />
-          <div className="interaction-switcher" aria-label="Canvas interaction mode">
-            <button aria-pressed={!createCardOpen && interactionMode === 'add'} onClick={() => { setInteractionMode('add'); setCreateCardOpen(false) }}><Blocks size={13} />Add blocks</button>
-            <button aria-pressed={!createCardOpen && interactionMode === 'edit'} onClick={() => { setInteractionMode('edit'); setCreateCardOpen(false) }}><Pencil size={13} />Edit cards</button>
-            <button aria-pressed={createCardOpen} onClick={() => { if (!createCardOpen) openCardCreator() }} title="Open the dedicated reusable card workspace"><Code2 size={13} />Reusable card</button>
-          </div>
-          {!createCardOpen && <details className="preset-menu"><summary>{presetMenuLabels[graph.id] ?? graph.name}</summary><div aria-label="Model preset">{builtInModelPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{presetMenuLabels[preset.id] ?? preset.name}</button>)}{userPresets.map((preset) => <button aria-pressed={graph.id === preset.id} key={preset.id} onClick={(event) => { selectPreset(preset.id); event.currentTarget.closest('details')?.removeAttribute('open') }}>{preset.name}</button>)}</div></details>}
-          {!createCardOpen && <details className="model-prompt-menu"><summary>Prompt</summary><label className="model-prompt-control"><span>Generation prompt</span><input aria-label="Model generation prompt" onChange={(event) => { setSampleText(event.target.value); setPromptTokenCount(undefined); setModelOutput(undefined) }} value={sampleText} /><small>{acceptsTokenIds ? (promptTokenCount === undefined ? 'Research BPE' : `${promptTokenCount} Token IDs`) : 'Add a Token IDs input'}</small></label></details>}
-        </div>
-        <div className="toolbar-meta">
-          <span><span className={`status-dot ${pytorchDraftAvailable || blankGraph ? '' : 'invalid'}`} /> {blankGraph ? 'Blank canvas ready' : pytorchMappingComplete ? 'PyTorch graph executable' : pytorchDraftAvailable ? 'Atomic PyTorch draft' : 'PyTorch compile error'}</span>
-          <span>{stats.nodeCount} atoms</span>
-          <div className="atomic-player-controls" aria-label="Model atomic player">
-            <button aria-label="Auto-arrange graph" disabled={blankGraph} onClick={() => setGraph((current) => layoutArchitectureGraph(current))} title="Arrange execution levels and parallel branches"><span aria-hidden="true">XY</span></button>
-            <button aria-label="Play model atoms" disabled={!runtimeAvailable} onClick={() => void modelPlayerRef.current?.play()} title={blankGraph ? 'Add a card before running the graph' : nativePyTorchRuntime ? 'Run local PyTorch' : 'Preview typed graph execution'}><Play size={13} /></button>
-            <button aria-label="Pause model atoms" disabled={!runtimeAvailable} onClick={() => modelPlayerRef.current?.pause()}><Pause size={13} /></button>
-            <button aria-label="Step one model atom" disabled={!runtimeAvailable} onClick={() => void modelPlayerRef.current?.step()} title={blankGraph ? 'Add a card before stepping through the graph' : nativePyTorchRuntime ? 'Step through local PyTorch' : 'Step through the typed graph preview'}><StepForward size={13} /></button>
-            <button aria-label="Stop model atoms" disabled={!runtimeAvailable} onClick={() => modelPlayerRef.current?.stop()}><Square size={12} /></button>
-            <span className={`player-status status-${modelPlayerSnapshot.status}`} title={nativePyTorchRuntime ? 'Local PyTorch runtime' : 'Browser graph preview'}>{blankGraph ? 'waiting' : nativePyTorchRuntime ? modelPlayerSnapshot.status : `preview · ${modelPlayerSnapshot.status}`}</span>
-          </div>
-          <button aria-pressed={libraryOpen} className="panel-visibility-button" onClick={() => setLibraryOpen((current) => !current)}><PanelLeft size={13} />Library</button>
-          <button aria-pressed={inspectorOpen} className="panel-visibility-button" onClick={() => setInspectorOpen((current) => !current)}><Cpu size={13} />Inspector</button>
+      <StudioToolbar meta={<>
+          <span><span className={`status-dot ${createCardOpen || pytorchDraftAvailable || blankGraph ? '' : 'invalid'}`} /> {createCardOpen ? 'Reusable card workspace' : blankGraph ? 'Blank canvas ready' : pytorchMappingComplete ? 'PyTorch graph executable' : pytorchDraftAvailable ? 'Atomic PyTorch draft' : 'PyTorch compile error'}</span>
+          <span>{createCardOpen ? cardPlayerSnapshot.results.length : stats.nodeCount} atoms</span>
+          <ModelPlayerControls blankGraph={createCardOpen ? cardPlayerSnapshot.results.length === 0 : blankGraph} nativePyTorchRuntime={nativePyTorchRuntime} onArrange={() => createCardOpen ? cardPlayerRef.current?.arrange() : setGraph((current) => layoutArchitectureGraph(current))} onPause={() => createCardOpen ? cardPlayerRef.current?.pause() : modelPlayerRef.current?.pause()} onPlay={() => createCardOpen ? void cardPlayerRef.current?.play() : void modelPlayerRef.current?.play()} onStep={() => createCardOpen ? void cardPlayerRef.current?.step() : void modelPlayerRef.current?.step()} onStop={() => createCardOpen ? cardPlayerRef.current?.stop() : modelPlayerRef.current?.stop()} runtimeAvailable={createCardOpen ? cardPlayerSnapshot.results.length > 0 : runtimeAvailable} scope={createCardOpen ? 'reusable card' : 'model'} snapshot={createCardOpen ? cardPlayerSnapshot : modelPlayerSnapshot} />
+          <ModelPanelControls inspectorOpen={inspectorOpen} libraryOpen={libraryOpen} onInspectorToggle={() => setInspectorOpen((current) => !current)} onLibraryToggle={() => setLibraryOpen((current) => !current)} />
           <ExportMenu code={code} codeGraph={codeGraph} graph={graph} />
-        </div>
-      </section>
+        </>}>
+          <StudioViewSwitcher<ViewMode> ariaLabel="Editor view" onChange={setView} options={[{ id: 'blocks', label: 'Blocks', icon: <Blocks size={14} /> }, { id: 'pytorch', label: 'PyTorch', icon: <Braces size={14} /> }, { id: 'split', label: 'Split', icon: <SplitSquareHorizontal size={14} /> }]} value={view} />
+          <ModelInteractionSwitcher createCardOpen={createCardOpen} interactionMode={interactionMode} onCreateCard={() => { if (!createCardOpen) openCardCreator() }} onInteractionMode={(mode) => { setInteractionMode(mode); setCreateCardOpen(false) }} />
+          {!createCardOpen && <ModelPresetMenu activeId={graph.id} activeName={graph.name} builtIns={builtInModelPresets} labels={presetMenuLabels} onSelect={selectPreset} userPresets={userPresets} />}
+          {!createCardOpen && <ModelPromptMenu acceptsTokenIds={acceptsTokenIds} onChange={(value) => { setSampleText(value); setPromptTokenCount(undefined); setModelOutput(undefined) }} promptTokenCount={promptTokenCount} value={sampleText} />}
+      </StudioToolbar>
 
-      {createCardOpen ? <Suspense fallback={null}><CustomCardCreator editMode={interactionMode === 'edit'} inspectorOpen={inspectorOpen} libraryOpen={libraryOpen} onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} selectedTarget={selectedNode?.label} view={view} /></Suspense> : <>
+      {createCardOpen ? <Suspense fallback={null}><CustomCardCreator editMode={interactionMode === 'edit'} inspectorOpen={inspectorOpen} libraryOpen={libraryOpen} onClose={() => setCreateCardOpen(false)} onCreate={createCustomCard} onPlayerSnapshotChange={setCardPlayerSnapshot} onRequestedCardHandled={onRequestedCardHandled} ref={cardPlayerRef} requestedCard={requestedCard} selectedTarget={selectedNode?.label} view={view} /></Suspense> : <>
       <StudioWorkspace inspectorOpen={inspectorOpen} libraryOpen={libraryOpen}>
         {libraryOpen && <StudioLibrary className={`mode-${interactionMode}`} heading="BLOCK LIBRARY" icon={<PanelLeft size={14} />}>
           <section className="block-group">
-            <details className="library-family graph-input-family">
-              <summary>Graph inputs <span>{graphInputDefinitions.length}</span></summary>
+            <StudioLibrarySection className="graph-input-family" count={graphInputDefinitions.length} label="Graph inputs">
               {graphInputDefinitions.map((definition) => <button
                 aria-label={`Add ${definition.label}`}
                 className="library-block"
@@ -865,9 +855,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                 <span className="block-glyph glyph-input" />
                 {definition.label}
               </button>)}
-            </details>
-            <details className="library-family custom-card-family">
-              <summary>My cards <span>{customCards.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection className="custom-card-family" count={customCards.length} label="My cards">
               {customCards.length > 0 && <div className="custom-card-list">
                 {customCards.map((card) => <div className="custom-card-list-row" key={card.id}><button
                   aria-label={`Add ${card.label}`}
@@ -888,39 +877,31 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                   <span><strong>{card.label}</strong><code>{card.code}</code></span>
                 </button><button aria-label={`Delete custom card ${card.label}`} className="delete-custom-library-card" onClick={() => deleteCustomCardDefinition(card.id)} title="Delete card from library"><Trash2 size={12} /></button></div>)}
               </div>}
-            </details>
-            <details className="library-family generic-atomics-family">
-              <summary>Generic atomics <span>{genericAtoms.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection className="generic-atomics-family" count={genericAtoms.length} label="Generic atomics">
               {genericAtoms.map(atomButton)}
-            </details>
-            {libraryFamilies.map((family) => <details className="library-family catalog-family" key={family.label}>
-              <summary>{family.label} <span>{family.atoms.length}</span></summary>
+            </StudioLibrarySection>
+            {libraryFamilies.map((family) => <StudioLibrarySection className="catalog-family" count={family.atoms.length} key={family.label} label={family.label}>
               {family.atoms.map(atomButton)}
-            </details>)}
-            <details className="library-family catalog-family">
-              <summary>Tied output head <span>1</span></summary>
+            </StudioLibrarySection>)}
+            <StudioLibrarySection className="catalog-family" count={1} label="Tied output head">
               {tiedLmHeadButton}
-            </details>
-            <details className="library-family">
-              <summary>Training objectives <span>{objectiveAtoms.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection count={objectiveAtoms.length} label="Training objectives">
               {objectiveAtoms.map(atomButton)}
-            </details>
-            <details className="library-family">
-              <summary>Token-Routed MLP <span>{trBasicAtoms.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection count={trBasicAtoms.length} label="Token-Routed MLP">
               {trBasicAtoms.map(atomButton)}
-            </details>
-            <details className="library-family">
-              <summary>Learned Router Controls <span>{learnedRouterAtoms.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection count={learnedRouterAtoms.length} label="Learned Router Controls">
               {learnedRouterAtoms.map(atomButton)}
-            </details>
-            <details className="library-family">
-              <summary>Routing Recipes <span>{routingRecipeAtoms.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection count={routingRecipeAtoms.length} label="Routing Recipes">
               {routingRecipeAtoms.map(atomButton)}
-            </details>
-            <details className="library-family">
-              <summary>Activations <span>{activationAtoms.length}</span></summary>
+            </StudioLibrarySection>
+            <StudioLibrarySection count={activationAtoms.length} label="Activations">
               {activationAtoms.map(atomButton)}
-            </details>
+            </StudioLibrarySection>
           </section>
         </StudioLibrary>}
 
@@ -931,8 +912,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
           }} onDropInput={(role, position) => addGraphInput(role, position)} playerSnapshot={modelPlayerSnapshot} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}
 
           {view !== 'blocks' && (
-            <div className="code-panel">
-              <div className="panel-tab"><Code2 size={13} /> generated_attention.py {graphArchitectures.length > 1 && <select aria-label="PyTorch architecture" onChange={(event) => { const architecture = graphArchitectures.find((candidate) => candidate.id === event.target.value); setSelectedArchitectureId(event.target.value); if (architecture?.nodeIds[0]) setSelectedNodeId(architecture.nodeIds[0]) }} value={selectedArchitecture?.id ?? ''}>{graphArchitectures.map((architecture) => <option key={architecture.id} value={architecture.id}>{architecture.label}</option>)}</select>}<span>LABO DIALECT</span><button aria-label="Apply PyTorch to blocks" onClick={applyPyTorch}>Apply to blocks</button></div>
+            <StudioCodePanel tab={<StudioPanelTab actions={<button aria-label="Apply PyTorch to blocks" onClick={applyPyTorch}>Apply to blocks</button>} icon={<Code2 size={13} />} status="LABO DIALECT">generated_attention.py {graphArchitectures.length > 1 && <select aria-label="PyTorch architecture" onChange={(event) => { const architecture = graphArchitectures.find((candidate) => candidate.id === event.target.value); setSelectedArchitectureId(event.target.value); if (architecture?.nodeIds[0]) setSelectedNodeId(architecture.nodeIds[0]) }} value={selectedArchitecture?.id ?? ''}>{graphArchitectures.map((architecture) => <option key={architecture.id} value={architecture.id}>{architecture.label}</option>)}</select>}</StudioPanelTab>}>
               {blankGraph ? <div className="code-empty-state">
                 <span><Code2 size={20} /></span>
                 <strong>PyTorch appears with your graph</strong>
@@ -940,25 +920,21 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, req
                 <code>graph → typed IR → PyTorch</code>
               </div> : <PythonCodeEditor onChange={setCodeDraft} value={codeDraft} />}
               {!blankGraph && parseDiagnostics.length > 0 && <div className="code-diagnostics">{parseDiagnostics.map((diagnostic) => <p key={`${diagnostic.nodeId}-${diagnostic.code}`}>{diagnostic.message}</p>)}</div>}
-            </div>
+            </StudioCodePanel>
           )}
         </StudioEditor>
 
         <StudioInspector heading="INSPECTOR" hidden={!inspectorOpen} icon={<Cpu size={14} />}>
-          <section className="inspector-section">
-            <div className="section-title">Selection</div>
-            <div className="selection-card">
-              <span className="selection-icon"><Zap size={15} /></span>
-              <div><strong>{selectedNode?.label ?? selectedGroup?.label ?? 'No selection'}</strong><small>{selectedNode?.id ?? selectedGroup?.id ?? '—'}</small></div>
-            </div>
+          <InspectorSection title="Selection">
+            <InspectorSelection detail={selectedNode?.id ?? selectedGroup?.id ?? '—'} icon={<Zap size={15} />} title={selectedNode?.label ?? selectedGroup?.label ?? 'No selection'} />
             {blankGraph && <p className="blank-graph-hint">Add an atomic block from the library or ask LABO to build a starter graph.</p>}
             {!blankGraph && !validation.valid && <p className="graph-incomplete-hint" title={validation.errors.join('\n')}>Graph incomplete · {validation.errors.length} wiring issue{validation.errors.length === 1 ? '' : 's'}. Connect the open ports before running.</p>}
-          </section>
+          </InspectorSection>
           <section className="equivalence-card">
             <div className="equivalence-title"><Play size={14} /> {nativePyTorchRuntime ? 'Atomic PyTorch execution' : 'Atomic graph preview'}</div>
-            <div className="check-row"><span>Player</span><b>{modelPlayerSnapshot.status}</b></div>
-            <div className="check-row"><span>Current level</span><b>{modelPlayerSnapshot.currentAtomIds?.join(' + ') ?? '—'}</b></div>
-            {selectedNode && <div className="check-row"><span>Selected result</span><b>{modelPlayerSnapshot.results.find((result) => result.atomId === selectedNode.id)?.status ?? 'pending'}</b></div>}
+            <InspectorMetric label="Player" value={modelPlayerSnapshot.status} />
+            <InspectorMetric label="Current level" value={modelPlayerSnapshot.currentAtomIds?.join(' + ') ?? '—'} />
+            {selectedNode && <InspectorMetric label="Selected result" value={modelPlayerSnapshot.results.find((result) => result.atomId === selectedNode.id)?.status ?? 'pending'} />}
             {modelPlayerSnapshot.error && <p className="execution-error">{modelPlayerSnapshot.error}</p>}
             <div aria-label="Model generation output" className="model-runtime-output">
               <div><span>Output</span><b>{modelOutput ? modelOutput.kind : blankGraph ? 'waiting for blocks' : !nativePyTorchRuntime && modelPlayerSnapshot.status === 'completed' ? 'graph trace' : 'pending'}</b></div>

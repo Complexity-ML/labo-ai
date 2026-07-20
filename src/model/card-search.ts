@@ -13,6 +13,13 @@ const inputCards: ModelCardSearchResult[] = [
   { atomId: 'training-labels-input', label: 'Training Labels', description: 'Labels Y pour les pertes d’entraînement', kind: 'input' },
 ]
 
+const reusableCardInputs: ModelCardSearchResult[] = [
+  ...inputCards,
+  { atomId: 'image-input', label: 'Image tensor', description: 'Image input exposed by the reusable card', kind: 'input' },
+  { atomId: 'video-input', label: 'Video tensor', description: 'Video input exposed by the reusable card', kind: 'input' },
+  { atomId: 'audio-input', label: 'Audio tensor', description: 'Audio input exposed by the reusable card', kind: 'input' },
+]
+
 const intentAliases: Record<string, string[]> = {
   generate: ['generation', 'generer', 'generated', 'autoregressif', 'autoregressive', 'inference', 'decodeur', 'decoder', 'sampler', 'echantillonneur', 'token'],
   sampler: ['sampling', 'echantillon', 'decodeur', 'decoder', 'generation', 'logits', 'token'],
@@ -42,7 +49,7 @@ function expandedTerms(query: string): string[] {
   return [...terms]
 }
 
-export function searchModelCards(query: string, limit = 10): ModelCardSearchResult[] {
+function searchCards(query: string, cards: ModelCardSearchResult[], limit: number): ModelCardSearchResult[] {
   const normalizedQuery = normalize(query)
   if (!normalizedQuery) return []
   const terms = expandedTerms(query)
@@ -50,7 +57,7 @@ export function searchModelCards(query: string, limit = 10): ModelCardSearchResu
     .filter((definition) => !definition.composite)
     .map((definition) => ({ atomId: definition.id, label: definition.label, description: `${definition.category} · ${definition.inputs.map((port) => port.tensor).join(' + ') || 'source'} → ${definition.outputs.map((port) => port.tensor).join(' + ')}`, kind: 'atomic' }))
 
-  return [...inputCards, ...atomCards]
+  return [...cards, ...atomCards]
     .map((card) => {
       const haystack = normalize(`${card.atomId} ${card.label} ${card.description}`)
       let score = haystack.includes(normalizedQuery) ? 20 : 0
@@ -67,4 +74,12 @@ export function searchModelCards(query: string, limit = 10): ModelCardSearchResu
     .sort((left, right) => right.score - left.score || left.card.label.localeCompare(right.card.label))
     .slice(0, limit)
     .map(({ card }) => card)
+}
+
+export function searchModelCards(query: string, limit = 10): ModelCardSearchResult[] {
+  return searchCards(query, inputCards, limit)
+}
+
+export function searchReusableCardAtoms(query: string, limit = 10): ModelCardSearchResult[] {
+  return searchCards(query, reusableCardInputs, limit)
 }

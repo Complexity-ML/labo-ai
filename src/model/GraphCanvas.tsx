@@ -9,6 +9,7 @@ import { useGraphViewport } from './useGraphViewport'
 import { screenToWorld } from './viewport'
 import { MODEL_CARD_HEIGHT, MODEL_CARD_WIDTH } from './card-layout'
 import { orderedNodeInputPorts } from './port-layout'
+import { StudioContextMenu, StudioContextMenuItem } from '../studio/StudioContextMenu'
 
 function describeNode(node: ArchitectureNode): string {
   if (typeof node.attributes?.detail === 'string') return node.attributes.detail
@@ -434,7 +435,6 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
       }}
       onPointerMove={movePointer}
       onPointerUp={endPointer}
-      onWheel={camera.onWheel}
       ref={canvasRef}
       tabIndex={0}
     >
@@ -478,15 +478,15 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
         return <ArchitectureNodeCard dragging={dragPreview?.nodeId === node.id} editMode={editMode} graph={graph} highlighted={highlightedNodeIds?.has(node.id)} key={node.id} node={displayed} onContextMenu={openCardMenu} onDragPointerDown={beginNodeDrag} onEdit={() => onEditNode?.(node.id)} onPortPointerDown={cables.beginCable} onSelect={(event) => selectNode(event, node.id)} selected={selectedNodeIds.has(node.id) || selectedNodeId === node.id} status={status(node.id)} />
       })}
       </div>
-      {cardMenu && <div className="card-context-menu" role="menu" style={{ left: cardMenu.x, top: cardMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+      {cardMenu && <StudioContextMenu position={cardMenu}>
         <div><span>CARD</span><strong>{cardMenu.label}</strong></div>
-        <button role="menuitem" onClick={() => { onEditNode?.(cardMenu.nodeId); setCardMenu(undefined) }}><Pencil size={13} />Edit card</button>
-        <button className={cardMenu.confirmDelete ? 'confirm-delete' : ''} role="menuitem" onClick={() => {
+        <StudioContextMenuItem onClick={() => { onEditNode?.(cardMenu.nodeId); setCardMenu(undefined) }}><Pencil size={13} />Edit card</StudioContextMenuItem>
+        <StudioContextMenuItem className={cardMenu.confirmDelete ? 'confirm-delete' : ''} onClick={() => {
           if (!cardMenu.confirmDelete) return setCardMenu((current) => current ? { ...current, confirmDelete: true } : current)
           onDeleteNode?.(cardMenu.nodeId)
           setCardMenu(undefined)
-        }}><Trash2 size={13} />{cardMenu.confirmDelete ? 'Confirm delete' : 'Delete card'}</button>
-      </div>}
+        }}><Trash2 size={13} />{cardMenu.confirmDelete ? 'Confirm delete' : 'Delete card'}</StudioContextMenuItem>
+      </StudioContextMenu>}
       <div className="graph-viewport-controls" aria-label="Graph viewport controls">
         <button aria-label="Zoom out" onClick={camera.zoomOut}><Minus size={13} /></button>
         <button aria-label="Reset zoom" className="zoom-value" onClick={camera.resetZoom}>{Math.round(camera.viewport.zoom * 100)}%</button>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { StudioSegmentedControl } from './StudioControls'
 
 export interface StudioViewOption<View extends string> {
   id: View
@@ -6,12 +7,12 @@ export interface StudioViewOption<View extends string> {
   icon: ReactNode
 }
 
-export function StudioToolbar({ children, meta }: { children: ReactNode; meta?: ReactNode }) {
-  return <section className="workspace-toolbar"><div className="toolbar-controls">{children}</div>{meta && <div className="toolbar-meta">{meta}</div>}</section>
+export function StudioToolbar({ children, className = '', meta }: { children: ReactNode; className?: string; meta?: ReactNode }) {
+  return <section className={`workspace-toolbar ${className}`.trim()}><div className="toolbar-controls">{children}</div>{meta && <div className="toolbar-meta">{meta}</div>}</section>
 }
 
 export function StudioViewSwitcher<View extends string>({ ariaLabel, onChange, options, value }: { ariaLabel: string; onChange(view: View): void; options: Array<StudioViewOption<View>>; value: View }) {
-  return <div aria-label={ariaLabel} className="view-switcher">{options.map((option) => <button aria-pressed={value === option.id} key={option.id} onClick={() => onChange(option.id)}>{option.icon}{option.label}</button>)}</div>
+  return <StudioSegmentedControl ariaLabel={ariaLabel} className="view-switcher" onChange={onChange} options={options} value={value} />
 }
 
 export function StudioWorkspace({ children, className = '', inspectorOpen = true, libraryOpen = true, ...props }: { children: ReactNode; className?: string; inspectorOpen?: boolean; libraryOpen?: boolean } & React.HTMLAttributes<HTMLDivElement>) {

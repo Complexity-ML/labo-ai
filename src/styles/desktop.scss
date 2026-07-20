@@ -1,6 +1,14 @@
 @use 'tokens';
 @use 'shell';
 @use 'studio-shell';
+@use 'studio-controls';
+@use 'studio-dialog';
+@use 'app-header';
+@use 'global-search';
+@use 'settings-dialog';
+@use 'model-toolbar';
+@use 'studio-library-parts';
+@use 'studio-inspector-parts';
 @use 'studio-choice-menu';
 @use 'agent-prompt';
 @use 'agent-activity';

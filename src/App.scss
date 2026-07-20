@@ -479,19 +479,9 @@
 .custom-code-invalid { color: #ef8a8a; }
 .delete-atom-button { margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid rgba(239,100,100,.3); border-radius: 5px; padding: 7px; color: #ef8a8a; background: rgba(239,100,100,.06); }
 
-.card-search-backdrop, .model-card-modal-backdrop { position: fixed; z-index: 180; inset: 0; display: grid; place-items: start center; padding: 12vh 20px 20px; background: rgba(3,4,7,.74); backdrop-filter: blur(4px); }
-.card-search-modal { width: min(620px, 92vw); max-height: 72vh; overflow: hidden; display: grid; grid-template-rows: auto auto minmax(0,1fr); border: 1px solid #3c4350; border-radius: 10px; background: #111319; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
-.card-search-modal header, .model-card-modal header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2b3039; color: #e4e7ed; }
-.card-search-modal header span { display: flex; align-items: center; gap: 8px; font-size: 11px; }
-.card-search-modal header button, .model-card-modal header button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; color: #818997; background: transparent; }
-.card-search-modal > input { margin: 12px; border: 1px solid #3b424f; border-radius: 7px; padding: 11px 12px; outline: none; color: #edf0f5; background: #090a0e; font: 11px 'JetBrains Mono'; }
-.card-search-modal > input:focus { border-color: rgba(98,169,255,.72); box-shadow: 0 0 0 3px rgba(98,169,255,.09); }
-.card-search-results { min-height: 80px; overflow: auto; display: grid; align-content: start; gap: 5px; padding: 0 12px 12px; }
-.card-search-results > button { display: grid; gap: 4px; border: 1px solid #292f39; border-radius: 6px; padding: 10px 11px; text-align: left; color: #dbe0e8; background: #15181e; }
-.card-search-results > button:hover { border-color: rgba(98,169,255,.48); background: rgba(98,169,255,.08); }
-.card-search-results strong { font-size: 10px; }.card-search-results small, .card-search-results p { margin: 0; color: #727b88; font: 8px/1.5 'JetBrains Mono'; }
-
-.model-card-modal-backdrop { place-items: center; padding: 3vh 16px; }
+.model-card-modal-backdrop { position: fixed; z-index: 180; inset: 0; display: grid; place-items: center; padding: 3vh 16px; background: rgba(3,4,7,.74); backdrop-filter: blur(4px); }
+.model-card-modal header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2b3039; color: #e4e7ed; }
+.model-card-modal header button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; color: #818997; background: transparent; }
 .model-card-modal { width: min(520px, 92vw); max-height: 86vh; overflow: auto; display: grid; gap: 11px; padding-bottom: 14px; border: 1px solid #3c4350; border-radius: 10px; background: #111319; box-shadow: 0 24px 80px rgba(0,0,0,.62); }
 .model-card-modal header div { display: grid; gap: 3px; }.model-card-modal header span { color: #62a9ff; font: 7px 'JetBrains Mono'; letter-spacing: .8px; }.model-card-modal header strong { font-size: 11px; }
 .model-card-modal-hint { margin: 0 14px; padding: 8px; border: 1px solid rgba(98,169,255,.18); border-radius: 5px; color: #778493; background: rgba(98,169,255,.045); font: 8px/1.5 'JetBrains Mono'; }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Code2, Cpu, PanelLeft, Plus, Trash2, Zap } from 'lucide-react'
 import type { ArchitectureGraph, TensorRole } from '../core/ir'
 import { addNode, removeNode, updateNodeAttributes, validateGraph } from '../core/ir'
@@ -14,12 +14,21 @@ import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioWo
 import { StudioChoiceMenu } from '../studio/StudioChoiceMenu'
 import { AgentPrompt } from '../studio/AgentPrompt'
 import { setLibraryDragPreview } from '../studio/libraryDragPreview'
+import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
+import { executionLayers } from '../core/execution-plan'
+import { previewModelAtom } from '../core/browser-atomic-preview'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
 export type CustomCardDestination = 'library' | 'selected' | 'new-architecture'
 export interface CustomCardCreateResult { ok: boolean; message?: string }
 
-const idlePlayer = { status: 'idle' as const, results: [] }
+export interface CustomCardCreatorHandle {
+  arrange(): void
+  pause(): void
+  play(): Promise<void>
+  step(): Promise<void>
+  stop(): void
+}
 const inputChoices: Array<{ role: TensorRole; label: string }> = [
   { role: 'hidden', label: 'Hidden state' }, { role: 'token-ids', label: 'Token IDs' },
   { role: 'image', label: 'Image tensor' }, { role: 'video', label: 'Video tensor' },
@@ -71,7 +80,7 @@ function blankDraftGraph(): ArchitectureGraph {
   return { ...seed, nodes: [], edges: [] }
 }
 
-export function CustomCardCreator({ editMode, inspectorOpen, libraryOpen, onClose, onCreate, selectedTarget, view }: { editMode: boolean; inspectorOpen: boolean; libraryOpen: boolean; onClose(): void; onCreate(card: CardDraft, destination: CustomCardDestination): CustomCardCreateResult; selectedTarget?: string; view: CardBuilderView }) {
+export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode: boolean; inspectorOpen: boolean; libraryOpen: boolean; onClose(): void; onCreate(card: CardDraft, destination: CustomCardDestination): CustomCardCreateResult; onPlayerSnapshotChange?(snapshot: AtomicPlayerSnapshot): void; onRequestedCardHandled?(): void; requestedCard?: { atomId: string; requestId: number }; selectedTarget?: string; view: CardBuilderView }>(function CustomCardCreator({ editMode, inspectorOpen, libraryOpen, onClose, onCreate, onPlayerSnapshotChange, onRequestedCardHandled = () => undefined, requestedCard, selectedTarget, view }, ref) {
   const [name, setName] = useState('My reusable card')
   const [need, setNeed] = useState('')
   const [graph, setGraph] = useState<ArchitectureGraph>(() => blankDraftGraph())
@@ -82,6 +91,8 @@ export function CustomCardCreator({ editMode, inspectorOpen, libraryOpen, onClos
   const [agentDetailsOpen, setAgentDetailsOpen] = useState(false)
   const [agentReport, setAgentReport] = useState<{ previousGraph: ArchitectureGraph; summary: string; valid: boolean }>()
   const [destination, setDestination] = useState<CustomCardDestination>('new-architecture')
+  const [playerSnapshot, setPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', results: [] })
+  const playerRef = useRef<AtomicPlayer | null>(null)
 
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId)
   const generated = useMemo(() => {
@@ -117,6 +128,54 @@ export function CustomCardCreator({ editMode, inspectorOpen, libraryOpen, onClos
     setGraph((current) => removeNode(current, nodeId))
     setSelectedNodeId('')
   }
+
+  useEffect(() => {
+    const valid = validateGraph(graph).valid
+    let tracePromise: Promise<LaboRuntimeTrace> | undefined
+    const player = new AtomicPlayer(valid ? executionLayers(graph) : graph.nodes.map((node) => [node.id]), async (atomId) => {
+      const runAtomic = window.labo?.runAtomic
+      if (!runAtomic) return previewModelAtom(graph, atomId)
+      tracePromise ??= runAtomic({ kind: 'model', graph })
+      const trace = await tracePromise
+      const result = trace.results.find((candidate) => candidate.atomId === atomId)
+      if (!result) throw new Error(trace.error ?? `PyTorch stopped before ${atomId}`)
+      if (result.status === 'failed') throw new Error(result.error ?? `PyTorch failed at ${atomId}`)
+      return { summary: result.summary }
+    }, { onRestart: () => { tracePromise = undefined }, continueAfterFailure: true })
+    playerRef.current = player
+    return player.subscribe(setPlayerSnapshot)
+  }, [graph])
+
+  useEffect(() => onPlayerSnapshotChange?.(playerSnapshot), [onPlayerSnapshotChange, playerSnapshot])
+
+  useImperativeHandle(ref, () => ({
+    arrange: () => setGraph((current) => layoutArchitectureGraph(current)),
+    pause: () => playerRef.current?.pause(),
+    play: async () => { await playerRef.current?.play() },
+    step: async () => { await playerRef.current?.step() },
+    stop: () => playerRef.current?.stop(),
+  }), [])
+
+  useEffect(() => {
+    if (!requestedCard) return
+    const inputRoles: Record<string, TensorRole> = {
+      'token-ids-input': 'token-ids',
+      'hidden-state-input': 'hidden',
+      'training-labels-input': 'labels',
+      'image-input': 'image',
+      'video-input': 'video',
+      'audio-input': 'audio',
+    }
+    const role = inputRoles[requestedCard.atomId]
+    if (role) addInput(role)
+    else {
+      const definition = modelAtomRegistry[requestedCard.atomId]
+      if (definition && !definition.composite) addAtom(definition)
+    }
+    onRequestedCardHandled()
+  // The request id deliberately triggers a single card-builder insertion.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedCard?.requestId])
 
   const composePrompt = async () => {
     if (!need.trim() || agentBusy) return
@@ -170,11 +229,11 @@ export function CustomCardCreator({ editMode, inspectorOpen, libraryOpen, onClos
         </section>
       </StudioLibrary>}
       <StudioEditor className={`view-${view}`}>
-        {view !== 'pytorch' && <GraphCanvas editMode={editMode} graph={graph} onDeleteNode={deleteNode} onDeleteNodes={(ids) => { setGraph((current) => ids.reduce((next, id) => next.nodes.some((node) => node.id === id) ? removeNode(next, id) : next, current)); setSelectedNodeId('') }} onDropAtom={(atomId, position) => { const definition = modelAtomRegistry[atomId.split(':')[0]]; if (definition) addAtom(definition, position) }} onDropCustom={() => undefined} onDropInput={addInput} playerSnapshot={idlePlayer} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}
+        {view !== 'pytorch' && <GraphCanvas editMode={editMode} graph={graph} onDeleteNode={deleteNode} onDeleteNodes={(ids) => { setGraph((current) => ids.reduce((next, id) => next.nodes.some((node) => node.id === id) ? removeNode(next, id) : next, current)); setSelectedNodeId('') }} onDropAtom={(atomId, position) => { const definition = modelAtomRegistry[atomId.split(':')[0]]; if (definition) addAtom(definition, position) }} onDropCustom={() => undefined} onDropInput={addInput} playerSnapshot={playerSnapshot} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}
         {view !== 'blocks' && <div className="code-panel"><div className="panel-tab"><Code2 size={13} /> generated_card.py <span>{validationErrors.length === 0 ? 'VALID COMPOSITE' : `${validationErrors.length} ISSUES`}</span></div><PythonCodePreview className="compact-python-editor" value={generated.code || `# ${validationErrors.join('\n# ')}`} /></div>}
       </StudioEditor>
       <StudioInspector heading="INSPECTOR" hidden={!inspectorOpen} icon={<Cpu size={14} />}><section className="inspector-section"><div className="section-title">Selection</div><div className="selection-card"><span className="selection-icon"><Zap size={15} /></span><div><strong>{selectedNode?.label ?? 'No selection'}</strong><small>{selectedNode?.id ?? '—'}</small></div></div><div className="card-builder-port-summary"><span>EXPOSED PLUGS</span><strong>{cardInputs.length} in · {cardOutputs.length} out</strong></div>{selectedNode ? <div className="card-builder-inspector-fields"><label><span>Card label</span><input aria-label="Selected internal card label" onChange={(event) => setGraph((current) => ({ ...current, nodes: current.nodes.map((node) => node.id === selectedNode.id ? { ...node, label: event.target.value } : node) }))} value={selectedNode.label} /></label>{selectedNode.kind === 'semantic' && selectedNode.atomId && modelAtomRegistry[selectedNode.atomId]?.settings.map((setting) => <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean' ? <input checked={Boolean(selectedNode.attributes?.[setting.id])} onChange={(event) => setGraph((current) => updateNodeAttributes(current, selectedNode.id, { [setting.id]: event.target.checked }))} type="checkbox" /> : <input onChange={(event) => setGraph((current) => updateNodeAttributes(current, selectedNode.id, { [setting.id]: setting.type === 'number' ? Number(event.target.value) : event.target.value }))} type={setting.type === 'number' ? 'number' : 'text'} value={String(selectedNode.attributes?.[setting.id] ?? setting.default)} />}</label>)}<button className="card-builder-delete" onClick={() => deleteNode(selectedNode.id)}><Trash2 size={12} />Delete internal card</button></div> : <p className="blank-graph-hint">Choose a card atom from the library.</p>}</section></StudioInspector>
     </StudioWorkspace>
     <StudioStatusbar className="model-statusbar card-builder-statusbar">{agentDetailsOpen && agentReport && <section aria-label="Card agent details" className="card-builder-agent-details"><header><strong>Agent result</strong><button aria-label="Close card agent details" onClick={() => setAgentDetailsOpen(false)}>×</button></header><p>{agentReport.summary}</p><div><span>{graph.nodes.length} cards</span><span>{graph.edges.length} elastics</span><span className={agentReport.valid && validationErrors.length === 0 ? 'valid' : 'invalid'}>{agentReport.valid && validationErrors.length === 0 ? 'Locally validated' : 'Needs review'}</span></div><footer><button onClick={() => { setAgentReport(undefined); setAgentDetailsOpen(false) }}>Keep result</button><button onClick={() => { setGraph(agentReport.previousGraph); setSelectedNodeId(''); setAgentReport(undefined); setAgentDetailsOpen(false) }}>Undo agent change</button></footer></section>}<AgentPrompt busy={agentBusy} details={{ active: agentDetailsOpen, disabled: !agentReport, label: 'Show card agent details', onToggle: () => setAgentDetailsOpen((current) => !current) }} mode="reusable-card" onChange={setNeed} onSubmit={() => void composePrompt()} value={need} /><span><span className={`status-dot ${validationErrors.length === 0 ? '' : 'invalid'}`} /> Card IR {graph.nodes.length === 0 ? 'blank' : validationErrors.length === 0 ? 'valid' : 'incomplete'}</span><span>{graph.nodes.length} nodes · {graph.edges.length} links</span><span className="status-spacer" /><span>PyTorch 2.7</span><span>LABO Runtime · local</span></StudioStatusbar>
   </section>
-}
+})
