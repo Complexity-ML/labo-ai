@@ -45,6 +45,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState<OpenAISettingsStatus>()
+  const [chatGPT, setChatGPT] = useState<ChatGPTSessionStatus>()
   const [apiKey, setApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [credentialBusy, setCredentialBusy] = useState(false)
@@ -84,6 +85,11 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
     void window.labo.getOpenAISettings()
       .then(setSettings)
       .catch((reason) => setCredentialMessage(reason instanceof Error ? reason.message : String(reason)))
+    if (window.labo.runtime === 'electron' && window.labo.getChatGPTSession) {
+      void window.labo.getChatGPTSession()
+        .then(setChatGPT)
+        .catch((reason) => setChatGPT({ available: false, connected: false, error: reason instanceof Error ? reason.message : String(reason) }))
+    }
   }, [open])
 
   useEffect(() => {
@@ -118,8 +124,18 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
   const runAgentRequest = async (prompt: string) => {
     if (!prompt || loading) return
     if (!window.labo?.askLabo) {
-      setError('Ask LABO requires the desktop app and an OPENAI_API_KEY.')
+      setError('Connect an agent from Settings before using Ask LABO.')
       return
+    }
+    if (settings?.configured !== true && chatGPT?.connected !== true) {
+      const currentSettings = settings ?? await window.labo.getOpenAISettings?.()
+      if (currentSettings) setSettings(currentSettings)
+      const currentChatGPT = chatGPT ?? await window.labo.getChatGPTSession?.()
+      if (currentChatGPT) setChatGPT(currentChatGPT)
+      if (currentSettings?.configured !== true && currentChatGPT?.connected !== true) {
+        setError('Open Settings → Agent to connect an agent first.')
+        return
+      }
     }
     const activityId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     activeActivityIdRef.current = activityId
@@ -279,6 +295,35 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
     }
   }
 
+  const connectChatGPT = async () => {
+    if (!window.labo?.connectChatGPT || credentialBusy) return
+    setCredentialBusy(true)
+    setCredentialMessage('Complete ChatGPT sign-in in your browser.')
+    try {
+      const status = await window.labo.connectChatGPT()
+      setChatGPT(status)
+      setCredentialMessage(status.connected ? 'ChatGPT account connected. Ask LABO will use it by default.' : 'ChatGPT sign-in was not completed.')
+    } catch (reason) {
+      setCredentialMessage(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setCredentialBusy(false)
+    }
+  }
+
+  const disconnectChatGPT = async () => {
+    if (!window.labo?.disconnectChatGPT || credentialBusy) return
+    setCredentialBusy(true)
+    setCredentialMessage('')
+    try {
+      setChatGPT(await window.labo.disconnectChatGPT())
+      setCredentialMessage('ChatGPT account disconnected from LABO AI.')
+    } catch (reason) {
+      setCredentialMessage(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setCredentialBusy(false)
+    }
+  }
+
   const closeOverlay = () => {
     if (plan) {
       if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' })
@@ -299,11 +344,11 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
 
     {activityOpen && !open && !plan && <AgentActivityPanel activities={activities} busy={loading} onClear={clearActivities} onClose={() => setActivityOpen(false)} onRetry={(activity) => { setRequest(activity.prompt); setActivityOpen(false); void runAgentRequest(activity.prompt) }} onReview={reviewFullPlan} />}
 
-    <AgentPrompt busy={loading} context={`${autoApply ? 'Auto apply' : 'Review'} · ${graphMode === 'parallel' ? 'New parallel' : 'Extend current'}`} details={{ active: activityOpen, count: activities.length > 0 ? (activities.find((activity) => activity.status === 'running') ? '…' : activities.length) : undefined, label: 'Open agent activity', onToggle: () => setActivityOpen((current) => !current) }} disabled={settings?.configured === false} mode={interactionMode === 'edit' ? 'card-editing' : 'architecture'} onChange={setRequest} onSubmit={submit} value={request} />
+    <AgentPrompt busy={loading} context={settings?.configured === false && chatGPT?.connected !== true ? 'Connect an agent in Settings' : `${autoApply ? 'Auto apply' : 'Review'} · ${graphMode === 'parallel' ? 'New parallel' : 'Extend current'}`} details={{ active: activityOpen, count: activities.length > 0 ? (activities.find((activity) => activity.status === 'running') ? '…' : activities.length) : undefined, label: 'Open agent activity', onToggle: () => setActivityOpen((current) => !current) }} disabled={settings?.configured === false && chatGPT?.connected !== true} mode={interactionMode === 'edit' ? 'card-editing' : 'architecture'} onChange={setRequest} onSubmit={submit} value={request} />
 
     {open && <StudioSettingsModal onClose={closeOverlay} sections={[
       { id: 'workspaces', label: 'Workspaces', icon: <FolderKanban size={13} />, content: <div className="ask-labo-workspace-settings">{workspaceSettings}</div> },
-      { id: 'agent', label: 'Agent', icon: <Sparkles size={13} />, content: <AgentSettingsContent apiKey={apiKey} autoApply={autoApply} confirmDelete={confirmDelete} credentialBusy={credentialBusy} credentialMessage={credentialMessage} graphMode={graphMode} loading={loading} onApiKeyChange={setApiKey} onAutoApplyChange={setAutoApply} onDeleteApiKey={() => void deleteApiKey()} onGraphModeChange={(mode) => { setGraphMode(mode); setPlan(undefined) }} onSaveApiKey={(event) => void saveApiKey(event)} onShowApiKeyChange={setShowApiKey} onTestApiKey={() => void testApiKey()} settings={settings} showApiKey={showApiKey} /> },
+      { id: 'agent', label: 'Agent', icon: <Sparkles size={13} />, content: <AgentSettingsContent apiKey={apiKey} autoApply={autoApply} chatGPT={chatGPT} confirmDelete={confirmDelete} credentialBusy={credentialBusy} credentialMessage={credentialMessage} graphMode={graphMode} loading={loading} onApiKeyChange={setApiKey} onAutoApplyChange={setAutoApply} onConnectChatGPT={() => void connectChatGPT()} onDeleteApiKey={() => void deleteApiKey()} onDisconnectChatGPT={() => void disconnectChatGPT()} onGraphModeChange={(mode) => { setGraphMode(mode); setPlan(undefined) }} onSaveApiKey={(event) => void saveApiKey(event)} onShowApiKeyChange={setShowApiKey} onTestApiKey={() => void testApiKey()} settings={settings} showApiKey={showApiKey} /> },
       { id: 'studio', label: 'Application', icon: <Settings2 size={13} />, content: <div className="studio-settings-empty"><strong>One LABO AI workspace</strong><p>Model, Training and Tokenizer Studio share this private profile, these settings and the same automatic-save policy.</p></div> },
       { id: 'tips', label: 'Tips', icon: <Lightbulb size={13} />, content: <StudioEditingTips /> },
     ]} />}

@@ -6,6 +6,28 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 describe('LABO AI agent', () => {
+  it('connects a desktop ChatGPT session from the shared Agent settings', async () => {
+    const connectChatGPT = vi.fn(async () => ({ available: true, connected: true, email: 'judge@example.com', planType: 'plus' }))
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      getOpenAISettings: async () => ({ configured: false, source: 'none', encryptionAvailable: true }),
+      getChatGPTSession: async () => ({ available: true, connected: false }),
+      connectChatGPT,
+      disconnectChatGPT: async () => ({ available: true, connected: false }),
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agent' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with ChatGPT' }))
+
+    expect(connectChatGPT).toHaveBeenCalledOnce()
+    expect(await screen.findByText('judge@example.com')).toBeInTheDocument()
+    expect(screen.getByText(/plus plan/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Disconnect ChatGPT/ })).toBeInTheDocument()
+    delete window.labo
+  })
+
   it('tracks running, validated and applied agent tasks in the footer activity center', async () => {
     let resolveAsk: ((plan: {
       summary: string

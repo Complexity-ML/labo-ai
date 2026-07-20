@@ -7,7 +7,7 @@ export type OpenAIKeySource = 'environment' | 'secure-storage' | 'none'
 export interface OpenAISettingsStatus {
   configured: boolean
   source: OpenAIKeySource
-  encryptionAvailable: boolean
+  encryptionAvailable?: boolean
 }
 
 interface StoredCredentials {
@@ -53,14 +53,15 @@ async function storedApiKey(): Promise<string | undefined> {
 }
 
 export async function getOpenAISettingsStatus(): Promise<OpenAISettingsStatus> {
-  const canEncrypt = await encryptionAvailable()
-  if (canEncrypt && await storedApiKey()) {
-    return { configured: true, source: 'secure-storage', encryptionAvailable: true }
+  // Status checks must be passive. Probing or decrypting Electron safeStorage
+  // can wake the macOS keychain, so only touch it after an explicit API action.
+  if (await readStoredCredentials()) {
+    return { configured: true, source: 'secure-storage' }
   }
   if (process.env.OPENAI_API_KEY?.trim()) {
-    return { configured: true, source: 'environment', encryptionAvailable: canEncrypt }
+    return { configured: true, source: 'environment' }
   }
-  return { configured: false, source: 'none', encryptionAvailable: canEncrypt }
+  return { configured: false, source: 'none' }
 }
 
 export async function saveOpenAIApiKey(payload: { apiKey: string }): Promise<OpenAISettingsStatus> {

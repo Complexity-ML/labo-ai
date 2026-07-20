@@ -27,6 +27,9 @@ const previousApiKey = process.env.OPENAI_API_KEY
 beforeEach(async () => {
   userDataDirectory = await mkdtemp(join(tmpdir(), 'labo-ai-credentials-'))
   electronMocks.getPath.mockReturnValue(userDataDirectory)
+  electronMocks.isAsyncEncryptionAvailable.mockClear()
+  electronMocks.encryptStringAsync.mockClear()
+  electronMocks.decryptStringAsync.mockClear()
   delete process.env.OPENAI_API_KEY
 })
 
@@ -38,6 +41,19 @@ afterEach(async () => {
 })
 
 describe('per-user OpenAI credentials', () => {
+  it('checks configuration without touching the system keychain', async () => {
+    await expect(getOpenAISettingsStatus()).resolves.toMatchObject({ configured: false, source: 'none' })
+    expect(electronMocks.isAsyncEncryptionAvailable).not.toHaveBeenCalled()
+    expect(electronMocks.decryptStringAsync).not.toHaveBeenCalled()
+
+    await saveOpenAIApiKey({ apiKey: 'sk-project-user-secret-123456789' })
+    electronMocks.isAsyncEncryptionAvailable.mockClear()
+    electronMocks.decryptStringAsync.mockClear()
+    await expect(getOpenAISettingsStatus()).resolves.toMatchObject({ configured: true, source: 'secure-storage' })
+    expect(electronMocks.isAsyncEncryptionAvailable).not.toHaveBeenCalled()
+    expect(electronMocks.decryptStringAsync).not.toHaveBeenCalled()
+  })
+
   it('encrypts, resolves, and removes a user key without writing plaintext', async () => {
     const apiKey = 'sk-project-user-secret-123456789'
     await expect(getOpenAISettingsStatus()).resolves.toMatchObject({ configured: false, source: 'none' })

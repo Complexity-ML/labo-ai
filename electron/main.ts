@@ -4,13 +4,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rendererWebPreferences } from './security.js'
 import { runAtomicRuntime, type AtomicRuntimePayload } from './atomic-runtime.js'
-import { askLaboChannel, atomicRuntimeChannel, deleteOpenAIKeyChannel, desktopUpdateStatusChannel, exportFileChannel, launchDesktopUpdateChannel, loadDesktopStateChannel, openAISettingsChannel, openDesktopSetupChannel, saveDesktopStateChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract.js'
+import { askLaboChannel, atomicRuntimeChannel, chatGPTSessionChannel, connectChatGPTChannel, deleteOpenAIKeyChannel, desktopUpdateStatusChannel, disconnectChatGPTChannel, exportFileChannel, launchDesktopUpdateChannel, loadDesktopStateChannel, openAISettingsChannel, openDesktopSetupChannel, saveDesktopStateChannel, saveOpenAIKeyChannel, testOpenAIKeyChannel, windowStateChannel } from './ipc-contract.js'
 import { askLabo } from './ask-labo.js'
 import { loadDesktopState, saveDesktopState } from './desktop-state.js'
 import { deleteOpenAIApiKey, getOpenAISettingsStatus, saveOpenAIApiKey, testOpenAIConnection } from './openai-credentials.js'
 import { desktopSetupReleaseUrl, getDesktopUpdateStatus, launchDesktopUpdate } from './desktop-updates.js'
+import { CodexAppServer } from './chatgpt-session.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
+const chatGPT = new CodexAppServer((url) => shell.openExternal(url), app.getVersion())
 
 function createMainWindow(): BrowserWindow {
   const platformFrame: BrowserWindowConstructorOptions = process.platform === 'darwin'
@@ -46,11 +48,17 @@ function createMainWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   ipcMain.handle(atomicRuntimeChannel, (_event, payload: AtomicRuntimePayload) => runAtomicRuntime(payload))
-  ipcMain.handle(askLaboChannel, (_event, payload) => askLabo(payload))
+  ipcMain.handle(askLaboChannel, async (_event, payload) => {
+    const session = await chatGPT.status()
+    return session.connected ? chatGPT.ask(payload) : askLabo(payload)
+  })
   ipcMain.handle(openAISettingsChannel, () => getOpenAISettingsStatus())
   ipcMain.handle(saveOpenAIKeyChannel, (_event, payload) => saveOpenAIApiKey(payload))
   ipcMain.handle(deleteOpenAIKeyChannel, () => deleteOpenAIApiKey())
   ipcMain.handle(testOpenAIKeyChannel, () => testOpenAIConnection())
+  ipcMain.handle(chatGPTSessionChannel, () => chatGPT.status())
+  ipcMain.handle(connectChatGPTChannel, () => chatGPT.connect())
+  ipcMain.handle(disconnectChatGPTChannel, () => chatGPT.disconnect())
   ipcMain.handle(windowStateChannel, (event) => ({ fullScreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
   ipcMain.handle(loadDesktopStateChannel, (_event, payload: { scope?: unknown }) => loadDesktopState(app.getPath('userData'), payload?.scope))
   ipcMain.handle(saveDesktopStateChannel, (_event, payload: { scope?: unknown; data?: unknown }) => saveDesktopState(app.getPath('userData'), payload?.scope, payload?.data))
@@ -81,3 +89,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+app.on('before-quit', () => chatGPT.stop())

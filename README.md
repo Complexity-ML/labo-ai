@@ -12,7 +12,7 @@ LABO AI was created during OpenAI Build Week with Codex as the primary engineeri
 
 Codex accelerated the project across the Electron, React, TypeScript and Python boundaries. It was used to inspect and refactor the evolving graph editor, implement typed card contracts and graph/PyTorch synchronization, diagnose the packaged Python runtime, build SQLite workspace persistence, harden encrypted API-key handling, create macOS and Windows packages, and repeatedly run the desktop validation suite. Codex also drove the automated demo workflow and helped identify cross-architecture failures that were difficult to reproduce manually.
 
-GPT-5.6 was used inside Codex for the cross-cutting implementation and debugging work, and it is also the default model behind Ask LABO (`gpt-5.6-terra`). Ask LABO receives a bounded view of the card catalog and current graph, then uses strict tools to inspect, search, add, connect, create, arrange, execute, save and export. Its output is validated locally before it can mutate the graph.
+GPT-5.6 was used inside Codex for the cross-cutting implementation and debugging work. On desktop, Ask LABO can use the judge's ChatGPT session through the official Codex App Server; an explicitly configured OpenAI API key remains an optional fallback (`gpt-5.6-terra`). Ask LABO receives a bounded view of the card catalog and current graph, then plans graph changes that are validated locally before they can mutate the graph.
 
 The key product decisions remained human-directed: use atomic typed cards instead of an unrestricted code editor; preserve existing architectures as read-only in parallel mode; separate review from auto-apply; make architecture deletion explicitly targeted; keep card creation in a central visual modal; encrypt user API keys locally; and represent parallel computation through stable topology-aware XY placement. Codex helped turn those decisions into tested product behavior and iterate quickly when the first versions were ambiguous or unsafe.
 
@@ -33,7 +33,7 @@ The key product decisions remained human-directed: use atomic typed cards instea
 - Ask LABO planner that can add available blocks, connect compatible ports, or report missing capabilities.
 - Parallel-aware automatic graph layout and multi-architecture composition without overwriting the current canvas.
 - SQLite-backed graph drafts, cards, optimizer configurations and user presets, preserved across application updates.
-- Per-user OpenAI API key management through Electron encrypted storage; keys can be tested and deleted from the UI.
+- Desktop **Continue with ChatGPT** sign-in through the official Codex App Server, plus optional per-user OpenAI API-key fallback through Electron encrypted storage.
 
 ## Judge quick start — one command
 
@@ -63,7 +63,7 @@ Paste this single command into a terminal:
 curl -fsSL https://github.com/Complexity-ML/labo-ai/releases/latest/download/install-labo-ai-linux.sh | bash
 ```
 
-**LABO AI Setup** then fetches the latest tagged source, verifies and provisions its own Node.js runtime, and builds the Electron application locally without replacing private workspace data. Graph editing and the player work without an API key; only Ask LABO requires a user-provided key.
+**LABO AI Setup** then fetches the latest tagged source, verifies and provisions its own Node.js runtime, and builds the Electron application locally without replacing private workspace data. Graph editing and the player need no account. Ask LABO can use a ChatGPT account on desktop or an optional user-provided API key.
 
 Supported packages:
 
@@ -77,11 +77,11 @@ Suggested test path:
 
 1. Open **Blank starter** and drag typed cards from the block library.
 2. Open **Ask LABO**, choose **New parallel** and **Auto apply**, then request a compact GPT-like QA architecture.
-3. Add your own OpenAI API key when prompted. It is encrypted locally with Electron `safeStorage` and is never returned to the renderer.
+3. In **Settings → Agent**, choose **Continue with ChatGPT**. Alternatively, add an OpenAI API key; it is encrypted locally with Electron `safeStorage` and is never returned to the renderer.
 4. Run the resulting graph with the atomic player, then inspect the **PyTorch** and **Split** views.
 5. Save the workspace as a preset and export the graph as SVG or the generated model as Python.
 
-Graph editing, built-in presets, PyTorch inspection, local execution and export can be tested without an API key. Only Ask LABO requires one.
+Graph editing, built-in presets, PyTorch inspection, local execution and export can be tested without an account or API key. Ask LABO requires either the desktop ChatGPT connection or an OpenAI API key. The web build remains API-key/account based and does not reuse a browser ChatGPT session.
 
 ## Development
 
@@ -139,7 +139,7 @@ npm run build:win --prefix apps/bootstrap-installer # Windows
 npm run build:linux --prefix apps/bootstrap-installer # Linux AppImage
 ```
 
-Run the guided one-minute agent demo after adding an API key in the app:
+Run the guided one-minute agent demo after connecting ChatGPT or adding an API key in the app:
 
 ```bash
 npm run demo:agent
@@ -173,6 +173,7 @@ The `Desktop release` workflow verifies that the `vX.Y.Z` tag matches both the a
 ## Security model
 
 - Renderer isolation is enforced through the Electron preload bridge.
+- ChatGPT OAuth and token refresh are owned by the bundled Codex App Server; session tokens are never sent through the renderer.
 - OpenAI keys are encrypted with Electron `safeStorage` and never exposed to the renderer after saving.
 - Ask LABO receives a bounded graph context and must return a strict structured plan.
 - Custom PyTorch cards accept only explicitly supported `torch.nn` constructors and literal arguments.

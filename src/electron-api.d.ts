@@ -32,6 +32,9 @@ interface Window {
     saveOpenAIKey?(apiKey: string): Promise<OpenAISettingsStatus>
     deleteOpenAIKey?(): Promise<OpenAISettingsStatus>
     testOpenAIKey?(): Promise<{ ok: true }>
+    getChatGPTSession?(): Promise<ChatGPTSessionStatus>
+    connectChatGPT?(): Promise<ChatGPTSessionStatus>
+    disconnectChatGPT?(): Promise<ChatGPTSessionStatus>
     loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; training?: unknown; tokenizer?: unknown; updatedAt?: number; warning?: string }>
     saveWebWorkspace?(payload: { workspace?: unknown; customCards?: unknown[]; training?: unknown; tokenizer?: unknown }): Promise<{ saved: true; updatedAt: number }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
@@ -48,9 +51,17 @@ interface Window {
 interface OpenAISettingsStatus {
   configured: boolean
   source: 'environment' | 'secure-storage' | 'none'
-  encryptionAvailable: boolean
+  encryptionAvailable?: boolean
   authRequired?: boolean
   prefix?: string
+}
+
+interface ChatGPTSessionStatus {
+  available: boolean
+  connected: boolean
+  email?: string
+  planType?: string
+  error?: string
 }
 
 interface DesktopUpdateStatus {
