@@ -43,6 +43,7 @@ export function AgentPrompt({ busy = false, context, details, disabled = false, 
   value: string
 }) {
   const copy = MODE_COPY[mode]
+  const formRef = useRef<HTMLFormElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useLayoutEffect(() => {
@@ -54,8 +55,21 @@ export function AgentPrompt({ busy = false, context, details, disabled = false, 
     textarea.style.overflowY = textarea.scrollHeight > 96 ? 'auto' : 'hidden'
   }, [value])
 
+  useLayoutEffect(() => {
+    const form = formRef.current
+    if (!form) return
+    const publishHeight = () => document.documentElement.style.setProperty('--labo-agent-prompt-height', `${form.offsetHeight}px`)
+    publishHeight()
+    const observer = new ResizeObserver(publishHeight)
+    observer.observe(form)
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--labo-agent-prompt-height')
+    }
+  }, [])
+
   return <div className="agent-prompt-dock">
-    <form className="agent-prompt" data-mode={mode} onSubmit={(event) => { event.preventDefault(); onSubmit() }}>
+    <form className="agent-prompt" data-mode={mode} onSubmit={(event) => { event.preventDefault(); onSubmit() }} ref={formRef}>
       <textarea
         aria-label={copy.ariaLabel}
         onChange={(event) => onChange(event.target.value)}

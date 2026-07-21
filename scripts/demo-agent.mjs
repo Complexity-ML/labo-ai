@@ -168,7 +168,13 @@ try {
   await window.loadFile(join(projectRoot, 'dist', 'index.html'))
   process.stderr.write('[demo] renderer loaded\n')
   window.show()
-  window.maximize()
+  if (process.platform === 'darwin') {
+    const enteredFullScreen = new Promise((resolve) => window.once('enter-full-screen', resolve))
+    window.setFullScreen(true)
+    await enteredFullScreen
+  } else {
+    window.maximize()
+  }
   window.focus()
   process.stderr.write('[demo] window visible; waiting 5 seconds before agent actions\n')
   await wait(5_000)

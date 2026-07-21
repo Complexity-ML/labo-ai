@@ -2,11 +2,11 @@
   position: absolute;
   z-index: 93;
   right: auto;
-  bottom: 60px;
+  bottom: calc(var(--labo-agent-prompt-height, 46px) + 12px);
   left: 50%;
   width: min(640px, calc(100vw - 600px));
   min-width: 360px;
-  max-height: min(430px, calc(100vh - 150px));
+  max-height: min(430px, calc(100vh - var(--labo-agent-prompt-height, 46px) - 92px));
   box-sizing: border-box;
   overflow: auto;
   transform: translateX(-50%);
