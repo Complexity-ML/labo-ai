@@ -9,7 +9,7 @@ interface AgentPlanReviewProps {
   preview: AgentGraphPreview
   onApply(): void
   onDiscard(): void
-  onEditCard(nodeId: string): void
+  onEditCard?(nodeId: string): void
 }
 
 export function AgentPlanReview({ language, onApply, onDiscard, onEditCard, plan, preview }: AgentPlanReviewProps) {
@@ -35,7 +35,7 @@ export function AgentPlanReview({ language, onApply, onDiscard, onEditCard, plan
         <h3>{preview.acceptedBlocks.length} {copy.atomic}{preview.acceptedBlocks.length === 1 ? '' : 's'} {language === 'en' ? 'ready' : 'prêts'}</h3>
         <div className="ask-labo-added-blocks">{preview.acceptedBlocks.map((block) => {
           const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)
-          return <div key={block.nodeId}><Blocks size={13} /><span><strong>{node?.label ?? block.nodeId}</strong><code>{block.atomId}</code><small>{block.reason}</small></span><button aria-label={`Edit ${node?.label ?? block.nodeId}`} onClick={() => onEditCard(block.nodeId)} type="button">Edit</button></div>
+          return <div key={block.nodeId}><Blocks size={13} /><span><strong>{node?.label ?? block.nodeId}</strong><code>{block.atomId}</code><small>{block.reason}</small></span>{onEditCard && <button aria-label={`Edit ${node?.label ?? block.nodeId}`} onClick={() => onEditCard(block.nodeId)} type="button">Edit</button>}</div>
         })}</div>
       </section>}
 
@@ -43,7 +43,7 @@ export function AgentPlanReview({ language, onApply, onDiscard, onEditCard, plan
         <h3>{preview.acceptedCreatedBlocks.length} {copy.generated}{preview.acceptedCreatedBlocks.length === 1 ? '' : 's'} {language === 'en' ? 'ready' : 'prêtes'}</h3>
         <div className="ask-labo-created-blocks">{preview.acceptedCreatedBlocks.map((block) => {
           const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)
-          return <div key={block.nodeId}><Blocks size={13} /><span><strong>{node?.label ?? block.label}</strong><code>{node?.code ?? block.pytorchModule}</code><small>{block.reason}</small></span><button aria-label={`Edit ${node?.label ?? block.label}`} onClick={() => onEditCard(block.nodeId)} type="button">Edit</button></div>
+          return <div key={block.nodeId}><Blocks size={13} /><span><strong>{node?.label ?? block.label}</strong><code>{node?.code ?? block.pytorchModule}</code><small>{block.reason}</small></span>{onEditCard && <button aria-label={`Edit ${node?.label ?? block.label}`} onClick={() => onEditCard(block.nodeId)} type="button">Edit</button>}</div>
         })}</div>
       </section>}
 

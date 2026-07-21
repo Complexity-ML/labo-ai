@@ -1,11 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { Code2, Cpu, PanelLeft, Plus, Trash2, Zap } from 'lucide-react'
+import { Code2, Cpu, PanelLeft, Plus, Sparkles, Trash2, X, Zap } from 'lucide-react'
 import type { ArchitectureGraph, TensorRole } from '../core/ir'
 import { addNode, removeNode, updateNodeAttributes, validateGraph } from '../core/ir'
 import { compileRegistryGraph } from '../core/pytorch-compiler'
 import { customCardInputPorts, customCardOutputPorts, validateCustomCardGraph } from '../core/custom-card-graph'
 import { modelAtomRegistry, type ModelAtomCategory, type ModelAtomDefinition } from '../core/model-atoms'
-import { createAgentGraphContext, previewAgentGraphPlan } from '../core/agentic-graph'
+import { createAgentGraphContext, previewAgentGraphPlan, type AgentGraphPlan, type AgentGraphPreview } from '../core/agentic-graph'
 import { findOpenGraphPosition, layoutArchitectureGraph } from '../core/graph-placement'
 import { GraphCanvas } from './GraphCanvas'
 import { PythonCodePreview } from './PythonCodeEditor'
@@ -19,6 +19,8 @@ import { executionLayers } from '../core/execution-plan'
 import { previewModelAtom } from '../core/browser-atomic-preview'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
 import { useLaboLanguage } from '../studio/application-language'
+import { AgentPlanReview } from './AgentPlanReview'
+import { agentPlanReviewText } from './agent-plan-review-text'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
 export type CustomCardDestination = 'library' | 'selected' | 'new-architecture'
@@ -79,6 +81,13 @@ function draftGraph(definitionId = 'linear-projection'): ArchitectureGraph {
 
 export type CardBuilderView = 'blocks' | 'pytorch' | 'split'
 
+interface PendingCardAgentPlan {
+  composedGraph: ArchitectureGraph
+  plan: AgentGraphPlan
+  preview: AgentGraphPreview
+  suggestedName: string
+}
+
 function blankDraftGraph(): ArchitectureGraph {
   const seed = draftGraph()
   return { ...seed, nodes: [], edges: [] }
@@ -93,8 +102,7 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
   const [paletteCategory, setPaletteCategory] = useState<ModelAtomCategory | 'all'>('composition')
   const [error, setError] = useState('')
   const [agentBusy, setAgentBusy] = useState(false)
-  const [agentDetailsOpen, setAgentDetailsOpen] = useState(false)
-  const [agentReport, setAgentReport] = useState<{ previousGraph: ArchitectureGraph; summary: string; valid: boolean }>()
+  const [pendingAgentPlan, setPendingAgentPlan] = useState<PendingCardAgentPlan>()
   const [destination, setDestination] = useState<CustomCardDestination>('new-architecture')
   const [playerSnapshot, setPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', results: [] })
   const playerRef = useRef<AtomicPlayer | null>(null)
@@ -193,7 +201,6 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
     setAgentBusy(true)
     setError('')
     try {
-      const previousGraph = structuredClone(graph)
       const emptyGraph = { ...graph, id: 'agent-card-draft', nodes: [], edges: [], groups: undefined }
       const plan = await window.labo.askLabo({
         request: `Compose a reusable typed card graph for this need: ${need.trim()}`,
@@ -204,11 +211,8 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
       const composedGraph = layoutArchitectureGraph(preview.graph)
       const errors = validateCustomCardGraph(composedGraph)
       if (errors.length > 0) throw new Error(errors[0])
-      setGraph(composedGraph)
-      setName(plan.createdBlocks[0]?.label ?? plan.addedBlocks.findLast((block) => block.atomId !== 'hidden-state-input' && !block.atomId.endsWith('-input'))?.reason.split(/[.!?]/)[0]?.slice(0, 52) ?? plan.summary.split(/[.!?]/)[0]?.slice(0, 52) ?? 'Agent composed card')
-      setSelectedNodeId(composedGraph.nodes.find((node) => node.kind !== 'input')?.id ?? '')
-      setAgentReport({ previousGraph, summary: plan.summary, valid: errors.length === 0 })
-      setAgentDetailsOpen(true)
+      const suggestedName = plan.createdBlocks[0]?.label ?? plan.addedBlocks.findLast((block) => block.atomId !== 'hidden-state-input' && !block.atomId.endsWith('-input'))?.reason.split(/[.!?]/)[0]?.slice(0, 52) ?? plan.summary.split(/[.!?]/)[0]?.slice(0, 52) ?? 'Agent composed card'
+      setPendingAgentPlan({ composedGraph, plan, preview, suggestedName })
     } catch (reason) {
       setError(`LABO agent did not change the card. ${reason instanceof Error ? reason.message : String(reason)}`)
     } finally { setAgentBusy(false) }
@@ -220,6 +224,14 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
     if (validationErrors.length > 0 || !generated.code) return setError(validationErrors[0] ?? 'Complete the internal graph first.')
     const result = onCreate({ label, code: generated.code, graph: structuredClone(graph), inputRole: cardInputs[0]?.tensor, outputRole: cardOutputs[0]?.tensor }, destination)
     if (!result.ok) setError(result.message ?? 'The selected destination is not compatible with this card.')
+  }
+
+  const applyPendingAgentPlan = () => {
+    if (!pendingAgentPlan) return
+    setGraph(pendingAgentPlan.composedGraph)
+    setName(pendingAgentPlan.suggestedName)
+    setSelectedNodeId(pendingAgentPlan.composedGraph.nodes.find((node) => node.kind !== 'input')?.id ?? '')
+    setPendingAgentPlan(undefined)
   }
 
   useEffect(() => {
@@ -241,6 +253,12 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
       </StudioEditor>
       <StudioInspector heading="INSPECTOR" hidden={!inspectorOpen} icon={<Cpu size={14} />}><section className="inspector-section"><div className="section-title">Selection</div><div className="selection-card"><span className="selection-icon"><Zap size={15} /></span><div><strong>{selectedNode?.label ?? 'No selection'}</strong><small>{selectedNode?.id ?? '—'}</small></div></div><div className="card-builder-port-summary"><span>EXPOSED PLUGS</span><strong>{cardInputs.length} in · {cardOutputs.length} out</strong></div>{selectedNode ? <div className="card-builder-inspector-fields"><label><span>Card label</span><input aria-label="Selected internal card label" onChange={(event) => setGraph((current) => ({ ...current, nodes: current.nodes.map((node) => node.id === selectedNode.id ? { ...node, label: event.target.value } : node) }))} value={selectedNode.label} /></label>{selectedNode.kind === 'semantic' && selectedNode.atomId && modelAtomRegistry[selectedNode.atomId]?.settings.map((setting) => <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean' ? <input checked={Boolean(selectedNode.attributes?.[setting.id])} onChange={(event) => setGraph((current) => updateNodeAttributes(current, selectedNode.id, { [setting.id]: event.target.checked }))} type="checkbox" /> : <input onChange={(event) => setGraph((current) => updateNodeAttributes(current, selectedNode.id, { [setting.id]: setting.type === 'number' ? Number(event.target.value) : event.target.value }))} type={setting.type === 'number' ? 'number' : 'text'} value={String(selectedNode.attributes?.[setting.id] ?? setting.default)} />}</label>)}<button className="card-builder-delete" onClick={() => deleteNode(selectedNode.id)}><Trash2 size={12} />Delete internal card</button></div> : <p className="blank-graph-hint">Choose a card atom from the library.</p>}</section></StudioInspector>
     </StudioWorkspace>
-    <StudioStatusbar className="model-statusbar card-builder-statusbar">{agentDetailsOpen && agentReport && <section aria-label="Card agent details" className="card-builder-agent-details"><header><strong>Agent result</strong><button aria-label="Close card agent details" onClick={() => setAgentDetailsOpen(false)}>×</button></header><p>{agentReport.summary}</p><div><span>{graph.nodes.length} cards</span><span>{graph.edges.length} elastics</span><span className={agentReport.valid && validationErrors.length === 0 ? 'valid' : 'invalid'}>{agentReport.valid && validationErrors.length === 0 ? 'Locally validated' : 'Needs review'}</span></div><footer><button onClick={() => { setAgentReport(undefined); setAgentDetailsOpen(false) }}>Keep result</button><button onClick={() => { setGraph(agentReport.previousGraph); setSelectedNodeId(''); setAgentReport(undefined); setAgentDetailsOpen(false) }}>Undo agent change</button></footer></section>}<AgentPrompt busy={agentBusy} details={{ active: agentDetailsOpen, disabled: !agentReport, label: 'Show card agent details', onToggle: () => setAgentDetailsOpen((current) => !current) }} mode="reusable-card" onChange={setNeed} onSubmit={() => void composePrompt()} value={need} /><span><span className={`status-dot ${validationErrors.length === 0 ? '' : 'invalid'}`} /> Card IR {graph.nodes.length === 0 ? 'blank' : validationErrors.length === 0 ? 'valid' : 'incomplete'}</span><span>{graph.nodes.length} nodes · {graph.edges.length} links</span><span className="status-spacer" /><span>PyTorch 2.7</span><span>LABO Runtime · local</span></StudioStatusbar>
+    <StudioStatusbar className="model-statusbar card-builder-statusbar"><AgentPrompt busy={agentBusy} mode="reusable-card" onChange={setNeed} onSubmit={() => void composePrompt()} value={need} /><span><span className={`status-dot ${validationErrors.length === 0 ? '' : 'invalid'}`} /> Card IR {graph.nodes.length === 0 ? 'blank' : validationErrors.length === 0 ? 'valid' : 'incomplete'}</span><span>{graph.nodes.length} nodes · {graph.edges.length} links</span><span className="status-spacer" /><span>PyTorch 2.7</span><span>LABO Runtime · local</span></StudioStatusbar>
+    {pendingAgentPlan && <div className="ask-labo-backdrop review-open" onPointerDown={(event) => { if (event.target === event.currentTarget) setPendingAgentPlan(undefined) }}>
+      <aside aria-label="Ask LABO" aria-modal="true" className="ask-labo-panel has-plan" role="dialog">
+        <header className="ask-labo-header"><span><Sparkles size={15} />{agentPlanReviewText[language].title}</span><button aria-label={agentPlanReviewText[language].close} onClick={() => setPendingAgentPlan(undefined)} type="button"><X size={15} /></button></header>
+        <AgentPlanReview language={language} onApply={applyPendingAgentPlan} onDiscard={() => setPendingAgentPlan(undefined)} plan={pendingAgentPlan.plan} preview={pendingAgentPlan.preview} />
+      </aside>
+    </div>}
   </section>
 })

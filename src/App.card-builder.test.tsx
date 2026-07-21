@@ -18,6 +18,11 @@ function connectCardAgent(atomId: string, label: string) {
   }) }
 }
 
+async function applyCardAgentPlan() {
+  expect(await screen.findByRole('region', { name: 'Review graph plan' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Apply full graph plan' }))
+}
+
 describe('LABO AI card builder', () => {
   it('keeps card editing distinct from Blockly adding and uses the central modal', () => {
     render(<App />)
@@ -61,6 +66,7 @@ describe('LABO AI card builder', () => {
     expect(screen.queryByRole('button', { name: /Choose Place after/ })).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a linear projection card' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await applyCardAgentPlan()
     await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('Linear projection'))
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'My projection' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create reusable architecture' }))
@@ -122,6 +128,7 @@ describe('LABO AI card builder', () => {
     await screen.findByRole('region', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create an RMSNorm card' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await applyCardAgentPlan()
     await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('RMSNorm'))
     fireEvent.click(screen.getByRole('button', { name: 'Card destination' }))
     fireEvent.click(screen.getByRole('button', { name: 'Choose Reusable library card' }))
@@ -140,6 +147,7 @@ describe('LABO AI card builder', () => {
     await screen.findByRole('region', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Use a SiLU activation for the expert branch' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await applyCardAgentPlan()
 
     await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU'))
     fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
@@ -161,7 +169,8 @@ describe('LABO AI card builder', () => {
     await screen.findByRole('region', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a GELU expert activation' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
-  
+    await applyCardAgentPlan()
+
     await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('GELU'))
     expect(screen.getByRole('textbox', { name: 'Custom card name' })).toHaveValue('Expert GELU')
     expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ cardBuilderMode: true }) }))
@@ -214,6 +223,7 @@ describe('LABO AI card builder', () => {
     await screen.findByRole('region', { name: 'Create model card' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a SiLU card' } })
     fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await applyCardAgentPlan()
     await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('SiLU'))
 
     fireEvent.click(screen.getByLabelText('Export architecture'))
