@@ -39,7 +39,7 @@ export function ApplicationAppearanceSettings() {
     <section className="application-language-settings">
       <header><span><Globe2 size={14} /></span><div><strong>Interface language</strong><p>Also controls the language used by Ask LABO plans.</p></div></header>
       <div>
-        <button aria-pressed={language === 'en'} onClick={() => selectLanguage('en')} type="button"><strong>English</strong><small>Recommended for judging</small>{language === 'en' && <Check size={13} />}</button>
+        <button aria-pressed={language === 'en'} onClick={() => selectLanguage('en')} type="button"><strong>English</strong><small>Interface and plans in English</small>{language === 'en' && <Check size={13} />}</button>
         <button aria-pressed={language === 'fr'} onClick={() => selectLanguage('fr')} type="button"><strong>Français</strong><small>Interface et plans en français</small>{language === 'fr' && <Check size={13} />}</button>
       </div>
     </section>

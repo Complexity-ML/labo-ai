@@ -10,11 +10,12 @@
 
 .ask-labo-backdrop.settings-open,
 .ask-labo-backdrop.review-open {
+  display: grid;
   position: fixed;
   z-index: 100;
   inset: 0;
-  place-items: start center;
-  padding: clamp(76px, 10vh, 112px) 32px 42px;
+  place-items: center;
+  padding: clamp(18px, 4vh, 40px) 32px;
   pointer-events: auto;
   background: rgb(2 5 6 / 66%);
   backdrop-filter: blur(8px) saturate(.8);
@@ -24,7 +25,7 @@
     display: flex;
     flex-direction: column;
     width: min(820px, calc(100vw - 64px));
-    max-height: calc(100vh - clamp(116px, 17vh, 170px));
+    max-height: calc(100dvh - clamp(36px, 8vh, 80px));
     overflow: auto;
     border: 1px solid rgb(255 255 255 / 14%);
     border-radius: 15px;
@@ -44,28 +45,14 @@
 }
 
 .ask-labo-backdrop.review-open .ask-labo-panel {
-  width: min(920px, calc(100vw - 64px));
+  width: min(1040px, calc(100vw - 64px));
+  height: min(760px, calc(100dvh - clamp(36px, 8vh, 80px)));
+  max-height: none;
   overflow: hidden;
 }
 
 .ask-labo-backdrop.review-open {
-  .ask-labo-header,
-  .ask-labo-actions { flex: 0 0 auto; }
-
-  .ask-labo-result {
-    flex: 1 1 auto;
-    min-height: 0;
-    overscroll-behavior: contain;
-    scrollbar-color: rgb(112 224 173 / 24%) transparent;
-    scrollbar-width: thin;
-
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-track { background: transparent; }
-    &::-webkit-scrollbar-thumb {
-      border-radius: 8px;
-      background: rgb(112 224 173 / 24%);
-    }
-  }
+  .ask-labo-header { flex: 0 0 auto; }
 }
 .ask-labo-backdrop:not(.settings-open) .ask-labo-settings,
 .ask-labo-backdrop:not(.review-open) .ask-labo-result,
@@ -189,38 +176,6 @@
 .ask-labo-mode,
 .ask-labo-key-settings { border-color: var(--labo-line-soft); }
 
-.ask-labo-result {
-  min-height: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0 18px;
-  overflow: auto;
-  border: 1px solid var(--labo-line);
-  border-radius: 10px;
-  background: rgb(6 10 11 / 52%);
-
-  > section { border-right: 1px solid var(--labo-line-soft); }
-  > section:nth-child(even) { border-right: 0; }
-}
-
-.review-open .ask-labo-actions {
-  flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) auto minmax(180px, .55fr);
-  align-items: center;
-  padding: 12px 18px 14px;
-  border-top: 1px solid var(--labo-line-soft);
-  background: rgb(11 16 17 / 97%);
-  box-shadow: 0 -14px 35px rgb(0 0 0 / 28%);
-}
-
-.ask-labo-approval-summary {
-  overflow: hidden;
-  color: #91a09a;
-  font: 9px 'JetBrains Mono', monospace;
-  letter-spacing: .035em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .ask-labo-error {
   position: absolute;
   right: 10px;
@@ -295,10 +250,6 @@
   .ask-labo-backdrop.review-open { padding-inline: 20px; }
   .ask-labo-backdrop.settings-open .ask-labo-panel,
   .ask-labo-backdrop.review-open .ask-labo-panel { width: calc(100vw - 40px); }
-  .ask-labo-result { grid-template-columns: 1fr; }
-  .ask-labo-result > section { border-right: 0; }
-  .review-open .ask-labo-actions { grid-template-columns: 1fr 1.25fr; }
-  .ask-labo-approval-summary { grid-column: 1 / -1; }
   .ask-labo-workspace-settings { grid-template-columns: 1fr; }
   .ask-labo-workspace-settings > .workspace-management-column { border-right: 0; border-bottom: 1px solid var(--labo-line-soft); }
   .ask-labo-tips { grid-template-columns: 1fr; }

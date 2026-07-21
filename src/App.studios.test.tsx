@@ -92,7 +92,7 @@ describe('LABO AI studios', () => {
     await waitFor(() => expect(document.documentElement).toHaveAttribute('lang', 'fr'))
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Application' }))
-    fireEvent.click(screen.getByRole('button', { name: 'EnglishRecommended for judging' }))
+    fireEvent.click(screen.getByRole('button', { name: 'EnglishInterface and plans in English' }))
 
     await waitFor(() => expect(saveDesktopState).toHaveBeenCalledWith('settings', {
       appearance: { theme: 'labo-dark', language: 'en' },
