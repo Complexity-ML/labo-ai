@@ -37,21 +37,24 @@ Electron, React, TypeScript, Vite, PyTorch, Python, OpenAI API, SQLite, Electron
 - Source: https://github.com/Complexity-ML/labo-ai
 - Desktop releases: https://github.com/Complexity-ML/labo-ai/releases
 
-## 60-second video plan
+## 2–3 minute agent demo
 
-Use a 1440×900 capture and hide notifications. Run `npm run demo:agent`, then record only the LABO AI window.
+Use a 1440×900 capture, hide notifications and record only the LABO AI window. Connect ChatGPT or configure an API key once, then run `npm run demo:agent -- --keep-open`. The automated cues provide the shot order; use `--no-cues` for a clean voice-over-only capture.
 
 | Time | Visual | Voice-over |
 | --- | --- | --- |
-| 0–6 s | TR 300M graph, then Blank starter | “LABO AI turns neural architectures into typed, executable atomic graphs.” |
-| 6–15 s | Open Ask LABO; Auto apply | “Its agent sees the real card catalog and topology, not a screenshot.” |
-| 15–31 s | Prompt appears; agent builds | “It searches native capabilities, creates only safe missing primitives, and wires compatible tensor ports.” |
-| 31–42 s | Completed graph and parallel layout | “The XY engine makes sequence, forks and joins readable while preserving existing work.” |
-| 42–50 s | Switch to PyTorch | “The same graph produces inspectable PyTorch.” |
-| 50–57 s | Atomic player completes with output | “Execution is local and can be replayed or stepped atom by atom.” |
-| 57–60 s | Saved workspace and Export control | “Save, compare and export—without losing the graph.” |
+| 0–8 s | Empty Blank starter in Blocks view | “LABO AI turns neural architectures into typed, executable atomic graphs.” |
+| 8–20 s | Enter `Hello`; Agent activity returns a conversational answer | “The prompt is conversational, but the agent also understands the live graph and its real capabilities.” |
+| 20–38 s | Enter the compact GPT-like QA brief | “I can describe an architecture in plain English instead of manually finding every card.” |
+| 38–48 s | Short jump cut while the agent plans | “LABO searches the catalog, chooses atomic cards and wires only compatible typed ports.” |
+| 48–68 s | Review graph plan, tool trace, cards and elastics | “The result is an auditable plan. Nothing changes until local validation passes and I approve the complete plan.” |
+| 68–82 s | Apply; fitted graph reveals the compact causal decoder | “The first plan is already a valid executable baseline.” |
+| 82–105 s | Ask LABO to upgrade the current graph to a token-routed residual MoE | “Now I can iterate: preserve attention and output, but replace the residual MLP with routed and shared experts.” |
+| 105–122 s | Review replacements, deletions, new cards and elastics; apply | “LABO edits the existing topology instead of rebuilding blindly.” |
+| 122–145 s | Upgraded graph reveals parallel expert paths; atomic player completes | “The topology-aware XY engine keeps forks and joins readable, and this is executable PyTorch—not a drawing.” |
+| 145–175 s | PyTorch view, then Split and Agent activity | “Graph, code and the complete agent tool trace share one source of truth.” |
 
-If the live API response takes longer, cut the waiting section to a two-second jump cut. Do not accelerate the graph construction or execution result itself.
+Keep the final edit below 3 minutes, ideally near 2 minutes 40 seconds. If either live model call takes longer, retain only two seconds from each planning wait; do not speed up the reviews, graph construction or execution result.
 
 ## Suggested gallery
 

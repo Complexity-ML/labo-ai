@@ -1,13 +1,18 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { askLabo } from '../dist-electron/ask-labo.js'
 import { runAtomicRuntime } from '../dist-electron/atomic-runtime.js'
+import { CodexAppServer } from '../dist-electron/chatgpt-session.js'
 import { getOpenAISettingsStatus } from '../dist-electron/openai-credentials.js'
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const keepOpen = process.argv.includes('--keep-open')
-const prompt = 'Build a compact executable GPT-like question-answering chatbot with native LABO cards. Start from Token IDs, include token embedding, causal attention, a residual MLP, final normalization, a tied language-model head and greedy token decoding. Wire every compatible typed port, auto-arrange the graph, save it as Agent QA Demo, and run it.'
+const hideCues = process.argv.includes('--no-cues')
+const buildPrompt = 'Build a compact executable GPT-like question-answering decoder from Token IDs to generated tokens. Use grouped-query causal attention, one residual SwiGLU MLP, final RMSNorm, a tied language-model head, and greedy token decoding. Wire every compatible typed port and arrange the graph clearly.'
+const upgradePrompt = 'Upgrade the current architecture to a token-routed residual mixture of experts. Preserve the causal attention and output path. Replace the single residual MLP with one shared dense expert plus deterministic Token-ID routing over four routed residual experts, merge their outputs, reconnect every typed port, arrange the graph clearly, save it as Agent Demo, and validate it by running the atoms.'
+const generationPrompt = 'Explain neural networks in one short sentence.'
+const memoryState = new Map()
 
 app.setName('LABO AI')
 
@@ -25,35 +30,112 @@ async function waitFor(window, expression, timeout = 210_000) {
   throw new Error(`Demo timed out waiting for: ${expression}`)
 }
 
-async function cue(window, title, detail, duration = 2600) {
-  await window.webContents.executeJavaScript(`(() => {
+async function evaluate(window, expression) {
+  return window.webContents.executeJavaScript(expression, true)
+}
+
+async function clickButton(window, label, { exact = true } = {}) {
+  const clicked = await evaluate(window, `(() => {
+    const label = ${JSON.stringify(label)}
+    const button = [...document.querySelectorAll('button')].find((candidate) => ${exact ? 'candidate.textContent.trim() === label' : 'candidate.textContent.includes(label)'})
+    if (!button || button.disabled) return false
+    button.click()
+    return true
+  })()`)
+  if (!clicked) throw new Error(`Demo button is unavailable: ${label}`)
+}
+
+async function setTextarea(window, value, typingDelay = 0) {
+  await evaluate(window, `(async () => {
+    const textarea = document.querySelector('textarea[aria-label="What should these blocks build?"]')
+    if (!textarea) throw new Error('LABO agent prompt is unavailable')
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    const value = ${JSON.stringify(value)}
+    if (${typingDelay} > 0) {
+      for (let index = 1; index <= value.length; index += 3) {
+        setter.call(textarea, value.slice(0, index))
+        textarea.dispatchEvent(new Event('input', { bubbles: true }))
+        await new Promise((resolve) => setTimeout(resolve, ${typingDelay}))
+      }
+    }
+    setter.call(textarea, value)
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    textarea.focus()
+  })()`)
+}
+
+async function cue(window, eyebrow, title, detail, duration = 3200) {
+  if (hideCues) {
+    await wait(duration)
+    return
+  }
+  await evaluate(window, `(() => {
     let cue = document.querySelector('#labo-demo-cue')
     if (!cue) {
       cue = document.createElement('div')
       cue.id = 'labo-demo-cue'
-      cue.style.cssText = 'position:fixed;z-index:9999;left:50%;bottom:34px;transform:translateX(-50%);min-width:390px;max-width:720px;padding:13px 17px;border:1px solid rgba(98,169,255,.6);border-radius:9px;background:rgba(9,11,16,.94);box-shadow:0 16px 55px rgba(0,0,0,.65);text-align:center;pointer-events:none;font-family:Inter,sans-serif'
+      cue.style.cssText = 'position:fixed;z-index:9999;right:24px;top:96px;width:390px;padding:14px 16px;border:1px solid rgba(111,211,176,.42);border-radius:12px;background:linear-gradient(135deg,rgba(11,22,20,.96),rgba(20,18,32,.96));box-shadow:0 18px 60px rgba(0,0,0,.55);pointer-events:none;font-family:Inter,sans-serif'
       document.body.append(cue)
     }
-    cue.innerHTML = '<strong style="display:block;color:#e9f2ff;font-size:15px">' + ${JSON.stringify(title)} + '</strong><small style="display:block;margin-top:5px;color:#91a0b4;font:10px JetBrains Mono">' + ${JSON.stringify(detail)} + '</small>'
-  })()`, true)
+    cue.innerHTML = '<small style="display:block;margin-bottom:5px;color:#7fdcb9;font:9px JetBrains Mono;letter-spacing:.16em;text-transform:uppercase">' + ${JSON.stringify(eyebrow)} + '</small><strong style="display:block;color:#eff7f4;font-size:15px">' + ${JSON.stringify(title)} + '</strong><span style="display:block;margin-top:6px;color:#97a6a1;font:10px/1.45 JetBrains Mono">' + ${JSON.stringify(detail)} + '</span>'
+  })()`)
   await wait(duration)
 }
 
-await app.whenReady()
-ipcMain.handle('labo:ask', (_event, payload) => askLabo(payload))
-ipcMain.handle('labo:atomic-runtime', (_event, payload) => runAtomicRuntime(payload))
-ipcMain.handle('labo:openai-settings', () => getOpenAISettingsStatus())
+async function prepareBlankWorkspace(window) {
+  await clickButton(window, 'Blocks')
+  await evaluate(window, `document.querySelector('.preset-menu > summary')?.click()`)
+  await clickButton(window, 'Blank starter')
+  await wait(600)
 
-process.stderr.write('[demo] checking the saved OpenAI credential\n')
-const settings = await getOpenAISettingsStatus()
-if (!settings.configured) throw new Error('Add and verify an OpenAI API key in LABO AI before running the agent demo.')
+  if (await evaluate(window, `document.querySelectorAll('.architecture-node').length > 0`)) {
+    await clickButton(window, 'Settings')
+    await clickButton(window, 'Workspaces')
+    await clickButton(window, 'Restore')
+    await clickButton(window, 'Confirm restore')
+    await clickButton(window, 'Close LABO AI settings')
+  }
+
+  await waitFor(window, `document.querySelectorAll('.architecture-node').length === 0`)
+  await evaluate(window, `(() => {
+    const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
+    if (panel('Library')?.getAttribute('aria-pressed') !== 'true') panel('Library')?.click()
+    if (panel('Inspector')?.getAttribute('aria-pressed') === 'true') panel('Inspector')?.click()
+  })()`)
+}
+
+async function selectReviewMode(window) {
+  await clickButton(window, 'Settings')
+  await clickButton(window, 'Agent')
+  await clickButton(window, 'Review')
+  await clickButton(window, 'Extend current')
+  await clickButton(window, 'Close LABO AI settings')
+}
+
+await app.whenReady()
+const chatGPT = new CodexAppServer((url) => shell.openExternal(url), app.getVersion())
+const [openAISettings, chatGPTStatus] = await Promise.all([
+  getOpenAISettingsStatus(),
+  chatGPT.status().catch(() => ({ available: false, connected: false })),
+])
+if (!openAISettings.configured && !chatGPTStatus.connected) {
+  throw new Error('Connect ChatGPT or add and verify an OpenAI API key in LABO AI before running the agent demo.')
+}
+
+ipcMain.handle('labo:ask', (_event, payload) => chatGPTStatus.connected ? chatGPT.ask(payload, {}) : askLabo(payload))
+ipcMain.handle('labo:atomic-runtime', (_event, payload) => runAtomicRuntime(payload))
+ipcMain.handle('labo:openai-settings', () => openAISettings)
+ipcMain.handle('labo:chatgpt-session', () => chatGPTStatus)
+ipcMain.handle('labo:desktop-state-load', (_event, payload) => memoryState.get(payload?.scope))
+ipcMain.handle('labo:desktop-state-save', (_event, payload) => { memoryState.set(payload?.scope, payload?.data); return { saved: true } })
+ipcMain.handle('labo:window-state', () => ({ fullScreen: false }))
 
 const window = new BrowserWindow({
   show: false,
   width: 1440,
   height: 900,
   backgroundColor: '#08090b',
-  title: 'LABO AI · 60 second demo',
+  title: 'LABO AI · Agent demo',
   autoHideMenuBar: process.platform !== 'darwin',
   ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 15, y: 17 } } : {}),
   webPreferences: {
@@ -66,66 +148,92 @@ const window = new BrowserWindow({
 })
 
 try {
-  process.stderr.write('[demo] loading LABO AI\n')
+  process.stderr.write(`[demo] provider=${chatGPTStatus.connected ? 'chatgpt' : openAISettings.source}\n`)
   await window.loadFile(join(projectRoot, 'dist', 'index.html'))
   window.show()
   window.focus()
   await waitFor(window, `document.querySelector('button[aria-label="Play model atoms"]') !== null`)
-  await cue(window, 'LABO AI', 'Executable neural architectures, built from typed atomic cards.', 3200)
+  await prepareBlankWorkspace(window)
+  await selectReviewMode(window)
+  await cue(window, 'LABO AI', 'From conversation to executable graph', 'One agent, typed tools, inspectable PyTorch.', 3800)
 
-  await window.webContents.executeJavaScript(`([...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Blank starter'))?.click()`, true)
-  await cue(window, '1 · Blank workspace', 'The agent receives the current graph and the complete 100+ card catalog.')
+  process.stderr.write('[demo] sending conversational greeting\n')
+  await setTextarea(window, 'Hello', 85)
+  await clickButton(window, 'Propose graph changes')
+  await waitFor(window, `document.querySelector('[aria-label="Agent activity"] li[data-status="answered"]') !== null`)
+  await cue(window, '1 · Conversation', 'Hello.', 'The same prompt understands ordinary conversation and graph-building requests.', 5200)
+  await clickButton(window, 'Close agent activity')
 
-  await window.webContents.executeJavaScript(`([...document.querySelectorAll('button')].find((button) => button.textContent.includes('Ask LABO')))?.click()`, true)
-  await waitFor(window, `document.querySelector('.ask-labo-key-heading')?.textContent.includes('Connected') === true`)
-  await window.webContents.executeJavaScript(`(() => {
-    [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Auto apply')?.click()
-    [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Extend current')?.click()
-  })()`, true)
-  await cue(window, '2 · Ask the graph agent', 'Auto apply executes only locally valid typed operations.')
+  process.stderr.write('[demo] submitting graph build request\n')
+  await setTextarea(window, buildPrompt, 7)
+  await cue(window, '2 · Natural-language brief', 'Build a token-routed GPT-like QA decoder', 'LABO receives the live graph, typed ports and the complete card catalog.', 3600)
+  await clickButton(window, 'Propose graph changes')
+  await waitFor(window, `document.querySelector('.agent-plan-review, .ask-labo-error') !== null`, 210_000)
+  const agentError = await evaluate(window, `document.querySelector('.ask-labo-error')?.textContent.trim() ?? ''`)
+  if (agentError) throw new Error(agentError)
+  await evaluate(window, `document.querySelector('.agent-plan-review-content')?.scrollTo({ top: 0 })`)
+  await cue(window, '3 · Auditable plan', 'Review cards, elastics and tool calls', 'Nothing mutates until the complete locally validated plan is approved.', 7200)
 
-  await window.webContents.executeJavaScript(`(async () => {
-    const textarea = document.querySelector('#ask-labo-request')
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
-    const value = ${JSON.stringify(prompt)}
-    for (let index = 1; index <= value.length; index += 4) {
-      setter.call(textarea, value.slice(0, index))
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
-      await new Promise((resolve) => setTimeout(resolve, 12))
+  await clickButton(window, 'Apply full plan')
+  await waitFor(window, `document.querySelector('.agent-plan-review') === null && document.querySelectorAll('.architecture-node').length >= 12`)
+  await evaluate(window, `(() => {
+    const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
+    if (panel('Library')?.getAttribute('aria-pressed') === 'true') panel('Library')?.click()
+    if (panel('Inspector')?.getAttribute('aria-pressed') === 'true') panel('Inspector')?.click()
+    document.querySelector('button[aria-label="Fit graph"]')?.click()
+  })()`)
+  await cue(window, '4 · First architecture', 'A compact executable GPT-like decoder', 'The approved baseline is already a valid typed graph.', 4800)
+
+  process.stderr.write('[demo] submitting architecture upgrade request\n')
+  await setTextarea(window, upgradePrompt, 7)
+  await cue(window, '5 · Iterative architecture design', 'Upgrade the current graph to token-routed MoE', 'The agent must preserve valid paths while replacing and reconnecting the residual MLP.', 4200)
+  await clickButton(window, 'Propose graph changes')
+  await waitFor(window, `document.querySelector('.agent-plan-review, .ask-labo-error') !== null`, 210_000)
+  const upgradeError = await evaluate(window, `document.querySelector('.ask-labo-error')?.textContent.trim() ?? ''`)
+  if (upgradeError) throw new Error(upgradeError)
+  await evaluate(window, `document.querySelector('.agent-plan-review-content')?.scrollTo({ top: 0 })`)
+  await cue(window, '6 · Upgrade plan', 'Inspect replacements, deletions and new elastics', 'The second plan edits the existing architecture instead of rebuilding blindly.', 7200)
+
+  await clickButton(window, 'Apply full plan')
+  await waitFor(window, `document.querySelector('.agent-plan-review') === null && document.querySelectorAll('.architecture-node').length >= 16`)
+  await evaluate(window, `(() => {
+    const input = document.querySelector('input[aria-label="Model generation prompt"]')
+    if (input) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+      setter.call(input, ${JSON.stringify(generationPrompt)})
+      input.dispatchEvent(new Event('input', { bubbles: true }))
     }
-    setter.call(textarea, value)
-    textarea.dispatchEvent(new Event('input', { bubbles: true }))
-  })()`, true)
-  await wait(900)
-  await window.webContents.executeJavaScript(`([...document.querySelectorAll('button')].find((button) => button.textContent.includes('Propose graph changes')))?.click()`, true)
-  process.stderr.write('[demo] agent request submitted; live planning may take up to three minutes\n')
-  await cue(window, '3 · Tool-driven planning', 'The agent searches cards, adds nodes, wires ports, lays out, saves and runs.', 3400)
-  await waitFor(window, `document.querySelector('.ask-labo-panel') === null || document.querySelector('.ask-labo-error') !== null`)
-  const error = await window.webContents.executeJavaScript(`document.querySelector('.ask-labo-error')?.textContent.trim() ?? ''`, true)
-  if (error) throw new Error(error)
-  process.stderr.write('[demo] graph plan applied\n')
-  await waitFor(window, `document.querySelectorAll('.architecture-node').length >= 5`)
-  await cue(window, '4 · Executable graph', 'Typed elastics and topology-aware XY placement expose sequential and parallel paths.', 4200)
+    const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
+    if (panel('Library')?.getAttribute('aria-pressed') === 'true') panel('Library')?.click()
+    if (panel('Inspector')?.getAttribute('aria-pressed') === 'true') panel('Inspector')?.click()
+    document.querySelector('button[aria-label="Fit graph"]')?.click()
+  })()`)
+  await cue(window, '7 · Upgraded architecture', 'Sequence, forks and expert joins remain visible', 'The XY engine arranges the upgraded graph while typed elastics preserve tensor contracts.', 6800)
 
-  await window.webContents.executeJavaScript(`([...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'PyTorch'))?.click()`, true)
-  await cue(window, '5 · Generated PyTorch', 'Every supported card maps to inspectable model code.', 4200)
-  await window.webContents.executeJavaScript(`([...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Split'))?.click()`, true)
-
-  const canPlay = await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="Play model atoms"]')?.disabled === false`, true)
-  if (canPlay) {
-    await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="Play model atoms"]')?.click()`, true)
-    await cue(window, '6 · Atomic execution', 'Run the graph locally, inspect each atom, then rerun or step through it.', 3600)
-    await waitFor(window, `['completed', 'failed'].includes(document.querySelector('.player-status')?.textContent.trim())`, 90_000)
-    process.stderr.write('[demo] atomic execution finished\n')
+  const status = await evaluate(window, `document.querySelector('.player-status')?.textContent.trim() ?? ''`)
+  if (!['playing', 'completed'].includes(status)) await clickButton(window, 'Play model atoms')
+  await cue(window, '8 · Local execution', 'Run the atoms, not a mock-up', 'The desktop player executes PyTorch and keeps every atomic result inspectable.', 4800)
+  await waitFor(window, `['completed', 'failed'].includes(document.querySelector('.player-status')?.textContent.trim())`, 90_000)
+  const finalStatus = await evaluate(window, `document.querySelector('.player-status')?.textContent.trim()`)
+  if (finalStatus !== 'completed') {
+    const executionError = await evaluate(window, `document.querySelector('.execution-error')?.textContent.trim() ?? 'Atomic execution failed'`)
+    throw new Error(executionError)
   }
+  await cue(window, 'Completed', 'Generated-token output is ready', 'The graph can now be rerun, reset or stepped atom by atom.', 5200)
 
-  await window.webContents.executeJavaScript(`document.querySelector('.model-preset-family > summary')?.click()`, true)
-  await cue(window, 'Saved as Agent QA Demo', 'Workspaces persist locally; diagrams and PyTorch can be exported.', 5200)
-  await window.webContents.executeJavaScript(`document.querySelector('#labo-demo-cue')?.remove()`, true)
+  await clickButton(window, 'PyTorch')
+  await cue(window, '9 · Synchronized PyTorch', 'The visual graph remains real code', 'Every supported card maps to inspectable generated PyTorch.', 5800)
+  await clickButton(window, 'Split')
+  await cue(window, '10 · One source of truth', 'Graph and code stay synchronized', 'Save the workspace, compare architectures, or export SVG and Python.', 5800)
+
+  await clickButton(window, 'Open agent activity')
+  await cue(window, 'Agent activity', 'Conversation and graph tools in one trace', 'The final history exposes accepted operations, validation and tool usage.', 6500)
+  await evaluate(window, `document.querySelector('#labo-demo-cue')?.remove()`)
+  process.stderr.write('[demo] complete; edit API waiting time down to a short jump cut\n')
   if (keepOpen) await new Promise(() => undefined)
-  await wait(1800)
-  process.stderr.write('[demo] complete\n')
+  await wait(2200)
 } finally {
   if (!window.isDestroyed()) window.destroy()
+  chatGPT.stop()
   app.quit()
 }

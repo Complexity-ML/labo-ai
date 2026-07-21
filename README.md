@@ -139,11 +139,13 @@ npm run build:win --prefix apps/bootstrap-installer # Windows
 npm run build:linux --prefix apps/bootstrap-installer # Linux AppImage
 ```
 
-Run the guided one-minute agent demo after connecting ChatGPT or adding an API key in the app:
+Run the guided 2–3 minute agent demo after connecting ChatGPT or adding an API key in the app:
 
 ```bash
 npm run demo:agent
 ```
+
+The sequence starts with a conversational `Hello`, builds a compact GPT-like QA graph, then asks the agent to upgrade it into a token-routed residual MoE before running it and showing synchronized PyTorch. Use `npm run demo:agent -- --keep-open` while recording, or add `--no-cues` when recording a clean voice-over-only version.
 
 The recording sequence and hackathon copy are in [`docs/hackathon-submission.md`](docs/hackathon-submission.md).
 
