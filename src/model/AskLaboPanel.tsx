@@ -11,6 +11,7 @@ import { AgentPrompt } from '../studio/AgentPrompt'
 import { AgentActivityPanel, type AgentActivityItem } from '../studio/AgentActivityPanel'
 import { AgentSettingsContent, StudioEditingTips } from '../studio/AgentSettingsContent'
 import { ApplicationAppearanceSettings } from '../studio/ApplicationAppearanceSettings'
+import { useLaboLanguage } from '../studio/application-language'
 
 interface AskLaboPanelProps {
   graph: ArchitectureGraph
@@ -24,6 +25,11 @@ interface AskLaboPanelProps {
 }
 
 const AGENT_AUTO_APPLY_STORAGE_KEY = 'labo.ask.auto-apply.v1'
+
+const reviewText = {
+  en: { title: 'Review graph plan', plan: 'Plan', tools: 'Tools used', existing: 'Existing graph changes', actions: 'Actions after approval', missing: 'Missing blocks', rejected: 'Not applied', discard: 'Discard', apply: 'Apply full plan', deleteArchitecture: 'delete architecture', cards: 'cards', elastic: 'elastic', ready: 'Ready', generated: 'generated reusable card', atomic: 'atomic block', close: 'Close Ask LABO' },
+  fr: { title: 'Vérifier le plan du graphe', plan: 'Plan', tools: 'Outils utilisés', existing: 'Modifications du graphe existant', actions: 'Actions après validation', missing: 'Cartes manquantes', rejected: 'Non appliqué', discard: 'Rejeter', apply: 'Appliquer le plan complet', deleteArchitecture: 'supprimer l’architecture', cards: 'cartes', elastic: 'elastic', ready: 'Prêt', generated: 'carte réutilisable générée', atomic: 'bloc atomique', close: 'Fermer Ask LABO' },
+} as const
 
 function loadAutoApply(): boolean {
   if (window.labo?.runtime === 'web') return false
@@ -41,6 +47,8 @@ interface AgentCardOverride {
 }
 
 export function AskLaboPanel({ graph, customCards, dockClassName = '', interactionMode, open, workspaceSettings, onApply, onClose }: AskLaboPanelProps) {
+  const language = useLaboLanguage()
+  const copy = reviewText[language]
   const [request, setRequest] = useState('')
   const [plan, setPlan] = useState<AgentGraphPlan>()
   const [error, setError] = useState('')
@@ -157,7 +165,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
         request: prompt,
         context: {
           ...createAgentGraphContext(graph, graphMode, customCards),
-          responseLocale: navigator.language || 'en',
+          responseLocale: language,
         },
       })
       const response = repairAgentGraphPlan(graph, rawResponse)
@@ -365,8 +373,8 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
   return <div className={`ask-labo-backdrop ${dockClassName} ${plan ? 'review-open' : ''}`} onPointerDown={(event) => { if (event.target === event.currentTarget) closeOverlay() }}>
   <aside aria-label="Ask LABO" aria-modal={Boolean(plan)} className={`ask-labo-panel ${plan ? 'has-plan' : ''}`} role={plan ? 'dialog' : 'region'}>
     <header className="ask-labo-header">
-      <span>{plan ? <Sparkles size={15} /> : <Settings2 size={15} />}{plan ? 'Review graph plan' : 'LABO settings'}</span>
-      <button aria-label="Close Ask LABO" onClick={closeOverlay}><X size={15} /></button>
+      <span>{plan ? <Sparkles size={15} /> : <Settings2 size={15} />}{plan ? copy.title : 'LABO settings'}</span>
+      <button aria-label={copy.close} onClick={closeOverlay}><X size={15} /></button>
     </header>
 
     {activityOpen && !open && !plan && <AgentActivityPanel activities={activities} busy={loading} onClear={clearActivities} onClose={() => setActivityOpen(false)} onRetry={(activity) => { setRequest(activity.prompt); setActivityOpen(false); void runAgentRequest(activity.prompt) }} onReview={reviewFullPlan} />}
@@ -384,17 +392,17 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
 
     {activePlan && preview && <div className="ask-labo-result">
       <section>
-        <h3>Plan</h3>
+        <h3>{copy.plan}</h3>
         <p>{activePlan.summary}</p>
       </section>
 
       {(activePlan.toolTrace?.length ?? 0) > 0 && <section>
-        <h3>Tools used</h3>
+        <h3>{copy.tools}</h3>
         <ul className="ask-labo-tool-trace">{activePlan.toolTrace!.map((item, index) => <li data-status={item.status} key={`${item.tool}-${index}`}><code>{item.tool}</code><span>{item.summary}</span></li>)}</ul>
       </section>}
 
       {preview.acceptedBlocks.length > 0 && <section>
-        <h3>{preview.acceptedBlocks.length} atomic block{preview.acceptedBlocks.length === 1 ? '' : 's'} ready</h3>
+        <h3>{preview.acceptedBlocks.length} {copy.atomic}{preview.acceptedBlocks.length === 1 ? '' : 's'} {language === 'en' ? 'ready' : 'prêts'}</h3>
         <div className="ask-labo-added-blocks">
           {preview.acceptedBlocks.map((block) => {
             const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)
@@ -407,7 +415,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       </section>}
 
       {preview.acceptedCreatedBlocks.length > 0 && <section>
-        <h3>{preview.acceptedCreatedBlocks.length} generated reusable card{preview.acceptedCreatedBlocks.length === 1 ? '' : 's'} ready</h3>
+        <h3>{preview.acceptedCreatedBlocks.length} {copy.generated}{preview.acceptedCreatedBlocks.length === 1 ? '' : 's'} {language === 'en' ? 'ready' : 'prêtes'}</h3>
         <div className="ask-labo-created-blocks">
           {preview.acceptedCreatedBlocks.map((block) => {
             const node = preview.graph.nodes.find((candidate) => candidate.id === block.nodeId)
@@ -420,7 +428,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       </section>}
 
       {preview.accepted.length > 0 && <section>
-        <h3>{preview.accepted.length} elastic{preview.accepted.length === 1 ? '' : 's'} ready</h3>
+        <h3>{preview.accepted.length} {copy.elastic}{preview.accepted.length === 1 ? '' : 's'} {language === 'en' ? 'ready' : 'prêts'}</h3>
         <ul className="ask-labo-connections">
           {preview.accepted.map((connection) => <li key={`${connection.sourceId}.${connection.sourcePortId}-${connection.targetId}.${connection.targetPortId}`}>
             <Cable size={13} />
@@ -430,21 +438,21 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       </section>}
 
       {((activePlan.updatedBlocks?.length ?? 0) > 0 || (activePlan.deletedBlocks?.length ?? 0) > 0 || (activePlan.movedBlocks?.length ?? 0) > 0) && <section>
-        <h3>Existing graph changes</h3>
+        <h3>{copy.existing}</h3>
         {(activePlan.updatedBlocks ?? []).map((change) => <p key={`edit-${change.nodeId}`}><code>edit {change.nodeId}</code> · {change.reason}</p>)}
         {(activePlan.deletedBlocks?.length ?? 0) > 3
-          ? <p><code>delete architecture</code> · {activePlan.deletedBlocks!.length} cards and their elastics</p>
+          ? <p><code>{copy.deleteArchitecture}</code> · {activePlan.deletedBlocks!.length} {copy.cards} and their elastics</p>
           : (activePlan.deletedBlocks ?? []).map((change) => <p key={`delete-${change.nodeId}`}><code>delete {change.nodeId}</code> · {change.reason}</p>)}
         {(activePlan.movedBlocks ?? []).map((change) => <p key={`move-${change.nodeId}`}><code>move {change.nodeId}</code> · {change.reason}</p>)}
       </section>}
 
       {preview.acceptedActions.length > 0 && <section>
-        <h3>Actions after approval</h3>
+        <h3>{copy.actions}</h3>
         {preview.acceptedActions.map((action, index) => <p key={`${action.type}-${index}`}><code>{action.type}{action.type === 'run' ? `:${action.mode}` : action.type === 'export' ? `:${action.kind}` : action.type === 'save-preset' ? `:${action.name}` : `:${action.scope}`}</code> · {action.reason}</p>)}
       </section>}
 
       {activePlan.missingBlocks.length > 0 && <section className="ask-labo-missing">
-        <h3>Missing blocks</h3>
+        <h3>{copy.missing}</h3>
         {activePlan.missingBlocks.map((block, index) => <div key={`${block.atomId ?? block.label}-${index}`}>
           <AlertTriangle size={13} />
           <span><strong>{block.label}</strong><small>{block.reason}</small></span>
@@ -452,7 +460,7 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       </section>}
 
       {(preview.rejectedBlocks.length > 0 || preview.rejected.length > 0 || preview.rejectedMutations.length > 0 || activePlan.warnings.length > 0) && <section className="ask-labo-warnings">
-        <h3>Not applied</h3>
+        <h3>{copy.rejected}</h3>
         {preview.rejectedBlocks.map(({ block, reason }) => <p key={`${block.nodeId}-${reason}`}>{block.nodeId}: {reason}</p>)}
         {preview.rejected.map(({ connection, reason }) => <p key={`${connection.sourceId}-${connection.targetId}-${reason}`}>{connection.sourceId} → {connection.targetId}: {reason}</p>)}
         {preview.rejectedMutations.map(({ nodeId, action, reason }, index) => <p key={`${nodeId ?? action?.type ?? 'mutation'}-${index}`}>{nodeId ?? action?.type}: {reason}</p>)}
@@ -462,9 +470,9 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
     </div>}
 
     {activePlan && preview && <div className="ask-labo-actions">
-      <span className="ask-labo-approval-summary">Ready · {preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length} cards · {preview.accepted.length} elastic{preview.accepted.length === 1 ? '' : 's'}</span>
-      <button className="ask-labo-cancel" onClick={() => { if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' }); setPlan(undefined); setCardOverrides({}); setActivityOpen(true) }} type="button">Discard</button>
-      <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (activePlan.updatedBlocks?.length ?? 0) === 0 && (activePlan.deletedBlocks?.length ?? 0) === 0 && (activePlan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />Apply full plan</button>
+      <span className="ask-labo-approval-summary">{copy.ready} · {preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length} {copy.cards} · {preview.accepted.length} {copy.elastic}{preview.accepted.length === 1 ? '' : 's'}</span>
+      <button className="ask-labo-cancel" onClick={() => { if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' }); setPlan(undefined); setCardOverrides({}); setActivityOpen(true) }} type="button">{copy.discard}</button>
+      <button aria-label="Apply full graph plan" className="ask-labo-apply" disabled={preview.acceptedBlocks.length === 0 && preview.acceptedCreatedBlocks.length === 0 && preview.accepted.length === 0 && (activePlan.updatedBlocks?.length ?? 0) === 0 && (activePlan.deletedBlocks?.length ?? 0) === 0 && (activePlan.movedBlocks?.length ?? 0) === 0 && preview.acceptedActions.every((action) => action.type === 'layout')} onClick={apply} type="button"><Check size={13} />{copy.apply}</button>
     </div>}
 
     {editingCard && editorDraft && <div className="ask-labo-card-modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) { setEditingCard(undefined); setEditorDraft(undefined); setEditorError('') } }}>

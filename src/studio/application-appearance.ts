@@ -20,12 +20,12 @@ export const LABO_THEMES: Array<{
   },
 ]
 
-type SettingsRecord = Record<string, unknown> & {
-  appearance?: Record<string, unknown> & { theme?: unknown }
+export type ApplicationSettingsRecord = Record<string, unknown> & {
+  appearance?: Record<string, unknown> & { theme?: unknown; language?: unknown }
 }
 
-function record(value: unknown): SettingsRecord {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as SettingsRecord : {}
+export function applicationSettingsRecord(value: unknown): ApplicationSettingsRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as ApplicationSettingsRecord : {}
 }
 
 function validTheme(value: unknown): value is LaboTheme {
@@ -41,20 +41,28 @@ export function applyLaboTheme(theme: LaboTheme): void {
   document.documentElement.dataset.laboTheme = theme
 }
 
-async function readSettings(): Promise<{ authenticated: boolean; settings: SettingsRecord }> {
+export async function readApplicationSettings(): Promise<{ authenticated: boolean; settings: ApplicationSettingsRecord }> {
   if (window.labo?.runtime === 'electron' && window.labo.loadDesktopState) {
-    return { authenticated: true, settings: record(await window.labo.loadDesktopState('settings')) }
+    return { authenticated: true, settings: applicationSettingsRecord(await window.labo.loadDesktopState('settings')) }
   }
   if (window.labo?.runtime === 'web' && window.labo.loadWebWorkspace) {
     const workspace = await window.labo.loadWebWorkspace()
-    return { authenticated: workspace.authenticated, settings: record(workspace.settings) }
+    return { authenticated: workspace.authenticated, settings: applicationSettingsRecord(workspace.settings) }
   }
   return { authenticated: false, settings: {} }
 }
 
+export async function saveApplicationSettings(settings: ApplicationSettingsRecord, authenticated: boolean): Promise<void> {
+  if (window.labo?.runtime === 'electron' && window.labo.saveDesktopState) {
+    await window.labo.saveDesktopState('settings', settings)
+  } else if (window.labo?.runtime === 'web' && authenticated && window.labo.saveWebWorkspace) {
+    await window.labo.saveWebWorkspace({ settings })
+  }
+}
+
 export async function loadLaboTheme(): Promise<LaboTheme> {
   try {
-    const { settings } = await readSettings()
+    const { settings } = await readApplicationSettings()
     return validTheme(settings.appearance?.theme) ? settings.appearance.theme : 'labo-dark'
   } catch {
     return readLaboTheme()
@@ -64,16 +72,12 @@ export async function loadLaboTheme(): Promise<LaboTheme> {
 export async function saveLaboTheme(theme: LaboTheme): Promise<void> {
   applyLaboTheme(theme)
   try {
-    const { authenticated, settings } = await readSettings()
-    const nextSettings: SettingsRecord = {
+    const { authenticated, settings } = await readApplicationSettings()
+    const nextSettings: ApplicationSettingsRecord = {
       ...settings,
-      appearance: { ...record(settings.appearance), theme },
+      appearance: { ...applicationSettingsRecord(settings.appearance), theme },
     }
-    if (window.labo?.runtime === 'electron' && window.labo.saveDesktopState) {
-      await window.labo.saveDesktopState('settings', nextSettings)
-    } else if (window.labo?.runtime === 'web' && authenticated && window.labo.saveWebWorkspace) {
-      await window.labo.saveWebWorkspace({ settings: nextSettings })
-    }
+    await saveApplicationSettings(nextSettings, authenticated)
   } catch {
     // A visual preference must never prevent the workspace from opening.
   }

@@ -78,6 +78,50 @@ describe('LABO AI studios', () => {
     }))
   })
 
+  it('persists the interface and agent-plan language in the private SQLite settings scope', async () => {
+    const settings = { appearance: { theme: 'labo-dark', language: 'fr' } }
+    const saveDesktopState = vi.fn(async () => ({ saved: true as const }))
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      loadDesktopState: vi.fn(async (scope) => scope === 'settings' ? settings : undefined),
+      saveDesktopState,
+    }
+    render(<App />)
+
+    await waitFor(() => expect(document.documentElement).toHaveAttribute('lang', 'fr'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Application' }))
+    fireEvent.click(screen.getByRole('button', { name: 'EnglishRecommended for judging' }))
+
+    await waitFor(() => expect(saveDesktopState).toHaveBeenCalledWith('settings', {
+      appearance: { theme: 'labo-dark', language: 'en' },
+    }))
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+    delete window.labo
+  })
+
+  it('documents desktop ChatGPT sign-in as the no-API-key agent path', () => {
+    window.labo = { platform: 'darwin', runtime: 'electron' }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Tips' }))
+
+    expect(screen.getByText('Use your ChatGPT account without an API key')).toBeInTheDocument()
+    delete window.labo
+  })
+
+  it('keeps the desktop ChatGPT sign-in tip visible from the web app', () => {
+    window.labo = { platform: 'web', runtime: 'web' }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Tips' }))
+
+    expect(screen.getByText('Use your ChatGPT account without an API key')).toBeInTheDocument()
+    expect(screen.getByText(/In the desktop app/)).toBeInTheDocument()
+    delete window.labo
+  })
+
   it('keeps stable and main update detection separate when switching channels', async () => {
     const getDesktopUpdateStatus = vi.fn(async (requestedChannel?: DesktopUpdateChannel) => {
       const channel = requestedChannel ?? 'stable'

@@ -18,6 +18,7 @@ import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
 import { executionLayers } from '../core/execution-plan'
 import { previewModelAtom } from '../core/browser-atomic-preview'
 import { exportArchitectureDiagram, exportPyTorchCode } from './export-actions'
+import { useLaboLanguage } from '../studio/application-language'
 
 type CardDraft = Omit<CustomPyTorchCard, 'id'>
 export type CustomCardDestination = 'library' | 'selected' | 'new-architecture'
@@ -84,6 +85,7 @@ function blankDraftGraph(): ArchitectureGraph {
 }
 
 export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode: boolean; inspectorOpen: boolean; libraryOpen: boolean; onClose(): void; onCreate(card: CardDraft, destination: CustomCardDestination): CustomCardCreateResult; onPlayerSnapshotChange?(snapshot: AtomicPlayerSnapshot): void; onRequestedCardHandled?(): void; requestedCard?: { atomId: string; requestId: number }; selectedTarget?: string; view: CardBuilderView }>(function CustomCardCreator({ editMode, inspectorOpen, libraryOpen, onClose, onCreate, onPlayerSnapshotChange, onRequestedCardHandled = () => undefined, requestedCard, selectedTarget, view }, ref) {
+  const language = useLaboLanguage()
   const [name, setName] = useState('My reusable card')
   const [need, setNeed] = useState('')
   const [graph, setGraph] = useState<ArchitectureGraph>(() => blankDraftGraph())
@@ -195,7 +197,7 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
       const emptyGraph = { ...graph, id: 'agent-card-draft', nodes: [], edges: [], groups: undefined }
       const plan = await window.labo.askLabo({
         request: `Compose a reusable typed card graph for this need: ${need.trim()}`,
-        context: { ...createAgentGraphContext(emptyGraph), cardBuilderMode: true, responseLocale: navigator.language || 'en' },
+        context: { ...createAgentGraphContext(emptyGraph), cardBuilderMode: true, responseLocale: language },
       })
       const preview = previewAgentGraphPlan(emptyGraph, plan)
       if (preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length === 0) throw new Error('The agent did not return a reusable graph.')

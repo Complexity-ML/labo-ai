@@ -12,6 +12,7 @@ import { GlobalSearch, type GlobalSearchResult } from './studio/GlobalSearch'
 import { useGlobalSearch } from './studio/useGlobalSearch'
 import './styles/desktop.scss'
 import { initializeLaboTheme } from './studio/application-appearance'
+import { initializeLaboLanguage } from './studio/application-language'
 
 function App() {
   const [workspace, setWorkspace] = useState<StudioWorkspaceId>('model')
@@ -32,7 +33,7 @@ function App() {
   const runtimeClass = window.labo?.runtime === 'electron' ? ` runtime-electron runtime-${platform ?? 'desktop'}` : ''
   const searchShortcut = platform === 'darwin' ? '⌘K' : 'Ctrl+K'
 
-  useLayoutEffect(() => { void initializeLaboTheme() }, [])
+  useLayoutEffect(() => { void Promise.all([initializeLaboTheme(), initializeLaboLanguage()]) }, [])
 
   useEffect(() => {
     let active = true

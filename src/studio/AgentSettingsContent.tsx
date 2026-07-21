@@ -29,5 +29,6 @@ export function StudioEditingTips() {
     <article><span><Cable size={14} />Add & wire</span><strong>Compose manually</strong><p>Use <b>Add blocks</b>, click a card to place it automatically or drag it onto the canvas, then drag between compatible typed plugs.</p></article>
     <article><span><FolderKanban size={14} />Save & compare</span><strong>Keep each architecture reusable</strong><p>Open <b>Settings → Workspaces</b> to name, save, reset or place complete presets side by side.</p></article>
     <article><span><Sparkles size={14} />Ask LABO</span><strong>Build with natural language</strong><p>Describe the architecture in the footer prompt. Configure review, auto-apply and parallel mode under <b>Settings → Agent</b>.</p></article>
+    <article><span><ShieldCheck size={14} />Desktop sign-in</span><strong>Use your ChatGPT account without an API key</strong><p>In the desktop app, open <b>Settings → Agent</b> and connect ChatGPT. The API-key field remains an optional fallback and is not required for this mode.</p></article>
   </div>
 }

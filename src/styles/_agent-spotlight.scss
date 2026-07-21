@@ -47,6 +47,26 @@
   width: min(920px, calc(100vw - 64px));
   overflow: hidden;
 }
+
+.ask-labo-backdrop.review-open {
+  .ask-labo-header,
+  .ask-labo-actions { flex: 0 0 auto; }
+
+  .ask-labo-result {
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    scrollbar-color: rgb(112 224 173 / 24%) transparent;
+    scrollbar-width: thin;
+
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-thumb {
+      border-radius: 8px;
+      background: rgb(112 224 173 / 24%);
+    }
+  }
+}
 .ask-labo-backdrop:not(.settings-open) .ask-labo-settings,
 .ask-labo-backdrop:not(.review-open) .ask-labo-result,
 .ask-labo-backdrop:not(.settings-open):not(.review-open) .ask-labo-header { display: none; }
