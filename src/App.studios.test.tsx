@@ -152,6 +152,28 @@ describe('LABO AI studios', () => {
     expect(screen.getByText('The v0.1.47 source is already installed from Main. Switch only to return to the verified Stable channel.')).toBeInTheDocument()
   })
 
+  it('labels a return from a newer Main commit as a Stable channel switch, not an update', async () => {
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      getDesktopUpdateStatus: async (requestedChannel) => requestedChannel === 'stable' ? {
+        currentVersion: '0.1.47', channel: 'stable', installedTag: 'main@a63f876', installedChannel: 'main', installedRevision: 'a63f8760000000',
+        latestTag: 'v0.1.47', latestRevision: '761521d0000000', helperInstalled: true, updateAvailable: true, setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+      } : {
+        currentVersion: '0.1.47', channel: 'main', installedTag: 'main@a63f876', installedChannel: 'main', installedRevision: 'a63f8760000000',
+        latestTag: 'main@a63f876', latestRevision: 'a63f8760000000', helperInstalled: true, updateAvailable: false, setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+      },
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    expect(await screen.findByRole('button', { name: 'Up to date' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: /StableRecommended/ }))
+    expect(await screen.findByRole('button', { name: 'Switch to Stable' })).toBeEnabled()
+    expect(screen.getByText('Switch from experimental main@a63f876 to verified Stable v0.1.47.')).toBeInTheDocument()
+    expect(screen.queryByText('v0.1.47 is ready to install.')).not.toBeInTheDocument()
+  })
+
   it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Training Studio' }))

@@ -98,7 +98,7 @@ export function DesktopUpdateSettings() {
     ? normalizedInstalledRef.startsWith(normalizedLatestRef) || normalizedLatestRef.startsWith(normalizedInstalledRef)
     : normalizedLatestRef === normalizedInstalledRef))
   const latestDisplay = status?.latestTag ?? (channelMatches ? `${installedRef} (installed)` : 'Unavailable')
-  const label = !status?.helperInstalled ? 'Get LABO AI Setup' : upToDate ? 'Up to date' : sameSourceStableFallback ? 'Switch to Stable' : status.updateAvailable ? 'Install update' : 'Open LABO AI Setup'
+  const label = !status?.helperInstalled ? 'Get LABO AI Setup' : upToDate ? 'Up to date' : stableFallback ? 'Switch to Stable' : status.updateAvailable ? 'Install update' : 'Open LABO AI Setup'
   return <article className="desktop-update-settings">
     <RefreshCw size={15} />
     <div>
@@ -116,7 +116,7 @@ export function DesktopUpdateSettings() {
       </dl>
       {checked && !error && !status?.error && <div className={`desktop-update-result ${status?.updateAvailable ? 'update-ready' : upToDate ? 'up-to-date' : 'update-unknown'}`}>
         {upToDate && <CheckCircle2 size={12} />}
-        <span>{sameSourceStableFallback ? `The ${status?.latestTag} source is already installed from Main. Switch only to return to the verified Stable channel.` : status?.updateAvailable ? `${status.latestTag} is ready to install.` : upToDate ? sameSourceRevision && !channelMatches ? `${status?.latestTag} is the same source revision already installed.` : `You are up to date on ${installedRef}.` : 'Update check completed; the latest revision could not be confirmed.'}</span>
+        <span>{stableFallback ? sameSourceStableFallback ? `The ${status?.latestTag} source is already installed from Main. Switch only to return to the verified Stable channel.` : `Switch from experimental ${installedRef} to verified Stable ${status?.latestTag}.` : status?.updateAvailable ? `${status.latestTag} is ready to install.` : upToDate ? sameSourceRevision && !channelMatches ? `${status?.latestTag} is the same source revision already installed.` : `You are up to date on ${installedRef}.` : 'Update check completed; the latest revision could not be confirmed.'}</span>
       </div>}
       {(error || status?.error) && <small>{error || status?.error}</small>}
       <div className="desktop-update-actions">
