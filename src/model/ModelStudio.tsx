@@ -112,6 +112,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
   const initialGraph = initialDraft?.graph ?? initialPreset
   const [graph, setGraph] = useState(() => cloneArchitectureGraph(initialGraph))
   const [selectedNodeId, setSelectedNodeId] = useState(initialDraft?.selectedNodeId ?? initialGraph.nodes[0]?.id ?? '')
+  const [agentSelectedNodeIds, setAgentSelectedNodeIds] = useState<string[]>([])
   const [view, setView] = useState<ViewMode>('blocks')
   const [selectedArchitectureId, setSelectedArchitectureId] = useState('')
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('add')
@@ -816,7 +817,8 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
     <span className="block-glyph glyph-output" />
     Tied language-model head
   </button>
-  const askLaboPanel = <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<WorkspaceSettingsContent comparisonPresets={[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)]} currentGraph={graph} currentLabel={presetMenuLabels[graph.id] ?? graph.name} error={presetError} name={presetName} onAddComparison={addPresetForComparison} onCreateBlank={createBlankWorkspace} onDeleteWorkspace={deleteUserPreset} onLoadWorkspace={(preset) => loadPreset(preset, preset.nodes[0]?.id ?? '')} onNameChange={setPresetName} onReset={resetCurrentPreset} onSave={createUserPreset} presetLabel={(preset) => presetMenuLabels[preset.id] ?? preset.name} resetConfirming={confirmPresetReset} resetDisabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} savedWorkspaces={userPresets} />} />
+  const activeAgentSelection = agentSelectedNodeIds.length > 0 ? agentSelectedNodeIds : selectedNodeId ? [selectedNodeId] : []
+  const askLaboPanel = <AskLaboPanel customCards={customCards} dockClassName={`view-${view} ${libraryOpen ? 'library-visible' : ''} ${inspectorOpen ? 'inspector-visible' : ''}`} graph={graph} interactionMode={interactionMode} selectedNodeIds={activeAgentSelection} onApply={applyAgentGraph} onClose={onCloseAsk} open={askOpen} workspaceSettings={<WorkspaceSettingsContent comparisonPresets={[...builtInModelPresets.filter((preset) => preset.nodes.length > 0), ...userPresets.filter((preset) => preset.nodes.length > 0)]} currentGraph={graph} currentLabel={presetMenuLabels[graph.id] ?? graph.name} error={presetError} name={presetName} onAddComparison={addPresetForComparison} onCreateBlank={createBlankWorkspace} onDeleteWorkspace={deleteUserPreset} onLoadWorkspace={(preset) => loadPreset(preset, preset.nodes[0]?.id ?? '')} onNameChange={setPresetName} onReset={resetCurrentPreset} onSave={createUserPreset} presetLabel={(preset) => presetMenuLabels[preset.id] ?? preset.name} resetConfirming={confirmPresetReset} resetDisabled={!builtInModelPresets.some((preset) => preset.id === graph.id) && !userPresets.some((preset) => preset.id === graph.id)} savedWorkspaces={userPresets} />} />
 
   return (
     <>
@@ -908,7 +910,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
         </StudioLibrary>}
 
         <StudioEditor className={`view-${view}`}>
-          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} onDeleteNode={deleteGraphCard} onDeleteNodes={deleteGraphCards} onEditNode={openCardEditor} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
+          {view !== 'pytorch' && <GraphCanvas editMode={interactionMode === 'edit'} graph={graph} onDeleteNode={deleteGraphCard} onDeleteNodes={deleteGraphCards} onEditNode={openCardEditor} onSelectionChange={setAgentSelectedNodeIds} onDropAtom={dropModelAtom} onDropCustom={(cardId, position) => {
             const card = customCards.find((candidate) => candidate.id === cardId)
             if (card) addCustomCard(card, position)
           }} onDropInput={(role, position) => addGraphInput(role, position)} playerSnapshot={modelPlayerSnapshot} selectedNodeId={selectedNodeId} setGraph={setGraph} setSelectedNodeId={setSelectedNodeId} />}

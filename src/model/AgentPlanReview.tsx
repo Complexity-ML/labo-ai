@@ -18,6 +18,7 @@ export function AgentPlanReview({ language, onApply, onDiscard, onEditCard, plan
     || preview.acceptedCreatedBlocks.length > 0
     || preview.accepted.length > 0
     || (plan.updatedBlocks?.length ?? 0) > 0
+    || (plan.replacedBlocks?.length ?? 0) > 0
     || (plan.deletedBlocks?.length ?? 0) > 0
     || (plan.movedBlocks?.length ?? 0) > 0
     || preview.acceptedActions.some((action) => action.type !== 'layout')
@@ -52,14 +53,15 @@ export function AgentPlanReview({ language, onApply, onDiscard, onEditCard, plan
         <ul className="ask-labo-connections">{preview.accepted.map((connection) => <li key={`${connection.sourceId}.${connection.sourcePortId}-${connection.targetId}.${connection.targetPortId}`}><Cable size={13} /><div><code>{connection.sourceId}.{connection.sourcePortId}</code><span>→</span><code>{connection.targetId}.{connection.targetPortId}</code><small>{connection.reason}</small></div></li>)}</ul>
       </section>}
 
-      {((plan.updatedBlocks?.length ?? 0) > 0 || (plan.deletedBlocks?.length ?? 0) > 0 || (plan.movedBlocks?.length ?? 0) > 0) && <section>
+      {((plan.updatedBlocks?.length ?? 0) > 0 || (plan.replacedBlocks?.length ?? 0) > 0 || (plan.deletedBlocks?.length ?? 0) > 0 || (plan.movedBlocks?.length ?? 0) > 0) && <section>
         <h3>{copy.existing}</h3>
         {(plan.updatedBlocks ?? []).map((change) => <p key={`edit-${change.nodeId}`}><code>edit {change.nodeId}</code> · {change.reason}</p>)}
+        {(plan.replacedBlocks ?? []).map((change) => <p key={`replace-${change.nodeId}`}><code>replace {change.nodeId} → {change.atomId}</code> · {change.reason}</p>)}
         {(plan.deletedBlocks?.length ?? 0) > 3 ? <p><code>{copy.deleteArchitecture}</code> · {plan.deletedBlocks!.length} {copy.cards} and their elastics</p> : (plan.deletedBlocks ?? []).map((change) => <p key={`delete-${change.nodeId}`}><code>delete {change.nodeId}</code> · {change.reason}</p>)}
         {(plan.movedBlocks ?? []).map((change) => <p key={`move-${change.nodeId}`}><code>move {change.nodeId}</code> · {change.reason}</p>)}
       </section>}
 
-      {preview.acceptedActions.length > 0 && <section><h3>{copy.actions}</h3>{preview.acceptedActions.map((action, index) => <p key={`${action.type}-${index}`}><code>{action.type}{action.type === 'run' ? `:${action.mode}` : action.type === 'export' ? `:${action.kind}` : action.type === 'save-preset' ? `:${action.name}` : `:${action.scope}`}</code> · {action.reason}</p>)}</section>}
+      {preview.acceptedActions.length > 0 && <section><h3>{copy.actions}</h3>{preview.acceptedActions.map((action, index) => <p key={`${action.type}-${index}`}><code>{action.type}{action.type === 'run' || action.type === 'run-selection' ? `:${action.mode}` : action.type === 'export' ? `:${action.kind}` : action.type === 'save-preset' ? `:${action.name}` : `:${action.scope}`}</code> · {action.reason}</p>)}</section>}
 
       {plan.missingBlocks.length > 0 && <section className="ask-labo-missing"><h3>{copy.missing}</h3>{plan.missingBlocks.map((block, index) => <div key={`${block.atomId ?? block.label}-${index}`}><AlertTriangle size={13} /><span><strong>{block.label}</strong><small>{block.reason}</small></span></div>)}</section>}
 

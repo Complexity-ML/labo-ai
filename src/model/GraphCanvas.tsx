@@ -97,7 +97,7 @@ function ArchitectureNodeCard({ editMode = false, graph, node, selected, highlig
   </div>
 }
 
-export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeIds, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onDeleteNode, onDeleteNodes, onEditNode }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; highlightedNodeIds?: ReadonlySet<string>; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onDeleteNode?(nodeId: string): void; onDeleteNodes?(nodeIds: string[]): void; onEditNode?(nodeId: string): void }) {
+export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeIds, playerSnapshot, onDropAtom, onDropCustom, onDropInput, onDeleteNode, onDeleteNodes, onEditNode, onSelectionChange }: { editMode?: boolean; graph: ArchitectureGraph; setGraph: Dispatch<SetStateAction<ArchitectureGraph>>; selectedNodeId: string; setSelectedNodeId(id: string): void; highlightedNodeIds?: ReadonlySet<string>; playerSnapshot: AtomicPlayerSnapshot; onDropAtom(atomId: string, position: { x: number; y: number }): void; onDropCustom(cardId: string, position: { x: number; y: number }): void; onDropInput(inputRole: TensorRole, position: { x: number; y: number }): void; onDeleteNode?(nodeId: string): void; onDeleteNodes?(nodeIds: string[]): void; onEditNode?(nodeId: string): void; onSelectionChange?(nodeIds: string[]): void }) {
   const qkvGroup = graph.groups?.find((group) => group.kind === 'qkv-projection')
   const qkvNodeIds = new Set(qkvGroup?.nodeIds ?? [])
   const canvasRef = useRef<HTMLDivElement | null>(null)
@@ -161,6 +161,10 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
     const available = new Set(graph.nodes.map((node) => node.id))
     setSelectedNodeIds((current) => new Set([...current].filter((nodeId) => available.has(nodeId))))
   }, [editMode, graph.nodes])
+
+  useEffect(() => {
+    onSelectionChange?.([...selectedNodeIds])
+  }, [onSelectionChange, selectedNodeIds])
 
   const selectNode = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
     event.stopPropagation()

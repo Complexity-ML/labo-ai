@@ -20,6 +20,7 @@ interface AskLaboPanelProps {
   customCards: CustomPyTorchCard[]
   dockClassName?: string
   interactionMode: 'add' | 'edit'
+  selectedNodeIds?: string[]
   open: boolean
   workspaceSettings: ReactNode
   onApply(graph: ArchitectureGraph, actions: NonNullable<AgentGraphPlan['actions']>): void
@@ -43,7 +44,7 @@ interface AgentCardOverride {
   code?: string
 }
 
-export function AskLaboPanel({ graph, customCards, dockClassName = '', interactionMode, open, workspaceSettings, onApply, onClose }: AskLaboPanelProps) {
+export function AskLaboPanel({ graph, customCards, dockClassName = '', interactionMode, selectedNodeIds = [], open, workspaceSettings, onApply, onClose }: AskLaboPanelProps) {
   const language = useLaboLanguage()
   const copy = agentPlanReviewText[language]
   const [request, setRequest] = useState('')
@@ -161,15 +162,15 @@ export function AskLaboPanel({ graph, customCards, dockClassName = '', interacti
       const rawResponse = await window.labo.askLabo({
         request: prompt,
         context: {
-          ...createAgentGraphContext(graph, graphMode, customCards),
+          ...createAgentGraphContext(graph, graphMode, customCards, { active: interactionMode === 'edit', nodeIds: selectedNodeIds }),
           responseLocale: language,
         },
       })
       const response = repairAgentGraphPlan(graph, rawResponse)
-      const responsePreview = previewAgentGraphPlan(graph, response, graphMode)
-      const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0 || (response.updatedBlocks?.length ?? 0) > 0 || (response.deletedBlocks?.length ?? 0) > 0 || (response.movedBlocks?.length ?? 0) > 0 || responsePreview.acceptedActions.some((action) => action.type !== 'layout')
+      const responsePreview = previewAgentGraphPlan(graph, response, graphMode, interactionMode === 'edit' ? { editingNodeIds: selectedNodeIds } : undefined)
+      const hasAcceptedChanges = responsePreview.acceptedBlocks.length > 0 || responsePreview.acceptedCreatedBlocks.length > 0 || responsePreview.accepted.length > 0 || (response.updatedBlocks?.length ?? 0) > 0 || (response.replacedBlocks?.length ?? 0) > 0 || (response.deletedBlocks?.length ?? 0) > 0 || (response.movedBlocks?.length ?? 0) > 0 || responsePreview.acceptedActions.some((action) => action.type !== 'layout')
       const hasPlan = hasAcceptedChanges || responsePreview.rejectedBlocks.length > 0 || responsePreview.rejected.length > 0 || responsePreview.rejectedMutations.length > 0 || response.missingBlocks.length > 0 || response.warnings.length > 0
-      const accepted = responsePreview.acceptedBlocks.length + responsePreview.acceptedCreatedBlocks.length + responsePreview.accepted.length + (response.updatedBlocks?.length ?? 0) + (response.deletedBlocks?.length ?? 0) + (response.movedBlocks?.length ?? 0)
+      const accepted = responsePreview.acceptedBlocks.length + responsePreview.acceptedCreatedBlocks.length + responsePreview.accepted.length + (response.updatedBlocks?.length ?? 0) + (response.replacedBlocks?.length ?? 0) + (response.deletedBlocks?.length ?? 0) + (response.movedBlocks?.length ?? 0)
       const rejected = responsePreview.rejectedBlocks.length + responsePreview.rejected.length + responsePreview.rejectedMutations.length + response.warnings.length
       const activityResult = {
         summary: response.summary,

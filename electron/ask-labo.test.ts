@@ -87,6 +87,37 @@ describe('Ask LABO OpenAI bridge', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
+  it('keeps Edit Cards on the active selection and rejects Add Blocks tools', async () => {
+    process.env.OPENAI_API_KEY = 'test-secret-key'
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as { instructions: string; input: Array<{ type?: string; output?: string }> }
+      expect(requestBody.instructions).toContain('Never add, clone, extract')
+      if (fetchMock.mock.calls.length === 1) return new Response(JSON.stringify({ output: [functionCall('add_block', { atom_id: 'relu', node_id: 'new-relu', reason: 'Wrong mode' }, 'call-add')] }), { status: 200 })
+      if (fetchMock.mock.calls.length === 2) {
+        expect(requestBody.input.find((item) => item.type === 'function_call_output' && item.output?.includes('Add Blocks is disabled'))).toBeTruthy()
+        return new Response(JSON.stringify({ output: [functionCall('edit_card', { node_id: 'norm', label: 'Selected norm', settings_json: null, pytorch_module: null, reason: 'Edit selected card' }, 'call-edit')] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ output: [functionCall('finish_plan', { summary: 'Selected edit ready', missing_blocks: [], warnings: [] }, 'call-finish')] }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await askLabo({
+      request: 'Rename this selected card',
+      context: {
+        editing: { active: true, nodeIds: ['norm'] },
+        graph: { nodes: [{ id: 'norm', atomId: 'rms-norm', label: 'RMSNorm', inputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }], outputs: [{ id: 'output', tensor: 'hidden', rank: 3 }] }], connections: [] },
+        availableAtomics: [{ atomId: 'relu', label: 'ReLU', inputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }], outputs: [{ id: 'output', tensor: 'hidden', rank: 3 }] }],
+      },
+    })
+
+    expect(result.addedBlocks).toHaveLength(0)
+    expect(result.updatedBlocks).toEqual([expect.objectContaining({ nodeId: 'norm', label: 'Selected norm' })])
+    expect(result.toolTrace).toEqual(expect.arrayContaining([
+      expect.objectContaining({ tool: 'add_block', status: 'rejected' }),
+      expect.objectContaining({ tool: 'edit_card', status: 'accepted' }),
+    ]))
+  })
+
   it('finds GPT building blocks for a natural-language QA chatbot request', async () => {
     process.env.OPENAI_API_KEY = 'test-secret-key'
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {

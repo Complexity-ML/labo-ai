@@ -51,6 +51,7 @@ export const chatGPTPlanSchema = {
     createdBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, label: string, pytorchModule: string, inputRole: string, outputRole: string, reason }, required: ['nodeId', 'label', 'pytorchModule', 'inputRole', 'outputRole', 'reason'] } },
     connections: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { sourceId: string, sourcePortId: string, targetId: string, targetPortId: string, reason }, required: ['sourceId', 'sourcePortId', 'targetId', 'targetPortId', 'reason'] } },
     updatedBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, label: nullableString, settings: { anyOf: [{ type: 'object', additionalProperties: false, properties: {} }, { type: 'null' }] }, pytorchModule: nullableString, reason }, required: ['nodeId', 'label', 'settings', 'pytorchModule', 'reason'] } },
+    replacedBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, atomId: string, reason }, required: ['nodeId', 'atomId', 'reason'] } },
     deletedBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, reason }, required: ['nodeId', 'reason'] } },
     movedBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { nodeId: string, x: { type: 'number' }, y: { type: 'number' }, reason }, required: ['nodeId', 'x', 'y', 'reason'] } },
     actions: { type: 'array', items: { anyOf: [
@@ -58,12 +59,13 @@ export const chatGPTPlanSchema = {
       { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'run' }, mode: { type: 'string', enum: ['play', 'step'] }, reason }, required: ['type', 'mode', 'reason'] },
       { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'save-preset' }, name: string, reason }, required: ['type', 'name', 'reason'] },
       { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'export' }, kind: { type: 'string', enum: ['svg', 'python', 'both'] }, reason }, required: ['type', 'kind', 'reason'] },
+      { type: 'object', additionalProperties: false, properties: { type: { type: 'string', const: 'run-selection' }, mode: { type: 'string', enum: ['play', 'step'] }, nodeIds: { type: 'array', items: string }, reason }, required: ['type', 'mode', 'nodeIds', 'reason'] },
     ] } },
     missingBlocks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { atomId: nullableString, label: string, reason }, required: ['atomId', 'label', 'reason'] } },
     warnings: { type: 'array', items: string },
     toolTrace: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { tool: string, status: { type: 'string', enum: ['accepted', 'rejected', 'read'] }, summary: string }, required: ['tool', 'status', 'summary'] } },
   },
-  required: ['summary', 'addedBlocks', 'createdBlocks', 'connections', 'updatedBlocks', 'deletedBlocks', 'movedBlocks', 'actions', 'missingBlocks', 'warnings', 'toolTrace'],
+  required: ['summary', 'addedBlocks', 'createdBlocks', 'connections', 'updatedBlocks', 'replacedBlocks', 'deletedBlocks', 'movedBlocks', 'actions', 'missingBlocks', 'warnings', 'toolTrace'],
 } as const
 
 function asRecord(value: unknown): JsonRecord {
@@ -109,6 +111,7 @@ function conversationPlan(summary: string): AskLaboPlan {
     createdBlocks: [],
     connections: [],
     updatedBlocks: [],
+    replacedBlocks: [],
     deletedBlocks: [],
     movedBlocks: [],
     actions: [],
@@ -304,7 +307,7 @@ export class CodexAppServer {
       cwd: tmpdir(), approvalPolicy: 'never', sandbox: 'read-only', ephemeral: true,
       model: configuration.model || null,
       baseInstructions: 'You are LABO AI, a bounded neural architecture assistant. Never run commands, inspect files, browse, or mutate the computer. Return only the requested structured response.',
-      developerInstructions: 'Answer greetings, questions, explanations, and architecture advice naturally in summary, with every mutation array empty. Only create a graph plan when the user explicitly asks to build, edit, arrange, run, save, or export. For graph plans, use only atom IDs and exact port IDs present in the supplied context. Prefer existing cards, keep IDs alphanumeric with hyphens, preserve current work unless asked, and include a layout action after graph mutations. If a capability is absent, report it in missingBlocks instead of inventing an atom.',
+      developerInstructions: 'Answer greetings, questions, explanations, and architecture advice naturally in summary, with every mutation array empty. Only create a graph plan when the user explicitly asks to build, edit, arrange, run, save, or export. For graph plans, use only atom IDs and exact port IDs present in the supplied context. When context.editing.active is true, restrict every edit, replacement, deletion, movement and run-selection to context.editing.nodeIds and never add unrelated cards. When it is false, Add Blocks may add and connect but must not silently edit existing cards. Prefer existing cards, keep IDs alphanumeric with hyphens, preserve current work unless asked, and include a layout action after graph mutations. If a capability is absent, report it in missingBlocks instead of inventing an atom.',
     }))
     const thread = asRecord(threadResponse.thread)
     if (typeof thread.id !== 'string') throw new Error('Codex did not start a LABO planning thread')
@@ -332,6 +335,7 @@ export class CodexAppServer {
         ...(Array.isArray(plan.createdBlocks) ? { createdBlocks: plan.createdBlocks } : {}),
         ...(Array.isArray(plan.connections) ? { connections: plan.connections } : {}),
         ...(Array.isArray(plan.updatedBlocks) ? { updatedBlocks: plan.updatedBlocks } : {}),
+        ...(Array.isArray(plan.replacedBlocks) ? { replacedBlocks: plan.replacedBlocks } : {}),
         ...(Array.isArray(plan.deletedBlocks) ? { deletedBlocks: plan.deletedBlocks } : {}),
         ...(Array.isArray(plan.movedBlocks) ? { movedBlocks: plan.movedBlocks } : {}),
         ...(Array.isArray(plan.actions) ? { actions: plan.actions } : {}),

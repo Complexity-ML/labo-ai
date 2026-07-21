@@ -201,13 +201,12 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
     setAgentBusy(true)
     setError('')
     try {
-      const emptyGraph = { ...graph, id: 'agent-card-draft', nodes: [], edges: [], groups: undefined }
       const plan = await window.labo.askLabo({
         request: `Compose a reusable typed card graph for this need: ${need.trim()}`,
-        context: { ...createAgentGraphContext(emptyGraph), cardBuilderMode: true, responseLocale: language },
+        context: { ...createAgentGraphContext(graph), cardBuilderMode: true, responseLocale: language },
       })
-      const preview = previewAgentGraphPlan(emptyGraph, plan)
-      if (preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length === 0) throw new Error('The agent did not return a reusable graph.')
+      const preview = previewAgentGraphPlan(graph, plan)
+      if (preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length + preview.accepted.length + (plan.movedBlocks?.length ?? 0) === 0) throw new Error('The agent did not change the reusable graph.')
       const composedGraph = layoutArchitectureGraph(preview.graph)
       const errors = validateCustomCardGraph(composedGraph)
       if (errors.length > 0) throw new Error(errors[0])

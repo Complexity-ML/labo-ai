@@ -54,11 +54,18 @@ export interface AgentUpdatedBlockProposal {
   reason: string
 }
 
+export interface AgentReplacedBlockProposal {
+  nodeId: string
+  atomId: string
+  reason: string
+}
+
 export type AgentGraphAction =
   | { type: 'layout'; scope: 'all' | 'new'; reason: string }
   | { type: 'run'; mode: 'play' | 'step'; reason: string }
   | { type: 'save-preset'; name: string; reason: string }
   | { type: 'export'; kind: 'svg' | 'python' | 'both'; reason: string }
+  | { type: 'run-selection'; mode: 'play' | 'step'; nodeIds: string[]; reason: string }
 
 export interface AgentMissingBlock {
   atomId: string | null
@@ -72,6 +79,7 @@ export interface AgentGraphPlan {
   createdBlocks: AgentCreatedBlockProposal[]
   connections: AgentConnectionProposal[]
   updatedBlocks?: AgentUpdatedBlockProposal[]
+  replacedBlocks?: AgentReplacedBlockProposal[]
   deletedBlocks?: Array<{ nodeId: string; reason: string }>
   movedBlocks?: Array<{ nodeId: string; x: number; y: number; reason: string }>
   actions?: AgentGraphAction[]
@@ -189,12 +197,14 @@ function sourceTensor(graph: ArchitectureGraph, node: ArchitectureNode, portId?:
   return node.role === 'attention' ? 'attention' : node.role
 }
 
-export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGraphMode = 'extend', customCards: CustomPyTorchCard[] = []) {
+export function createAgentGraphContext(graph: ArchitectureGraph, mode: AgentGraphMode = 'extend', customCards: CustomPyTorchCard[] = [], editing?: { active: boolean; nodeIds: string[] }) {
   return {
     operationMode: mode,
+    editing: { active: editing?.active === true, nodeIds: editing?.nodeIds.filter((nodeId) => graph.nodes.some((node) => node.id === nodeId)) ?? [] },
     graph: {
       id: graph.id,
       name: graph.name,
+      config: graph.config,
       nodes: graph.nodes.map((node) => snapshotNode(graph, node)),
       connections: graph.edges.map((edge) => ({
         sourceId: edge.source,
@@ -282,6 +292,7 @@ function normalizeAgentPlanNodeIds(graph: ArchitectureGraph, sourcePlan: AgentGr
     createdBlocks: (sourcePlan.createdBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
     connections: sourcePlan.connections.map((connection) => ({ ...connection, sourceId: reference(connection.sourceId), targetId: reference(connection.targetId) })),
     updatedBlocks: (sourcePlan.updatedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
+    replacedBlocks: (sourcePlan.replacedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
     deletedBlocks: (sourcePlan.deletedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
     movedBlocks: (sourcePlan.movedBlocks ?? []).map((block) => ({ ...block, nodeId: reference(block.nodeId) })),
   }
@@ -298,6 +309,7 @@ export function repairAgentGraphPlan(graph: ArchitectureGraph, sourcePlan: Agent
     missingBlocks: [...normalizedPlan.missingBlocks],
     warnings: [...normalizedPlan.warnings],
     updatedBlocks: [...(normalizedPlan.updatedBlocks ?? [])],
+    replacedBlocks: [...(normalizedPlan.replacedBlocks ?? [])],
     deletedBlocks: [...(normalizedPlan.deletedBlocks ?? [])],
     movedBlocks: [...(normalizedPlan.movedBlocks ?? [])],
     actions: [...(normalizedPlan.actions ?? [])],
@@ -397,9 +409,10 @@ function targetHasConnection(graph: ArchitectureGraph, targetId: string, targetP
   return graph.edges.some((edge) => edge.target === targetId && (edge.targetPort ?? inferredEdgeTargetPort(graph, edge)) === targetPortId)
 }
 
-export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraphPlan, mode: AgentGraphMode = 'extend'): AgentGraphPreview {
+export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraphPlan, mode: AgentGraphMode = 'extend', options?: { editingNodeIds?: string[] }): AgentGraphPreview {
   let nextGraph = graph
   const existingNodeIds = new Set(graph.nodes.map((node) => node.id))
+  const editSelection = options?.editingNodeIds ? new Set(options.editingNodeIds) : undefined
   const acceptedBlocks: AgentBlockProposal[] = []
   const acceptedCreatedBlocks: AgentCreatedBlockProposal[] = []
   const rejectedBlocks: RejectedAgentBlock[] = []
@@ -407,6 +420,25 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
   const rejected: RejectedAgentConnection[] = []
   const acceptedActions: AgentGraphAction[] = []
   const rejectedMutations: AgentGraphPreview['rejectedMutations'] = []
+
+  for (const replacement of plan.replacedBlocks ?? []) {
+    const current = nextGraph.nodes.find((node) => node.id === replacement.nodeId)
+    const definition = modelAtomRegistry[replacement.atomId]
+    if (!current || !definition || definition.composite || (mode === 'parallel' && existingNodeIds.has(replacement.nodeId)) || (editSelection && !editSelection.has(replacement.nodeId))) {
+      rejectedMutations.push({ nodeId: replacement.nodeId, reason: 'Replacement card is unknown, composite, or read-only in parallel mode' })
+      continue
+    }
+    const candidate = agentNode(definition, current.id, current.position, nextGraph.config)
+    const inputIds = new Set(definition.inputs.map((port) => port.id))
+    const outputIds = new Set(definition.outputs.map((port) => port.id))
+    const incompatible = nextGraph.edges.some((edge) => edge.target === current.id && !inputIds.has(edge.targetPort ?? inferredEdgeTargetPort(nextGraph, edge)))
+      || nextGraph.edges.some((edge) => edge.source === current.id && !outputIds.has(edge.sourcePort ?? 'output'))
+    if (incompatible) {
+      rejectedMutations.push({ nodeId: replacement.nodeId, reason: 'Replacement does not preserve the connected port contract' })
+      continue
+    }
+    nextGraph = { ...nextGraph, nodes: nextGraph.nodes.map((node) => node.id === current.id ? candidate : node) }
+  }
 
   for (const deletion of plan.deletedBlocks ?? []) {
     if (!nextGraph.nodes.some((node) => node.id === deletion.nodeId)) {
@@ -417,10 +449,18 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       rejectedMutations.push({ nodeId: deletion.nodeId, reason: 'Parallel architecture mode cannot delete existing cards' })
       continue
     }
+    if (editSelection && !editSelection.has(deletion.nodeId)) {
+      rejectedMutations.push({ nodeId: deletion.nodeId, reason: 'Edit Cards can delete only cards in the active selection' })
+      continue
+    }
     nextGraph = removeNode(nextGraph, deletion.nodeId)
   }
 
   for (const block of plan.addedBlocks.slice(0, 24)) {
+    if (editSelection) {
+      rejectedBlocks.push({ block, reason: 'Edit Cards cannot add blocks; switch to Add Blocks' })
+      continue
+    }
     const virtual = agentVirtualAtomics[block.atomId]
     const definition = modelAtomRegistry[block.atomId]
     if (!definition && !virtual) {
@@ -449,6 +489,10 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
 
   const remainingBlockCapacity = Math.max(0, 24 - acceptedBlocks.length)
   for (const block of (plan.createdBlocks ?? []).slice(0, Math.min(12, remainingBlockCapacity))) {
+    if (editSelection) {
+      rejectedBlocks.push({ block, reason: 'Edit Cards cannot create reusable cards; use Reusable Card' })
+      continue
+    }
     if (!/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(block.nodeId)) {
       rejectedBlocks.push({ block, reason: 'Generated card id must start with a letter and contain only letters, numbers, or hyphens' })
       continue
@@ -490,6 +534,10 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
     const target = nextGraph.nodes.find((node) => node.id === connection.targetId)
     if (!source || !target) {
       rejected.push({ connection, reason: 'Unknown source or target block' })
+      continue
+    }
+    if (editSelection && (!editSelection.has(source.id) || !editSelection.has(target.id))) {
+      rejected.push({ connection, reason: 'Edit Cards can rewire only inside the active selection' })
       continue
     }
     if (mode === 'parallel' && (existingNodeIds.has(source.id) || existingNodeIds.has(target.id))) {
@@ -548,6 +596,10 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       rejectedMutations.push({ nodeId: update.nodeId, reason: 'Card is unknown or read-only in parallel mode' })
       continue
     }
+    if (editSelection && !editSelection.has(update.nodeId)) {
+      rejectedMutations.push({ nodeId: update.nodeId, reason: 'Edit Cards can update only cards in the active selection' })
+      continue
+    }
     if (update.pytorchModule && (node.kind !== 'custom-pytorch' || !validCustomPyTorchModule(update.pytorchModule))) {
       rejectedMutations.push({ nodeId: update.nodeId, reason: 'PyTorch edit is invalid for this card' })
       continue
@@ -570,10 +622,12 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
   }
 
   const addedNodeIds = [...acceptedBlocks, ...acceptedCreatedBlocks].map((block) => block.nodeId)
-  const layoutAction = (plan.actions ?? []).find((action): action is Extract<AgentGraphAction, { type: 'layout' }> => action.type === 'layout')
-  nextGraph = mode === 'parallel'
-    ? layoutParallelArchitecture(nextGraph, addedNodeIds)
-    : layoutAction?.scope === 'all' ? layoutArchitectureGraph(nextGraph) : layoutArchitectureGraph(nextGraph, addedNodeIds)
+  const layoutAction = editSelection ? undefined : (plan.actions ?? []).find((action): action is Extract<AgentGraphAction, { type: 'layout' }> => action.type === 'layout')
+  if (!editSelection) {
+    nextGraph = mode === 'parallel'
+      ? layoutParallelArchitecture(nextGraph, addedNodeIds)
+      : layoutAction?.scope === 'all' ? layoutArchitectureGraph(nextGraph) : layoutArchitectureGraph(nextGraph, addedNodeIds)
+  }
 
   for (const movement of plan.movedBlocks ?? []) {
     if (!Number.isFinite(movement.x) || !Number.isFinite(movement.y) || (mode === 'parallel' && existingNodeIds.has(movement.nodeId))) {
@@ -584,10 +638,17 @@ export function previewAgentGraphPlan(graph: ArchitectureGraph, plan: AgentGraph
       rejectedMutations.push({ nodeId: movement.nodeId, reason: 'Card does not exist' })
       continue
     }
+    if (editSelection && !editSelection.has(movement.nodeId)) {
+      rejectedMutations.push({ nodeId: movement.nodeId, reason: 'Edit Cards can move only cards in the active selection' })
+      continue
+    }
     nextGraph = { ...nextGraph, nodes: nextGraph.nodes.map((node) => node.id === movement.nodeId ? { ...node, position: { x: movement.x, y: movement.y } } : node) }
   }
   for (const action of plan.actions ?? []) {
-    if (action.type === 'layout' && mode === 'parallel' && action.scope === 'all') rejectedMutations.push({ action, reason: 'Parallel mode cannot lay out existing work' })
+    if (editSelection && action.type === 'layout') rejectedMutations.push({ action, reason: 'Edit Cards cannot relayout the whole graph' })
+    else if (editSelection && action.type === 'run') rejectedMutations.push({ action, reason: 'Edit Cards must run the selected subgraph, not the whole graph' })
+    else if (action.type === 'run-selection' && editSelection && action.nodeIds.some((nodeId) => !editSelection.has(nodeId))) rejectedMutations.push({ action, reason: 'Edit Cards can run only cards in the active selection' })
+    else if (action.type === 'layout' && mode === 'parallel' && action.scope === 'all') rejectedMutations.push({ action, reason: 'Parallel mode cannot lay out existing work' })
     else acceptedActions.push(action)
   }
   return { graph: nextGraph, acceptedBlocks, acceptedCreatedBlocks, rejectedBlocks, accepted, rejected, acceptedActions, rejectedMutations }

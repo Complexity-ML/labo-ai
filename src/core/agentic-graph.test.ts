@@ -221,6 +221,28 @@ describe('agentic graph wiring', () => {
     expect(preview.acceptedActions).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'run' }), expect.objectContaining({ type: 'export' })]))
   })
 
+  it('keeps Edit Cards restricted to the active selection and never adds cards', () => {
+    const preview = previewAgentGraphPlan(tokenMoePreset, {
+      ...plan([], [{ atomId: 'relu', nodeId: 'new-relu', reason: 'Must use Add Blocks' }]),
+      updatedBlocks: [
+        { nodeId: 'norm', label: 'Selected norm', settings: null, pytorchModule: null, reason: 'Selected edit' },
+        { nodeId: 'shared', label: 'Outside selection', settings: null, pytorchModule: null, reason: 'Forbidden edit' },
+      ],
+      movedBlocks: [{ nodeId: 'shared', x: 0, y: 0, reason: 'Forbidden move' }],
+      actions: [{ type: 'layout', scope: 'all', reason: 'Forbidden relayout' }],
+    }, 'extend', { editingNodeIds: ['norm'] })
+
+    expect(preview.acceptedBlocks).toHaveLength(0)
+    expect(preview.rejectedBlocks[0]?.reason).toContain('switch to Add Blocks')
+    expect(preview.graph.nodes.find((node) => node.id === 'norm')?.label).toBe('Selected norm')
+    expect(preview.graph.nodes.find((node) => node.id === 'shared')?.label).not.toBe('Outside selection')
+    expect(preview.rejectedMutations.map((mutation) => mutation.reason)).toEqual(expect.arrayContaining([
+      expect.stringContaining('active selection'),
+      expect.stringContaining('move only cards'),
+      expect.stringContaining('cannot relayout'),
+    ]))
+  })
+
   it('rejects mutations of existing cards in parallel mode', () => {
     const preview = previewAgentGraphPlan(tokenMoePreset, {
       ...plan([]),
