@@ -12,7 +12,22 @@ import { cacheDesktopUpdateStatus, desktopSetupReleaseUrl, getDesktopUpdateStatu
 import { CodexAppServer } from './chatgpt-session.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const chatGPT = new CodexAppServer((url) => shell.openExternal(url), app.getVersion())
+
+function allowedChatGPTSignInUrl(candidate: string): string {
+  const url = new URL(candidate)
+  const allowedHost = url.hostname === 'openai.com'
+    || url.hostname.endsWith('.openai.com')
+    || url.hostname === 'chatgpt.com'
+    || url.hostname.endsWith('.chatgpt.com')
+  if (url.protocol !== 'https:' || !allowedHost) throw new Error('ChatGPT sign-in returned an untrusted URL')
+  return url.toString()
+}
+
+const chatGPT = new CodexAppServer(
+  (url) => shell.openExternal(allowedChatGPTSignInUrl(url)),
+  app.getVersion(),
+  process.env.LABO_CODEX_HOME?.trim() || join(app.getPath('userData'), 'codex'),
+)
 
 interface ChatGPTPreferences { model?: string; effort?: string }
 

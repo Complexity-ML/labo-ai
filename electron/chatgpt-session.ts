@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -99,6 +99,19 @@ function codexCommand(): { command: string; args: string[]; env?: NodeJS.Process
   }
 }
 
+export function dedicatedCodexEnvironment(codexHome: string, extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  mkdirSync(codexHome, { recursive: true })
+  const configPath = join(codexHome, 'config.toml')
+  if (!existsSync(configPath)) {
+    writeFileSync(configPath, 'cli_auth_credentials_store = "file"\nforced_login_method = "chatgpt"\n', { encoding: 'utf8', mode: 0o600 })
+  }
+  const environment: NodeJS.ProcessEnv = { ...process.env, ...extra, CODEX_HOME: codexHome }
+  delete environment.OPENAI_API_KEY
+  delete environment.CODEX_API_KEY
+  delete environment.CODEX_ACCESS_TOKEN
+  return environment
+}
+
 function errorMessage(value: unknown): string {
   const record = asRecord(value)
   return typeof record.message === 'string' ? record.message : String(value)
@@ -128,7 +141,11 @@ export class CodexAppServer {
   private readonly pending = new Map<number, { resolve(value: unknown): void; reject(reason: Error): void; timeout: NodeJS.Timeout }>()
   private readonly notificationListeners = new Set<(method: string, params: unknown) => void>()
 
-  constructor(private readonly openExternal: OpenExternal, private readonly version = '0.0.0') {}
+  constructor(
+    private readonly openExternal: OpenExternal,
+    private readonly version = '0.0.0',
+    private readonly codexHome = process.env.LABO_CODEX_HOME?.trim() || join(process.cwd(), 'data', 'codex'),
+  ) {}
 
   private start(): Promise<void> {
     if (this.initialized) return this.initialized
@@ -136,7 +153,7 @@ export class CodexAppServer {
       const invocation = codexCommand()
       let settled = false
       try {
-        this.process = spawn(invocation.command, invocation.args, { env: invocation.env ?? process.env, stdio: ['pipe', 'pipe', 'pipe'] })
+        this.process = spawn(invocation.command, invocation.args, { env: dedicatedCodexEnvironment(this.codexHome, invocation.env), stdio: ['pipe', 'pipe', 'pipe'] })
       } catch (error) {
         reject(error)
         return
@@ -253,6 +270,9 @@ export class CodexAppServer {
   }
 
   async status(): Promise<ChatGPTSessionStatus> {
+    if (!this.initialized && !existsSync(join(this.codexHome, 'auth.json'))) {
+      return { available: true, connected: false }
+    }
     try {
       await this.start()
       const response = asRecord(await this.request('account/read', { refreshToken: false }))

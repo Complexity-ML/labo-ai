@@ -1,7 +1,7 @@
 {
   "name": "labo-ai-setup",
   "private": true,
-  "version": "0.1.51",
+  "version": "0.1.52",
   "scripts": {
     "tauri": "tauri",
     "build:ui": "sass ui/styles.scss ui/styles.css --style=compressed --no-source-map",
