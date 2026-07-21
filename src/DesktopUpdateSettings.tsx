@@ -92,9 +92,11 @@ export function DesktopUpdateSettings() {
   const latestRevision = status?.latestRevision?.toLowerCase()
   const sameSourceRevision = Boolean(installedRevision && latestRevision && installedRevision.length >= 7 && latestRevision.length >= 7
     && (installedRevision.startsWith(latestRevision) || latestRevision.startsWith(installedRevision)))
-  const upToDate = sameSourceRevision || Boolean(channelMatches && normalizedInstalledRef && normalizedLatestRef && (channel === 'main'
+  const stableFallback = channel === 'stable' && installedChannel === 'main'
+  const upToDate = (!stableFallback && sameSourceRevision) || Boolean(channelMatches && normalizedInstalledRef && normalizedLatestRef && (channel === 'main'
     ? normalizedInstalledRef.startsWith(normalizedLatestRef) || normalizedLatestRef.startsWith(normalizedInstalledRef)
     : normalizedLatestRef === normalizedInstalledRef))
+  const latestDisplay = status?.latestTag ?? (channelMatches ? `${installedRef} (installed)` : 'Unavailable')
   const label = !status?.helperInstalled ? 'Get LABO AI Setup' : upToDate ? 'Up to date' : status.updateAvailable ? 'Install update' : 'Open LABO AI Setup'
   return <article className="desktop-update-settings">
     <RefreshCw size={15} />
@@ -109,7 +111,7 @@ export function DesktopUpdateSettings() {
         <div><dt>Installed</dt><dd>{installedRef}</dd></div>
         <div><dt>Installed channel</dt><dd>{installedChannel === 'main' ? 'Main' : 'Stable'}</dd></div>
         {installedChannel === 'main' && <div><dt>Source release</dt><dd>{sourceReleaseRef}</dd></div>}
-        <div><dt>{channel === 'main' ? 'Latest main commit' : 'Latest stable release'}</dt><dd>{status?.latestTag ?? 'Not checked'}</dd></div>
+        <div><dt>{channel === 'main' ? 'Latest main commit' : 'Latest stable release'}</dt><dd>{latestDisplay}</dd></div>
       </dl>
       {checked && !error && !status?.error && <div className={`desktop-update-result ${status?.updateAvailable ? 'update-ready' : upToDate ? 'up-to-date' : 'update-unknown'}`}>
         {upToDate && <CheckCircle2 size={12} />}

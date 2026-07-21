@@ -55,6 +55,29 @@ describe('LABO AI studios', () => {
     delete window.labo
   })
 
+  it('persists the selected theme in the private SQLite settings scope', async () => {
+    const settings = { desktopUpdateChannel: 'main', appearance: { theme: 'complexity-spectrum' } }
+    const saveDesktopState = vi.fn(async () => ({ saved: true as const }))
+    window.labo = {
+      platform: 'darwin',
+      runtime: 'electron',
+      loadDesktopState: vi.fn(async (scope) => scope === 'settings' ? settings : undefined),
+      saveDesktopState,
+    }
+    render(<App />)
+
+    await waitFor(() => expect(document.documentElement).toHaveAttribute('data-labo-theme', 'complexity-spectrum'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Application' }))
+    expect(screen.getByRole('button', { name: 'Use Complexity Spectrum theme' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Use LABO Dark theme' }))
+
+    await waitFor(() => expect(saveDesktopState).toHaveBeenCalledWith('settings', {
+      desktopUpdateChannel: 'main',
+      appearance: { theme: 'labo-dark' },
+    }))
+  })
+
   it('keeps stable and main update detection separate when switching channels', async () => {
     const getDesktopUpdateStatus = vi.fn(async (requestedChannel?: DesktopUpdateChannel) => {
       const channel = requestedChannel ?? 'stable'
@@ -92,6 +115,40 @@ describe('LABO AI studios', () => {
     expect(screen.getByText('Latest stable release')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Up to date' })).toBeDisabled()
     delete window.labo
+  })
+
+  it('allows returning from Main to the verified Stable release at the same source revision', async () => {
+    const revision = 'abcdef1234567890'
+    const getDesktopUpdateStatus = vi.fn(async (requestedChannel?: DesktopUpdateChannel) => requestedChannel === 'stable' ? {
+      currentVersion: '0.1.47',
+      channel: 'stable' as const,
+      installedTag: 'main@abcdef1',
+      installedChannel: 'main' as const,
+      installedRevision: revision,
+      latestTag: 'v0.1.47',
+      latestRevision: revision,
+      helperInstalled: true,
+      updateAvailable: true,
+      setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+    } : {
+      currentVersion: '0.1.47',
+      channel: 'main' as const,
+      installedTag: 'main@abcdef1',
+      installedChannel: 'main' as const,
+      installedRevision: revision,
+      latestTag: 'main@abcdef1',
+      latestRevision: revision,
+      helperInstalled: true,
+      updateAvailable: false,
+      setupUrl: 'https://github.com/Complexity-ML/labo-ai/releases/latest',
+    })
+    window.labo = { platform: 'darwin', runtime: 'electron', getDesktopUpdateStatus }
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    expect(await screen.findByRole('button', { name: 'Up to date' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: /StableRecommended/ }))
+    expect(await screen.findByRole('button', { name: 'Install update' })).toBeEnabled()
   })
 
   it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {

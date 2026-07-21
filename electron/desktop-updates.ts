@@ -36,6 +36,7 @@ export function desktopRevisionsMatch(installedRef: string | undefined, latestRe
 }
 
 export function desktopUpdateIsAvailable(installedRef: string | undefined, latestRef: string | undefined, selectedChannel: DesktopUpdateChannel, installedChannel: DesktopUpdateChannel, installedRevision?: string, latestRevision?: string): boolean {
+  if (selectedChannel === 'stable' && installedChannel === 'main') return Boolean(latestRef)
   if (desktopRevisionsMatch(installedRevision, latestRevision, 'main')) return false
   return Boolean(latestRef && (selectedChannel !== installedChannel || !desktopRevisionsMatch(installedRef, latestRef, selectedChannel)))
 }

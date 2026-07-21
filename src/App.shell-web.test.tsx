@@ -74,12 +74,16 @@ describe('LABO AI shell web', () => {
     window.labo = {
       platform: 'web',
       runtime: 'web',
-      loadWebWorkspace: async () => ({ authenticated: true, workspace: null, customCards: [] }),
+      loadWebWorkspace: async () => ({ authenticated: true, workspace: null, customCards: [], settings: { appearance: { theme: 'complexity-spectrum' } } }),
       saveWebWorkspace,
     }
   
     render(<App />)
+    await waitFor(() => expect(document.documentElement).toHaveAttribute('data-labo-theme', 'complexity-spectrum'))
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Application' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use LABO Dark theme' }))
+    await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalledWith(expect.objectContaining({ settings: { appearance: { theme: 'labo-dark' } } })))
     fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
   

@@ -37,6 +37,7 @@ describe('desktop source-first updates', () => {
     expect(desktopUpdateIsAvailable('v0.1.45', 'main@abcdef1', 'main', 'stable')).toBe(true)
     expect(desktopUpdateIsAvailable('main@abcdef1', 'v0.1.45', 'stable', 'main')).toBe(true)
     expect(desktopUpdateIsAvailable('v0.1.45', 'main@abcdef1', 'main', 'stable', 'abcdef1234567', 'abcdef1')).toBe(false)
+    expect(desktopUpdateIsAvailable('main@abcdef1', 'v0.1.45', 'stable', 'main', 'abcdef1234567', 'abcdef1')).toBe(true)
   })
 
   it('sends a legacy desktop build to the latest Setup release', async () => {

@@ -1,13 +1,19 @@
 import { Check, MonitorCog, Palette } from 'lucide-react'
-import { useState } from 'react'
-import { applyLaboTheme, LABO_THEMES, readLaboTheme, type LaboTheme } from './application-appearance'
+import { useEffect, useState } from 'react'
+import { LABO_THEMES, loadLaboTheme, readLaboTheme, saveLaboTheme, type LaboTheme } from './application-appearance'
 
 export function ApplicationAppearanceSettings() {
   const [theme, setTheme] = useState<LaboTheme>(readLaboTheme)
 
+  useEffect(() => {
+    let active = true
+    void loadLaboTheme().then((storedTheme) => { if (active) setTheme(storedTheme) })
+    return () => { active = false }
+  }, [])
+
   const selectTheme = (nextTheme: LaboTheme) => {
-    applyLaboTheme(nextTheme)
     setTheme(nextTheme)
+    void saveLaboTheme(nextTheme)
   }
 
   return <section aria-label="Application appearance" className="application-appearance-settings">

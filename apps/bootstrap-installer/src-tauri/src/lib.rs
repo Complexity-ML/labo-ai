@@ -117,15 +117,17 @@ fn client() -> Result<Client, String> {
 }
 
 fn latest_release() -> Result<GitHubRelease, String> {
-    let api_result = client()?
-        .get(format!(
-            "https://api.github.com/repos/{REPOSITORY}/releases/latest"
-        ))
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("Unable to check GitHub: {error}"))?
-        .json::<GitHubRelease>()
-        .map_err(|error| format!("Invalid GitHub release response: {error}"));
+    let api_result = (|| {
+        client()?
+            .get(format!(
+                "https://api.github.com/repos/{REPOSITORY}/releases/latest"
+            ))
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|error| format!("Unable to check GitHub: {error}"))?
+            .json::<GitHubRelease>()
+            .map_err(|error| format!("Invalid GitHub release response: {error}"))
+    })();
     api_result.or_else(|api_error| {
         let response = client()?
             .get(format!("https://github.com/{REPOSITORY}/releases/latest"))
@@ -169,18 +171,53 @@ fn latest_release() -> Result<GitHubRelease, String> {
 }
 
 fn github_revision(reference: &str) -> Result<String, String> {
-    let commit = client()?
-        .get(format!(
-            "https://api.github.com/repos/{REPOSITORY}/commits/{reference}"
-        ))
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("Unable to resolve GitHub revision {reference}: {error}"))?
-        .json::<GitHubCommit>()
-        .map_err(|error| format!("Invalid GitHub commit response: {error}"))?;
-    if commit.sha.len() < 7
-        || !commit
-            .sha
+    let api_result = (|| {
+        let commit = client()?
+            .get(format!(
+                "https://api.github.com/repos/{REPOSITORY}/commits/{reference}"
+            ))
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|error| format!("Unable to resolve GitHub revision {reference}: {error}"))?
+            .json::<GitHubCommit>()
+            .map_err(|error| format!("Invalid GitHub commit response: {error}"))?;
+        valid_github_revision(&commit.sha, reference)
+    })();
+    api_result.or_else(|api_error| {
+        let atom = client()?
+            .get(format!(
+                "https://github.com/{REPOSITORY}/commits/{reference}.atom"
+            ))
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|fallback_error| {
+                format!("{api_error}; Atom fallback failed: {fallback_error}")
+            })?
+            .text()
+            .map_err(|fallback_error| {
+                format!("{api_error}; invalid Atom response: {fallback_error}")
+            })?;
+        atom_revision(&atom, reference)
+            .map_err(|fallback_error| format!("{api_error}; {fallback_error}"))
+    })
+}
+
+fn atom_revision(atom: &str, reference: &str) -> Result<String, String> {
+    let marker = "Grit::Commit/";
+    let start = atom
+        .find(marker)
+        .map(|index| index + marker.len())
+        .ok_or_else(|| "Atom fallback contained no commit".to_string())?;
+    let revision = atom[start..]
+        .chars()
+        .take_while(|character| character.is_ascii_hexdigit())
+        .collect::<String>();
+    valid_github_revision(&revision, reference)
+}
+
+fn valid_github_revision(revision: &str, reference: &str) -> Result<String, String> {
+    if revision.len() < 7
+        || !revision
             .chars()
             .all(|character| character.is_ascii_hexdigit())
     {
@@ -188,7 +225,7 @@ fn github_revision(reference: &str) -> Result<String, String> {
             "GitHub returned an invalid revision for {reference}"
         ));
     }
-    Ok(commit.sha.to_ascii_lowercase())
+    Ok(revision.to_ascii_lowercase())
 }
 
 fn main_source() -> Result<GitHubRelease, String> {
@@ -1234,7 +1271,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{release_is_newer, version_parts};
+    use super::{atom_revision, release_is_newer, version_parts};
+
+    #[test]
+    fn reads_the_head_commit_from_the_public_github_atom_feed() {
+        let atom = "<entry><id>tag:github.com,2008:Grit::Commit/03fb96e745f18e7c30886dbee66db21ad682be08</id></entry>";
+        assert_eq!(
+            atom_revision(atom, "main").unwrap(),
+            "03fb96e745f18e7c30886dbee66db21ad682be08"
+        );
+    }
 
     #[test]
     fn compares_setup_versions_without_downgrading() {

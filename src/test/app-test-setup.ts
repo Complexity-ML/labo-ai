@@ -5,5 +5,6 @@ import { afterEach } from 'vitest'
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  delete document.documentElement.dataset.laboTheme
   delete window.labo
 })

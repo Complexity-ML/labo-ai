@@ -36,8 +36,8 @@ interface Window {
     connectChatGPT?(): Promise<ChatGPTSessionStatus>
     disconnectChatGPT?(): Promise<ChatGPTSessionStatus>
     configureChatGPT?(configuration: { model: string; effort: string }): Promise<ChatGPTSessionStatus>
-    loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; training?: unknown; tokenizer?: unknown; updatedAt?: number; warning?: string }>
-    saveWebWorkspace?(payload: { workspace?: unknown; customCards?: unknown[]; training?: unknown; tokenizer?: unknown }): Promise<{ saved: true; updatedAt: number }>
+    loadWebWorkspace?(): Promise<{ authenticated: boolean; workspace: unknown; customCards: unknown[]; training?: unknown; tokenizer?: unknown; settings?: unknown; updatedAt?: number; warning?: string }>
+    saveWebWorkspace?(payload: { workspace?: unknown; customCards?: unknown[]; training?: unknown; tokenizer?: unknown; settings?: unknown }): Promise<{ saved: true; updatedAt: number }>
     exportFile?(payload: { filename: string; content: string; kind: 'svg' | 'python' }): Promise<{ saved: boolean; path?: string }>
     loadDesktopState?(scope: 'model' | 'training' | 'tokenizer' | 'settings'): Promise<unknown>
     saveDesktopState?(scope: 'model' | 'training' | 'tokenizer' | 'settings', data: unknown): Promise<{ saved: true }>

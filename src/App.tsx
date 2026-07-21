@@ -32,7 +32,7 @@ function App() {
   const runtimeClass = window.labo?.runtime === 'electron' ? ` runtime-electron runtime-${platform ?? 'desktop'}` : ''
   const searchShortcut = platform === 'darwin' ? '⌘K' : 'Ctrl+K'
 
-  useLayoutEffect(() => initializeLaboTheme(), [])
+  useLayoutEffect(() => { void initializeLaboTheme() }, [])
 
   useEffect(() => {
     let active = true
