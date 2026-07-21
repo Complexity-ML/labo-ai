@@ -89,8 +89,8 @@ const tools = [
   { type: 'function', name: 'play_atoms', description: 'Run the typed atomic preflight over queued Add cards, the Edit selection, or the Reusable Card graph. Read every failure, repair it with tools, then play again before finish_plan.', strict: true, parameters: objectSchema({ node_ids: { type: 'array', items: string, maxItems: 24 } }) },
   { type: 'function', name: 'edit_card', description: 'Queue edits to an existing card. settings_json is a JSON object of setting names to number, string, or boolean values. In parallel mode existing cards are read-only.', strict: true, parameters: objectSchema({ node_id: string, label: nullableString, settings_json: nullableString, pytorch_module: nullableString, reason: string }) },
   { type: 'function', name: 'edit_selected_cards', description: 'Queue a batch of explicit edits, restricted to cards selected in Edit mode.', strict: true, parameters: objectSchema({ edits: { type: 'array', maxItems: 24, items: objectSchema({ node_id: string, label: nullableString, settings_json: nullableString, pytorch_module: nullableString, reason: string }) } }) },
-  { type: 'function', name: 'replace_card', description: 'Replace one selected native card with another native atomic while preserving its id, position and every compatible elastic.', strict: true, parameters: objectSchema({ node_id: string, atom_id: string, reason: string }) },
-  { type: 'function', name: 'delete_card', description: 'Queue deletion of a card and its connected elastics. In parallel mode existing cards are read-only.', strict: true, parameters: objectSchema({ node_id: string, reason: string }) },
+  { type: 'function', name: 'replace_card', description: 'Replace one existing native card with another native atomic while preserving its id, position and every compatible elastic. In Edit mode the target must be selected; Add Blocks may use it only for an explicit construction repair.', strict: true, parameters: objectSchema({ node_id: string, atom_id: string, reason: string }) },
+  { type: 'function', name: 'delete_card', description: 'Queue deletion of one existing card and its connected elastics. In Edit mode the target must be selected; Add Blocks may use it only when the requested construction requires removal. In parallel mode existing cards are read-only.', strict: true, parameters: objectSchema({ node_id: string, reason: string }) },
   { type: 'function', name: 'delete_architecture', description: 'Queue deletion of every card and elastic in one architecture at once. Use context.architectures ids. Existing architectures are read-only in parallel mode.', strict: true, parameters: objectSchema({ architecture_id: string, reason: string }) },
   { type: 'function', name: 'move_card', description: 'Queue an exact canvas position. Prefer layout_graph for a whole architecture.', strict: true, parameters: objectSchema({ node_id: string, x: { type: 'number' }, y: { type: 'number' }, reason: string }) },
   { type: 'function', name: 'layout_graph', description: 'Queue LABO deterministic topology-aware XY layout.', strict: true, parameters: objectSchema({ scope: { type: 'string', enum: ['all', 'new'] }, reason: string }) },
@@ -212,6 +212,7 @@ class AgentToolSession {
   private reject(tool: string, summary: string) { return this.trace(tool, 'rejected', summary) }
   private parallelMutation(nodeId: string): boolean { return this.context.operationMode === 'parallel' && this.initialNodeIds.has(nodeId) }
   private editMutationAllowed(nodeId: string): boolean { return this.editingActive && this.selectionIds.has(nodeId) && !this.parallelMutation(nodeId) }
+  private replacementMutationAllowed(nodeId: string): boolean { return !this.parallelMutation(nodeId) && (!this.editingActive || this.selectionIds.has(nodeId)) }
   private requireEditMode(tool: string): Record<string, unknown> | undefined {
     if (!this.editingActive) return this.reject(tool, 'This mutation belongs to Edit Cards mode')
     if (this.selectionIds.size === 0) return this.reject(tool, 'Select at least one card in Edit Cards mode first')
@@ -539,11 +540,9 @@ class AgentToolSession {
       return rejected.length > 0 ? { ...this.reject(name, `${rejected.length} selected edit${rejected.length === 1 ? '' : 's'} were rejected`), results } : { ...this.trace(name, 'accepted', `Queued ${results.length} selected-card edit${results.length === 1 ? '' : 's'}`), results }
     }
     if (name === 'replace_card') {
-      const modeError = this.requireEditMode(name)
-      if (modeError) return modeError
       const nodeId = text('node_id'), atomId = text('atom_id')
       const node = this.node(nodeId), replacement = this.atomics.find((atomic) => atomic.atomId === atomId)
-      if (!node || !replacement || !this.editMutationAllowed(nodeId)) return this.reject(name, 'Replacement must target one selected card and one available native atomic')
+      if (!node || !replacement || !this.replacementMutationAllowed(nodeId)) return this.reject(name, 'Replacement must target an editable existing card and one available native atomic')
       const connected = this.activeConnections().filter((connection) => connection.sourceId === nodeId || connection.targetId === nodeId)
       const inputIds = new Set(replacement.inputs?.map((port) => port.id) ?? [])
       const outputIds = new Set(replacement.outputs?.map((port) => port.id) ?? [])
@@ -554,9 +553,7 @@ class AgentToolSession {
     }
     if (name === 'delete_card') {
       const nodeId = text('node_id')
-      const modeError = this.requireEditMode(name)
-      if (modeError) return modeError
-      if (!this.node(nodeId) || !this.editMutationAllowed(nodeId)) return this.reject(name, `Card ${nodeId} is outside the active Edit selection`)
+      if (!this.node(nodeId) || !this.replacementMutationAllowed(nodeId)) return this.reject(name, this.editingActive ? `Card ${nodeId} is outside the active Edit selection` : `Card ${nodeId} is read-only`)
       this.plan.deletedBlocks.push({ nodeId, reason: text('reason') })
       return this.trace(name, 'accepted', `Queued deletion of ${nodeId}`)
     }
@@ -682,7 +679,7 @@ export async function askLabo(payload: AskLaboPayload): Promise<AskLaboPlan> {
               ? 'Edit Cards mode is active. Inspect the selection first. Only edit, replace, move, delete, rewire or test cards listed in editing.nodeIds. Never add, clone, extract, save as a reusable card, relayout the whole graph, or mutate outside the selection.'
               : payload.context.cardBuilderMode === true
                 ? 'Reusable Card owns this turn. Work only inside its internal graph.'
-                : 'Add Blocks mode is active. Add and connect cards, but never edit, replace, move or delete existing cards.',
+                : 'Add Blocks mode is active. Add and connect cards. You may replace or delete an existing card only when required by the requested construction or repair, and the plan must state why. Do not relabel, retune or move existing cards.',
             'Prefer native or saved cards. Keep ports type-exact, avoid occupied inputs and cycles, and use layout_graph for stable parallel XY placement.',
             'Prefer connect_compatible over guessing port ids. Use connect_all=true for Q/K/V or another multi-port group. If a queued connection is wrong, remove it with remove_queued_connection.',
             'Call validate_graph after graph mutations and repair every reported error before finish_plan. finish_plan rejects incomplete new cards, occupied inputs, incompatible ranks and cycles.',

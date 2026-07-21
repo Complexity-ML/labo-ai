@@ -118,6 +118,25 @@ describe('Ask LABO OpenAI bridge', () => {
     ]))
   })
 
+  it('lets Add Blocks replace an existing card when the construction requires it', async () => {
+    process.env.OPENAI_API_KEY = 'test-secret-key'
+    const fetchMock = vi.fn(async () => fetchMock.mock.calls.length === 1
+      ? new Response(JSON.stringify({ output: [functionCall('replace_card', { node_id: 'activation', atom_id: 'gelu', reason: 'The requested architecture uses GELU instead of ReLU' }, 'call-replace')] }), { status: 200 })
+      : new Response(JSON.stringify({ output: [functionCall('finish_plan', { summary: 'Replacement ready', missing_blocks: [], warnings: [] }, 'call-finish')] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await askLabo({
+      request: 'Build this architecture with GELU instead of the current ReLU',
+      context: {
+        graph: { nodes: [{ id: 'activation', atomId: 'relu', label: 'ReLU', inputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }], outputs: [{ id: 'output', tensor: 'hidden', rank: 3 }] }], connections: [] },
+        availableAtomics: [{ atomId: 'gelu', label: 'GELU', inputs: [{ id: 'hidden', tensor: 'hidden', rank: 3 }], outputs: [{ id: 'output', tensor: 'hidden', rank: 3 }] }],
+      },
+    })
+
+    expect(result.replacedBlocks).toEqual([{ nodeId: 'activation', atomId: 'gelu', reason: 'The requested architecture uses GELU instead of ReLU' }])
+    expect(result.toolTrace).toEqual(expect.arrayContaining([expect.objectContaining({ tool: 'replace_card', status: 'accepted' })]))
+  })
+
   it('finds GPT building blocks for a natural-language QA chatbot request', async () => {
     process.env.OPENAI_API_KEY = 'test-secret-key'
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
