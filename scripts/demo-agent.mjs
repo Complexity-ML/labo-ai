@@ -15,6 +15,7 @@ const generationPrompt = 'Explain neural networks in one short sentence.'
 const memoryState = new Map()
 
 app.setName('LABO AI')
+process.stderr.write('[demo] entry loaded\n')
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -37,7 +38,11 @@ async function evaluate(window, expression) {
 async function clickButton(window, label, { exact = true } = {}) {
   const clicked = await evaluate(window, `(() => {
     const label = ${JSON.stringify(label)}
-    const button = [...document.querySelectorAll('button')].find((candidate) => ${exact ? 'candidate.textContent.trim() === label' : 'candidate.textContent.includes(label)'})
+    const button = [...document.querySelectorAll('button')].find((candidate) => {
+      const text = candidate.textContent.trim()
+      const ariaLabel = candidate.getAttribute('aria-label') ?? ''
+      return ${exact ? 'text === label || ariaLabel === label' : 'text.includes(label) || ariaLabel.includes(label)'}
+    })
     if (!button || button.disabled) return false
     button.click()
     return true
@@ -112,23 +117,30 @@ async function selectReviewMode(window) {
   await clickButton(window, 'Close LABO AI settings')
 }
 
-await app.whenReady()
-const chatGPT = new CodexAppServer((url) => shell.openExternal(url), app.getVersion())
-const [openAISettings, chatGPTStatus] = await Promise.all([
+async function runDemo() {
+process.stderr.write('[demo] electron ready\n')
+const chatGPT = new CodexAppServer(
+  (url) => shell.openExternal(url),
+  app.getVersion(),
+  process.env.LABO_CODEX_HOME?.trim() || join(app.getPath('userData'), 'codex'),
+)
+const providerStatus = Promise.all([
   getOpenAISettingsStatus(),
   chatGPT.status().catch(() => ({ available: false, connected: false })),
-])
-if (!openAISettings.configured && !chatGPTStatus.connected) {
-  throw new Error('Connect ChatGPT or add and verify an OpenAI API key in LABO AI before running the agent demo.')
-}
+]).then(([openAISettings, chatGPTStatus]) => ({ openAISettings, chatGPTStatus }))
 
-ipcMain.handle('labo:ask', (_event, payload) => chatGPTStatus.connected ? chatGPT.ask(payload, {}) : askLabo(payload))
+ipcMain.handle('labo:ask', async (_event, payload) => {
+  const { chatGPTStatus } = await providerStatus
+  return chatGPTStatus.connected ? chatGPT.ask(payload, {}) : askLabo(payload)
+})
 ipcMain.handle('labo:atomic-runtime', (_event, payload) => runAtomicRuntime(payload))
-ipcMain.handle('labo:openai-settings', () => openAISettings)
-ipcMain.handle('labo:chatgpt-session', () => chatGPTStatus)
+ipcMain.handle('labo:openai-settings', async () => (await providerStatus).openAISettings)
+ipcMain.handle('labo:chatgpt-session', async () => (await providerStatus).chatGPTStatus)
 ipcMain.handle('labo:desktop-state-load', (_event, payload) => memoryState.get(payload?.scope))
 ipcMain.handle('labo:desktop-state-save', (_event, payload) => { memoryState.set(payload?.scope, payload?.data); return { saved: true } })
-ipcMain.handle('labo:window-state', () => ({ fullScreen: false }))
+ipcMain.handle('labo:window-state', (event) => ({
+  fullScreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
+}))
 
 const window = new BrowserWindow({
   show: false,
@@ -146,12 +158,23 @@ const window = new BrowserWindow({
     partition: 'labo-agent-demo',
   },
 })
+process.stderr.write('[demo] browser window created\n')
+const publishWindowState = () => window.webContents.send('labo:window-state', { fullScreen: window.isFullScreen() })
+window.on('enter-full-screen', publishWindowState)
+window.on('leave-full-screen', publishWindowState)
 
 try {
-  process.stderr.write(`[demo] provider=${chatGPTStatus.connected ? 'chatgpt' : openAISettings.source}\n`)
+  process.stderr.write('[demo] loading renderer\n')
   await window.loadFile(join(projectRoot, 'dist', 'index.html'))
+  process.stderr.write('[demo] renderer loaded\n')
   window.show()
+  window.maximize()
   window.focus()
+  process.stderr.write('[demo] window visible; waiting 5 seconds before agent actions\n')
+  await wait(5_000)
+  const { openAISettings, chatGPTStatus } = await providerStatus
+  if (!openAISettings.configured && !chatGPTStatus.connected) throw new Error('Connect ChatGPT or add and verify an OpenAI API key in LABO AI before running the agent demo.')
+  process.stderr.write(`[demo] provider=${chatGPTStatus.connected ? 'chatgpt' : openAISettings.source}\n`)
   await waitFor(window, `document.querySelector('button[aria-label="Play model atoms"]') !== null`)
   await prepareBlankWorkspace(window)
   await selectReviewMode(window)
@@ -237,3 +260,9 @@ try {
   chatGPT.stop()
   app.quit()
 }
+}
+
+app.whenReady().then(runDemo).catch((error) => {
+  process.stderr.write(`[demo] failed: ${error?.stack ?? error}\n`)
+  app.quit()
+})

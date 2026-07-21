@@ -15,7 +15,7 @@
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px 38px;
-  grid-template-rows: 27px 17px;
+  grid-template-rows: minmax(27px, auto) 17px;
   align-items: center;
   overflow: hidden;
   border: 1px solid var(--labo-line);
@@ -33,13 +33,15 @@
     grid-row: 1;
     min-width: 0;
     min-height: 27px;
-    max-height: 27px;
+    height: 27px;
+    max-height: 96px;
     box-sizing: border-box;
     resize: none;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: hidden;
     border: 0;
     outline: 0;
-    padding: 7px 12px 1px;
+    padding: 7px 12px 4px;
     color: var(--labo-text);
     background: transparent;
     box-shadow: none;

@@ -1,4 +1,5 @@
 import { ListChecks, Send, Sparkles } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
 
 export type AgentPromptMode = 'architecture' | 'card-editing' | 'reusable-card'
 
@@ -42,6 +43,16 @@ export function AgentPrompt({ busy = false, context, details, disabled = false, 
   value: string
 }) {
   const copy = MODE_COPY[mode]
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    const height = Math.min(Math.max(textarea.scrollHeight, 27), 96)
+    textarea.style.height = `${height}px`
+    textarea.style.overflowY = textarea.scrollHeight > 96 ? 'auto' : 'hidden'
+  }, [value])
 
   return <div className="agent-prompt-dock">
     <form className="agent-prompt" data-mode={mode} onSubmit={(event) => { event.preventDefault(); onSubmit() }}>
@@ -54,6 +65,7 @@ export function AgentPrompt({ busy = false, context, details, disabled = false, 
           event.currentTarget.form?.requestSubmit()
         }}
         placeholder={copy.placeholder}
+        ref={textareaRef}
         rows={1}
         value={value}
       />
