@@ -148,7 +148,8 @@ describe('LABO AI studios', () => {
     expect(await screen.findByRole('button', { name: 'Up to date' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: /StableRecommended/ }))
-    expect(await screen.findByRole('button', { name: 'Install update' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Switch to Stable' })).toBeEnabled()
+    expect(screen.getByText('The v0.1.47 source is already installed from Main. Switch only to return to the verified Stable channel.')).toBeInTheDocument()
   })
 
   it('opens Training Studio with real AdamW and Muon settings and PyTorch', () => {

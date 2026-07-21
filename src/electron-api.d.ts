@@ -76,6 +76,8 @@ interface DesktopUpdateStatus {
   installedRevision?: string
   latestTag?: string
   latestRevision?: string
+  latestCheckedAt?: number
+  cachedLatest?: boolean
   helperInstalled: boolean
   updateAvailable: boolean
   setupUrl: string

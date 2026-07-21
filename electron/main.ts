@@ -8,7 +8,7 @@ import { askLaboChannel, atomicRuntimeChannel, chatGPTSessionChannel, configureC
 import { askLabo } from './ask-labo.js'
 import { loadDesktopState, saveDesktopState } from './desktop-state.js'
 import { deleteOpenAIApiKey, getOpenAISettingsStatus, saveOpenAIApiKey, testOpenAIConnection } from './openai-credentials.js'
-import { desktopSetupReleaseUrl, getDesktopUpdateStatus, launchDesktopUpdate, validDesktopUpdateChannel } from './desktop-updates.js'
+import { cacheDesktopUpdateStatus, desktopSetupReleaseUrl, getDesktopUpdateStatus, launchDesktopUpdate, parseDesktopUpdateCache, restoreDesktopUpdateStatus, validDesktopUpdateChannel } from './desktop-updates.js'
 import { CodexAppServer } from './chatgpt-session.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
@@ -107,8 +107,13 @@ app.whenReady().then(() => {
   ipcMain.handle(saveDesktopStateChannel, (_event, payload: { scope?: unknown; data?: unknown }) => saveDesktopState(app.getPath('userData'), payload?.scope, payload?.data))
   ipcMain.handle(desktopUpdateStatusChannel, async (_event, payload: { channel?: unknown } | undefined) => {
     const channel = payload?.channel === undefined ? await desktopUpdateChannelPreference() : validDesktopUpdateChannel(payload.channel)
-    await saveDesktopUpdateChannelPreference(channel)
-    return getDesktopUpdateStatus(app.getPath('userData'), app.getVersion(), channel)
+    const current = await loadDesktopState(app.getPath('userData'), 'settings')
+    const settings = current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : {}
+    const previousCache = parseDesktopUpdateCache(settings.desktopUpdateCache)
+    const freshStatus = await getDesktopUpdateStatus(app.getPath('userData'), app.getVersion(), channel)
+    const nextCache = cacheDesktopUpdateStatus(previousCache, freshStatus)
+    await saveDesktopState(app.getPath('userData'), 'settings', { ...settings, desktopUpdateChannel: channel, desktopUpdateCache: nextCache })
+    return restoreDesktopUpdateStatus(freshStatus, nextCache)
   })
   ipcMain.handle(launchDesktopUpdateChannel, async (_event, payload: { channel?: unknown } | undefined) => {
     const channel = payload?.channel === undefined ? await desktopUpdateChannelPreference() : validDesktopUpdateChannel(payload.channel)

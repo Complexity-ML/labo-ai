@@ -93,11 +93,12 @@ export function DesktopUpdateSettings() {
   const sameSourceRevision = Boolean(installedRevision && latestRevision && installedRevision.length >= 7 && latestRevision.length >= 7
     && (installedRevision.startsWith(latestRevision) || latestRevision.startsWith(installedRevision)))
   const stableFallback = channel === 'stable' && installedChannel === 'main'
+  const sameSourceStableFallback = stableFallback && sameSourceRevision
   const upToDate = (!stableFallback && sameSourceRevision) || Boolean(channelMatches && normalizedInstalledRef && normalizedLatestRef && (channel === 'main'
     ? normalizedInstalledRef.startsWith(normalizedLatestRef) || normalizedLatestRef.startsWith(normalizedInstalledRef)
     : normalizedLatestRef === normalizedInstalledRef))
   const latestDisplay = status?.latestTag ?? (channelMatches ? `${installedRef} (installed)` : 'Unavailable')
-  const label = !status?.helperInstalled ? 'Get LABO AI Setup' : upToDate ? 'Up to date' : status.updateAvailable ? 'Install update' : 'Open LABO AI Setup'
+  const label = !status?.helperInstalled ? 'Get LABO AI Setup' : upToDate ? 'Up to date' : sameSourceStableFallback ? 'Switch to Stable' : status.updateAvailable ? 'Install update' : 'Open LABO AI Setup'
   return <article className="desktop-update-settings">
     <RefreshCw size={15} />
     <div>
@@ -111,11 +112,11 @@ export function DesktopUpdateSettings() {
         <div><dt>Installed</dt><dd>{installedRef}</dd></div>
         <div><dt>Installed channel</dt><dd>{installedChannel === 'main' ? 'Main' : 'Stable'}</dd></div>
         {installedChannel === 'main' && <div><dt>Source release</dt><dd>{sourceReleaseRef}</dd></div>}
-        <div><dt>{channel === 'main' ? 'Latest main commit' : 'Latest stable release'}</dt><dd>{latestDisplay}</dd></div>
+        <div><dt>{channel === 'main' ? 'Latest main commit' : 'Latest stable release'}</dt><dd>{latestDisplay}{status?.cachedLatest ? ' · cached' : ''}</dd></div>
       </dl>
       {checked && !error && !status?.error && <div className={`desktop-update-result ${status?.updateAvailable ? 'update-ready' : upToDate ? 'up-to-date' : 'update-unknown'}`}>
         {upToDate && <CheckCircle2 size={12} />}
-        <span>{status?.updateAvailable ? `${status.latestTag} is ready to install.` : upToDate ? sameSourceRevision && !channelMatches ? `${status?.latestTag} is the same source revision already installed.` : `You are up to date on ${installedRef}.` : 'Update check completed; the latest revision could not be confirmed.'}</span>
+        <span>{sameSourceStableFallback ? `The ${status?.latestTag} source is already installed from Main. Switch only to return to the verified Stable channel.` : status?.updateAvailable ? `${status.latestTag} is ready to install.` : upToDate ? sameSourceRevision && !channelMatches ? `${status?.latestTag} is the same source revision already installed.` : `You are up to date on ${installedRef}.` : 'Update check completed; the latest revision could not be confirmed.'}</span>
       </div>}
       {(error || status?.error) && <small>{error || status?.error}</small>}
       <div className="desktop-update-actions">

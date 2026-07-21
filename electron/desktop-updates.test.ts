@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { desktopRevisionsMatch, desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, desktopUpdateIsAvailable, getDesktopUpdateStatus, validDesktopUpdateChannel } from './desktop-updates'
+import { cacheDesktopUpdateStatus, desktopRevisionsMatch, desktopSetupReleaseUrl, desktopUpdateArguments, desktopUpdateHelperPath, desktopUpdateHelperPaths, desktopUpdateIsAvailable, getDesktopUpdateStatus, parseDesktopUpdateCache, restoreDesktopUpdateStatus, validDesktopUpdateChannel } from './desktop-updates'
 
 describe('desktop source-first updates', () => {
   it('uses a private Electron profile helper path on every desktop platform', () => {
@@ -48,5 +48,24 @@ describe('desktop source-first updates', () => {
       updateAvailable: false,
       setupUrl: desktopSetupReleaseUrl,
     })
+  })
+
+  it('keeps independent last-known Stable and Main metadata across channel switches', () => {
+    const stable = {
+      currentVersion: '0.1.47', channel: 'stable' as const, installedTag: 'main@761521d', installedChannel: 'main' as const,
+      latestTag: 'v0.1.47', latestRevision: '761521d0000000', helperInstalled: true, updateAvailable: true, setupUrl: desktopSetupReleaseUrl,
+    }
+    const main = {
+      currentVersion: '0.1.47', channel: 'main' as const, installedTag: 'main@761521d', installedChannel: 'main' as const,
+      latestTag: 'main@761521d', latestRevision: '761521d0000000', helperInstalled: true, updateAvailable: false, setupUrl: desktopSetupReleaseUrl,
+    }
+    const cache = cacheDesktopUpdateStatus(cacheDesktopUpdateStatus({}, stable, 100), main, 200)
+    expect(parseDesktopUpdateCache(cache)).toEqual(cache)
+
+    const restored = restoreDesktopUpdateStatus({
+      currentVersion: '0.1.47', channel: 'stable', installedTag: 'main@761521d', installedChannel: 'main',
+      helperInstalled: true, updateAvailable: false, setupUrl: desktopSetupReleaseUrl,
+    }, cache)
+    expect(restored).toMatchObject({ latestTag: 'v0.1.47', latestRevision: '761521d0000000', latestCheckedAt: 100, cachedLatest: true, updateAvailable: true })
   })
 })

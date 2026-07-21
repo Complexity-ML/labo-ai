@@ -11,11 +11,24 @@ export interface DesktopUpdateStatus {
   installedRevision?: string
   latestTag?: string
   latestRevision?: string
+  latestCheckedAt?: number
+  cachedLatest?: boolean
   helperInstalled: boolean
   updateAvailable: boolean
   setupUrl: string
   error?: string
 }
+
+export interface DesktopUpdateCacheEntry {
+  installedTag?: string
+  installedChannel?: DesktopUpdateChannel
+  installedRevision?: string
+  latestTag?: string
+  latestRevision?: string
+  checkedAt: number
+}
+
+export type DesktopUpdateCache = Partial<Record<DesktopUpdateChannel, DesktopUpdateCacheEntry>>
 
 export type DesktopUpdateChannel = 'stable' | 'main'
 
@@ -39,6 +52,61 @@ export function desktopUpdateIsAvailable(installedRef: string | undefined, lates
   if (selectedChannel === 'stable' && installedChannel === 'main') return Boolean(latestRef)
   if (desktopRevisionsMatch(installedRevision, latestRevision, 'main')) return false
   return Boolean(latestRef && (selectedChannel !== installedChannel || !desktopRevisionsMatch(installedRef, latestRef, selectedChannel)))
+}
+
+export function parseDesktopUpdateCache(value: unknown): DesktopUpdateCache {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const result: DesktopUpdateCache = {}
+  for (const channel of ['stable', 'main'] as const) {
+    const candidate = (value as Record<string, unknown>)[channel]
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+    const record = candidate as Record<string, unknown>
+    if (typeof record.checkedAt !== 'number' || !Number.isFinite(record.checkedAt)) continue
+    result[channel] = {
+      ...(typeof record.installedTag === 'string' ? { installedTag: record.installedTag } : {}),
+      ...(record.installedChannel === 'stable' || record.installedChannel === 'main' ? { installedChannel: record.installedChannel } : {}),
+      ...(typeof record.installedRevision === 'string' ? { installedRevision: record.installedRevision } : {}),
+      ...(typeof record.latestTag === 'string' ? { latestTag: record.latestTag } : {}),
+      ...(typeof record.latestRevision === 'string' ? { latestRevision: record.latestRevision } : {}),
+      checkedAt: record.checkedAt,
+    }
+  }
+  return result
+}
+
+export function cacheDesktopUpdateStatus(cache: DesktopUpdateCache, status: DesktopUpdateStatus, checkedAt = Date.now()): DesktopUpdateCache {
+  if (!status.latestTag && !status.latestRevision) return cache
+  return {
+    ...cache,
+    [status.channel]: {
+      installedTag: status.installedTag,
+      installedChannel: status.installedChannel,
+      installedRevision: status.installedRevision,
+      latestTag: status.latestTag,
+      latestRevision: status.latestRevision,
+      checkedAt,
+    },
+  }
+}
+
+export function restoreDesktopUpdateStatus(status: DesktopUpdateStatus, cache: DesktopUpdateCache): DesktopUpdateStatus {
+  if (status.latestTag || status.latestRevision) return status
+  const cached = cache[status.channel]
+  if (!cached?.latestTag && !cached?.latestRevision) return status
+  const installedTag = status.installedTag ?? cached.installedTag
+  const installedChannel = status.installedChannel ?? cached.installedChannel ?? (installedTag?.startsWith('main@') ? 'main' : 'stable')
+  const installedRevision = status.installedRevision ?? cached.installedRevision
+  return {
+    ...status,
+    installedTag,
+    installedChannel,
+    installedRevision,
+    latestTag: cached.latestTag,
+    latestRevision: cached.latestRevision,
+    latestCheckedAt: cached.checkedAt,
+    cachedLatest: true,
+    updateAvailable: desktopUpdateIsAvailable(installedTag, cached.latestTag, status.channel, installedChannel, installedRevision, cached.latestRevision),
+  }
 }
 
 export function desktopUpdateHelperPath(userData: string, platform = process.platform): string {
