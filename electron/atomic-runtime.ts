@@ -41,14 +41,17 @@ export interface AtomicRuntimePaths {
   runnerScript: string
 }
 
-export function resolveAtomicRuntimePaths(options: {
+export interface AtomicRuntimePathOptions {
   projectRoot?: string
   resourcesPath?: string
   homeDirectory?: string
+  userDataDirectory?: string
   configuredPython?: string
   environmentPath?: string
   platform?: NodeJS.Platform
-} = {}): AtomicRuntimePaths {
+}
+
+export function resolveAtomicRuntimePaths(options: AtomicRuntimePathOptions = {}): AtomicRuntimePaths {
   const root = options.projectRoot ?? projectRoot
   const resources = options.resourcesPath ?? (typeof process.resourcesPath === 'string' ? process.resourcesPath : root)
   const home = options.homeDirectory ?? homedir()
@@ -60,6 +63,8 @@ export function resolveAtomicRuntimePaths(options: {
   const pythonCandidates = [
     options.configuredPython,
     process.env.LABO_AI_PYTHON,
+    options.userDataDirectory && resolve(options.userDataDirectory, 'runtime', 'Scripts', 'python.exe'),
+    options.userDataDirectory && resolve(options.userDataDirectory, 'runtime', 'bin', 'python'),
     resolve(root, '.venv', 'Scripts', 'python.exe'),
     resolve(root, '.venv', 'bin', 'python'),
     resolve(home, 'Dev', 'labo-ai', '.venv', 'Scripts', 'python.exe'),
@@ -99,11 +104,11 @@ function validatePayload(payload: AtomicRuntimePayload): void {
   }
 }
 
-export async function runAtomicRuntime(payload: AtomicRuntimePayload): Promise<AtomicRuntimeTrace> {
+export async function runAtomicRuntime(payload: AtomicRuntimePayload, pathOptions: AtomicRuntimePathOptions = {}): Promise<AtomicRuntimeTrace> {
   validatePayload(payload)
   const input = JSON.stringify(payload)
   if (Buffer.byteLength(input) > maximumPayloadBytes) throw new Error('Atomic runtime payload is too large')
-  const { pythonExecutable, runnerScript } = resolveAtomicRuntimePaths()
+  const { pythonExecutable, runnerScript } = resolveAtomicRuntimePaths(pathOptions)
 
   return new Promise((resolvePromise, reject) => {
     const child = spawn(pythonExecutable, [runnerScript], {

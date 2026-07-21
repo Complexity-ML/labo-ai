@@ -79,7 +79,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
-  ipcMain.handle(atomicRuntimeChannel, (_event, payload: AtomicRuntimePayload) => runAtomicRuntime(payload))
+  ipcMain.handle(atomicRuntimeChannel, (_event, payload: AtomicRuntimePayload) => runAtomicRuntime(payload, app.isPackaged ? { userDataDirectory: app.getPath('userData') } : {}))
   ipcMain.handle(askLaboChannel, async (_event, payload) => {
     const session = await chatGPT.status()
     return session.connected ? chatGPT.ask(payload, await chatGPTPreferences()) : askLabo(payload)

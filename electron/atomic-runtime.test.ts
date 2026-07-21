@@ -37,6 +37,32 @@ describe('Electron atomic runtime bridge', () => {
     }
   })
 
+  it('prefers the managed installed runtime over PATH Python', () => {
+    const root = mkdtempSync(join(tmpdir(), 'labo-ai-managed-runtime-'))
+    try {
+      const userData = join(root, 'user-data')
+      const resources = join(root, 'resources')
+      mkdirSync(join(userData, 'runtime', 'Scripts'), { recursive: true })
+      mkdirSync(join(resources, 'runtime'), { recursive: true })
+      writeFileSync(join(userData, 'runtime', 'Scripts', 'python.exe'), '')
+      writeFileSync(join(resources, 'runtime', 'atomic_runtime.py'), '')
+
+      expect(resolveAtomicRuntimePaths({
+        projectRoot: join(root, 'missing-project'),
+        resourcesPath: resources,
+        homeDirectory: join(root, 'missing-home'),
+        userDataDirectory: userData,
+        environmentPath: '',
+        platform: 'win32',
+      })).toEqual({
+        pythonExecutable: join(userData, 'runtime', 'Scripts', 'python.exe'),
+        runnerScript: join(resources, 'runtime', 'atomic_runtime.py'),
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('runs a validated payload through the project-local Python runtime', async () => {
     const trace = await runAtomicRuntime({ kind: 'model', graph: gqaPreset })
 

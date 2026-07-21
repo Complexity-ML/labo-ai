@@ -1061,6 +1061,20 @@ fn perform_install(app: &AppHandle, channel: &str) -> Result<InstallResult, Stri
         36,
     );
     run_npm(&node, &source, &["ci"])?;
+    emit(app, "Runtime", "Preparing the isolated Python runtime…", 45);
+    let python_runtime = electron_user_data()?.join("runtime");
+    let python_runtime_argument = python_runtime.to_string_lossy().into_owned();
+    run_npm(
+        &node,
+        &source,
+        &[
+            "run",
+            "runtime:setup",
+            "--",
+            "--venv",
+            &python_runtime_argument,
+        ],
+    )?;
     emit(
         app,
         "Build",

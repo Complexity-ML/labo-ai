@@ -24,7 +24,7 @@ function updateJson(relativePath) {
 function replacePackageVersion(relativePath, packageName) {
   const path = resolve(root, relativePath)
   const source = readFileSync(path, 'utf8')
-  const packagePattern = new RegExp(`(name = "${packageName}"\\nversion = ")[^"]+("\\n)`)
+  const packagePattern = new RegExp(`(name = "${packageName}"\\r?\\nversion = ")[^"]+("\\r?\\n)`)
   const next = source.replace(packagePattern, `$1${version}$2`)
 
   if (next === source) {
