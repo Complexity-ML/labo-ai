@@ -3,7 +3,7 @@
 LABO AI is a desktop laboratory for composing neural architectures from executable atomic blocks. It combines a visual graph editor, generated PyTorch, step-by-step execution, and a constrained AI graph planner.
 
 - [Product page and Setup downloads](https://www.complexity-ai.fr/labo-ai)
-- [Narrated demo](https://youtu.be/ZmLuFFJaXgc)
+- [Narrated demo](https://youtu.be/Fv_PP0xiTj0)
 - [OpenAI Build Week submission](https://devpost.com/software/labo-ai)
 
 ## OpenAI Build Week: Codex and GPT-5.6
@@ -14,7 +14,7 @@ Codex accelerated the project across the Electron, React, TypeScript and Python 
 
 GPT-5.6 was used inside Codex for the cross-cutting implementation and debugging work. On desktop, Ask LABO can use the judge's ChatGPT session through the official Codex App Server; an explicitly configured OpenAI API key remains an optional fallback (`gpt-5.6-terra`). Ask LABO receives a bounded view of the card catalog and current graph, then plans graph changes that are validated locally before they can mutate the graph.
 
-The key product decisions remained human-directed: use atomic typed cards instead of an unrestricted code editor; preserve existing architectures as read-only in parallel mode; separate review from auto-apply; make architecture deletion explicitly targeted; keep card creation in a central visual modal; encrypt user API keys locally; and represent parallel computation through stable topology-aware XY placement. Codex helped turn those decisions into tested product behavior and iterate quickly when the first versions were ambiguous or unsafe.
+The key product decisions remained human-directed: use atomic typed cards instead of an unrestricted code editor; preserve existing architectures as read-only in parallel mode; separate review from auto-apply; make architecture deletion explicitly targeted; give reusable-card creation its own full-canvas visual workspace; encrypt user API keys locally; and represent parallel computation through stable topology-aware XY placement. Codex helped turn those decisions into tested product behavior and iterate quickly when the first versions were ambiguous or unsafe.
 
 ## Current capabilities
 
@@ -23,7 +23,7 @@ The key product decisions remained human-directed: use atomic typed cards instea
 - Executable Vision Transformer, multimodal image-editing, spatiotemporal video, and audio encoder starters with dedicated media atomics and tokenizer pipelines.
 - Drag-and-drop graph composition with typed elastic cables and deterministic topology-aware XY placement that preserves parallel lanes and minimizes crossings.
 - Two-way graph/PyTorch synchronization for supported semantic atoms.
-- Dedicated modal card builder with category-aware auto-composition, visual input/operation/output blocks, typed plugs, and a safe generated `nn.Module` preview.
+- Dedicated full-canvas reusable-card studio with Blocks, PyTorch and Split views, category-aware composition, typed plugs, agent assistance and a safe generated `nn.Module` preview.
 - Separate add and edit modes; existing cards open in a central editor and user-created library cards can be deleted.
 - Natural-language card search across native atomics and graph inputs.
 - Contextual card construction palettes whose operations and typed plugs follow the selected category.
