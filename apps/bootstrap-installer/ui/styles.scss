@@ -1,33 +1,8 @@
-:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #070b0b; color: #eef5f1; }
-* { box-sizing: border-box; }
-html, body { width: 100%; height: 100%; }
-body { margin: 0; display: grid; place-items: center; overflow: hidden; background: radial-gradient(circle at 12% 12%, rgba(36, 208, 139, .13), transparent 34%), radial-gradient(circle at 90% 80%, rgba(104, 92, 255, .12), transparent 38%), #070b0b; }
-body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .22; background-image: linear-gradient(rgba(110, 136, 124, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(110, 136, 124, .12) 1px, transparent 1px); background-size: 32px 32px; mask-image: linear-gradient(to bottom, black, transparent 76%); }
-main { position: relative; display: flex; flex-direction: column; width: min(620px, calc(100vw - 48px)); height: min(594px, calc(100vh - 28px)); min-height: 0; overflow: hidden; padding: 30px; border: 1px solid rgba(133, 170, 153, .25); border-radius: 22px; background: rgba(10, 15, 14, .94); box-shadow: 0 28px 90px rgba(0, 0, 0, .5); }
-header { display: flex; align-items: center; gap: 13px; }
-header span, .eyebrow { color: #6f8279; font: 600 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
-h1 { margin: 3px 0 0; font-size: 19px; letter-spacing: -.02em; }
-.mark { position: relative; width: 42px; height: 42px; border: 1px solid rgba(68, 231, 159, .5); border-radius: 12px; background: linear-gradient(145deg, rgba(49, 205, 139, .18), rgba(104, 92, 255, .16)); }
-.mark i { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #68e5ad; box-shadow: 0 0 14px rgba(104, 229, 173, .55); }
-.mark i:nth-child(1) { left: 8px; top: 9px; }.mark i:nth-child(2) { right: 8px; top: 9px; }.mark i:nth-child(3) { left: 8px; bottom: 9px; }.mark i:nth-child(4) { right: 8px; bottom: 9px; }
-.mark::after { content: ""; position: absolute; inset: 11px; border: 1px solid rgba(185, 172, 255, .8); transform: rotate(45deg); }
-.hero { flex: 0 0 auto; margin: 47px 0 28px; max-width: 530px; transition: margin .18s ease; }
-h2 { margin: 10px 0 12px; font-size: clamp(29px, 5vw, 42px); line-height: 1.04; letter-spacing: -.045em; }
-.hero p, .status-card p { color: #8e9c96; font-size: 13px; line-height: 1.65; }
-.status-card { flex: 0 1 auto; min-height: 0; padding: 17px; border: 1px solid #25322d; border-radius: 12px; background: rgba(15, 23, 20, .85); }
-.status-head { display: flex; justify-content: space-between; gap: 18px; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.status-head span { color: #63d9a3; text-transform: uppercase; letter-spacing: .1em; }.status-head strong { color: #d5e1dc; font-weight: 500; }
-.track { height: 4px; margin: 14px 0 12px; overflow: hidden; border-radius: 9px; background: #202924; }.track i { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #36d492, #8c7cff); transition: width .3s ease; }
-.status-card p { min-height: 42px; margin: 0; font: 10px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.status-card details { min-height: 0; margin-top: 12px; border-top: 1px solid #24302b; padding-top: 11px; }
-.status-card summary { color: #819088; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
-#log { max-height: clamp(88px, 18vh, 122px); margin: 10px 0 0; padding: 0 8px 0 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; list-style: none; }
-#log li { display: grid; grid-template-columns: 76px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(65, 82, 74, .28); color: #94a29b; font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
-#log time { color: #5ed29e; text-transform: uppercase; }
-footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 20px; }
-footer span { color: #64726c; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
-button { min-width: 145px; min-height: 42px; border: 1px solid #57b78c; border-radius: 9px; color: #edfff7; background: linear-gradient(135deg, #173c2d, #232344); font-weight: 650; cursor: pointer; }
-button:hover { border-color: #77e6b3; } button:disabled { opacity: .55; cursor: wait; }
-main:has(details[open]) .hero { margin: 24px 0 18px; }
-main:has(details[open]) .hero p { margin-bottom: 0; }
-main:has(details[open]) h2 { font-size: clamp(27px, 4vw, 36px); }
+@use "styles/tokens";
+@use "styles/base";
+@use "styles/shell";
+@use "styles/brand-header";
+@use "styles/hero-section";
+@use "styles/progress-card";
+@use "styles/install-footer";
+@use "styles/responsive";

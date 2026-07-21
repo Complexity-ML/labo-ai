@@ -7,30 +7,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div><span>COMPLEXITY</span><h1>LABO AI Setup</h1></div>
-      </header>
-      <section class="hero">
-        <span class="eyebrow">SOURCE-FIRST DESKTOP</span>
-        <h2>Install the latest LABO AI locally.</h2>
-        <p>The setup fetches the newest published GitHub release, prepares its own verified Node.js runtime, and builds the Electron laboratory on this computer.</p>
-      </section>
-      <section class="status-card">
-        <div class="status-head"><span id="stage">Ready</span><strong id="version">Checking latest release…</strong></div>
-        <div class="track"><i id="progress"></i></div>
-        <p id="message">Your workspaces and private cards stay in your local LABO AI profile during updates.</p>
-        <details>
-          <summary>Installation details</summary>
-          <ol id="log"><li><time>READY</time><span>Waiting to start.</span></li></ol>
-        </details>
-      </section>
-      <footer>
-        <span id="platform">Local install · rollback enabled</span>
-        <button id="install" type="button">Install latest</button>
-      </footer>
-    </main>
-    <script src="main.js"></script>
+    <main id="setup-app" class="setup-shell" aria-live="polite"></main>
+    <script type="module" src="main.js"></script>
   </body>
 </html>
