@@ -273,17 +273,12 @@ export function GraphCanvas({ editMode = false, graph, setGraph, selectedNodeId,
   const openCardMenu = (event: MouseEvent<HTMLDivElement>, node: ArchitectureNode) => {
     event.preventDefault()
     event.stopPropagation()
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const bounds = canvas.getBoundingClientRect()
-    const menuWidth = 190
-    const menuHeight = 126
     setSelectedNodeId(node.id)
     setCardMenu({
       nodeId: node.id,
       label: node.label,
-      x: Math.max(12, Math.min(event.clientX - bounds.left, bounds.width - menuWidth - 12)),
-      y: Math.max(12, Math.min(event.clientY - bounds.top, bounds.height - menuHeight - 12)),
+      x: event.clientX,
+      y: event.clientY,
     })
   }
 

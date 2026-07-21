@@ -3,18 +3,10 @@
 .card-builder-shell { display: contents; }
 
 .card-builder-workspace {
-  > .block-library {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    overflow: hidden;
-  }
-
   .card-builder-library-content {
-    height: 100%;
     box-sizing: border-box;
     align-content: start;
     grid-auto-rows: max-content;
-    overflow: auto;
   }
 
   .card-builder-save-family > label {
@@ -88,6 +80,7 @@
 .card-builder-port-summary {
   display: grid;
   gap: 6px;
+  margin-top: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--labo-line);
 

@@ -213,7 +213,6 @@
 .tokenizer-card-modal > footer button { min-height: 36px; border: 1px solid #353d47; border-radius: 8px; padding: 0 14px; color: #adb7b3; background: #171c20; font-size: 10px; }
 .tokenizer-card-modal > footer button:last-child { border-color: rgba(112,224,173,.34); color: #dff8ec; background: rgba(112,224,173,.1); }
 .tokenizer-card-modal > footer button:disabled { opacity: .38; cursor: not-allowed; }
-.tokenizer-library-context-menu { position: fixed; }
 .cable-draft { stroke-width: 2; stroke-dasharray: 5 3; opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
 .cable-help { display: flex; align-items: center; gap: 5px; margin-left: auto; color: #69717e; font-size: 7px; text-transform: none; }
 .training-canvas { min-height: 0; overflow: auto; display: grid; place-items: start center; padding: 48px 28px; background-image: linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size: 24px 24px; }
@@ -293,7 +292,6 @@
 .optimizer-preview { overflow: hidden; border: 1px solid rgba(132, 199, 174, .22); border-radius: 9px; background: #0b0f12; }
 .optimizer-preview > code { display: block; overflow: auto; padding: 12px; color: #aed4c6; font: 9px/1.55 var(--mono); white-space: nowrap; }
 .optimizer-creator-error { grid-column: 1 / -1; margin: 0; color: #ef9292; font: 9px/1.5 var(--mono); }
-.optimizer-context-menu { position: fixed; z-index: 260; }
 @media (max-width: 760px) {
   .optimizer-blockly-toolbar { grid-template-columns: 1fr; }
   .optimizer-recipe-tabs { overflow: auto; justify-self: stretch; }

@@ -427,7 +427,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
     setGraph((current) => {
       const position = desiredPosition ?? findOpenGraphPosition(current)
       const firstOutput = card.graph ? customCardOutputPorts(card.graph)[0]?.tensor : undefined
-      return addNode(current, { id, kind: 'custom-pytorch', label: card.label, role: firstOutput ?? card.outputRole ?? 'hidden', position, code: card.code, attributes: { inputRole: card.inputRole ?? 'hidden' }, ...(card.graph ? { customCardGraph: structuredClone(card.graph) } : {}) })
+      return addNode(current, { id, kind: 'custom-pytorch', label: card.label, role: firstOutput ?? card.outputRole ?? 'hidden', position, code: card.code, attributes: { inputRole: card.inputRole ?? 'hidden', customCardId: card.id }, ...(card.graph ? { customCardGraph: structuredClone(card.graph) } : {}) })
     })
     setSelectedNodeId(id)
   }
@@ -450,7 +450,7 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
       while (current.nodes.some((node) => node.id === candidate)) candidate = `${base}-${suffix++}`
       return candidate
     })()
-    const customNode: ArchitectureNode = { id: graphNodeId, kind: 'custom-pytorch', label: card.label, role: outputTensor, position: findOpenGraphPosition(current), code: card.code, attributes: { inputRole: inputTensor }, ...(cardGraph ? { customCardGraph: structuredClone(cardGraph) } : {}) }
+    const customNode: ArchitectureNode = { id: graphNodeId, kind: 'custom-pytorch', label: card.label, role: outputTensor, position: findOpenGraphPosition(current), code: card.code, attributes: { inputRole: inputTensor, customCardId: card.id }, ...(cardGraph ? { customCardGraph: structuredClone(cardGraph) } : {}) }
 
     if (destination === 'selected') {
       const source = current.nodes.find((node) => node.id === selectedNodeId)
@@ -559,7 +559,24 @@ export function ModelStudio({ askOpen = false, onCloseAsk = () => undefined, onE
     if (editingNodeId && removed.has(editingNodeId)) closeCardEditor()
   }
 
-  const deleteCustomCardDefinition = (cardId: string) => setCustomCards((current) => current.filter((card) => card.id !== cardId))
+  const deleteCustomCardDefinition = (cardId: string) => {
+    const legacyPrefix = `custom-${cardId}`
+    const removedNodeIds = new Set(graph.nodes.filter((node) => {
+      if (node.kind !== 'custom-pytorch') return false
+      if (node.attributes?.customCardId === cardId) return true
+      if (node.id === legacyPrefix) return true
+      const legacySuffix = node.id.startsWith(`${legacyPrefix}-`) ? node.id.slice(legacyPrefix.length + 1) : ''
+      return /^\d+$/.test(legacySuffix)
+    }).map((node) => node.id))
+
+    setCustomCards((current) => current.filter((card) => card.id !== cardId))
+    if (removedNodeIds.size === 0) return
+    let next = graph
+    for (const nodeId of removedNodeIds) next = removeNode(next, nodeId)
+    setGraph(next)
+    if (removedNodeIds.has(selectedNodeId)) setSelectedNodeId(next.nodes[0]?.id ?? '')
+    if (editingNodeId && removedNodeIds.has(editingNodeId)) closeCardEditor()
+  }
 
   useEffect(() => {
     if (!requestedCard) return

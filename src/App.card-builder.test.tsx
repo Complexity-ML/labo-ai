@@ -81,6 +81,32 @@ describe('LABO AI card builder', () => {
     expect(code).toContain('kind=custom-card-graph')
     expect(screen.getByRole('button', { name: 'Select My projection' })).toBeInTheDocument()
   })
+
+  it('removes only custom-card graph instances when their library definition is deleted', async () => {
+    connectCardAgent('linear-projection', 'Disposable projection')
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Blank starter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a disposable projection' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await applyCardAgentPlan()
+    await waitFor(() => expect(screen.getByLabelText('Card construction blocks')).toHaveTextContent('Linear projection'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card name' }), { target: { value: 'Disposable projection' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create reusable architecture' }))
+
+    expect(screen.getByRole('button', { name: 'Select Disposable projection' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Hidden State' })).toBeInTheDocument()
+    expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).toContain('kind=custom-card-graph')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete custom card Disposable projection' }))
+
+    expect(screen.queryByRole('button', { name: 'Add Disposable projection' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Select Disposable projection' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Hidden State' })).toBeInTheDocument()
+    await waitFor(() => expect((screen.getByRole('textbox', { name: 'PyTorch editor' }) as HTMLTextAreaElement).value).not.toContain('kind=custom-card-graph'))
+  })
   
   it('returns from the dedicated Card Builder workspace to Model Studio', async () => {
     render(<App />)

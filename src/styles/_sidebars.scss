@@ -1,6 +1,6 @@
 @use 'tokens' as *;
 
-.block-library,
+.studio-library-scroll,
 .inspector {
   scrollbar-color: rgb(112 224 173 / 20%) transparent;
   scrollbar-width: thin;
@@ -11,11 +11,12 @@
     border-radius: 10px;
     background: rgb(112 224 173 / 17%);
   }
+}
 
+.block-library,
+.inspector {
   .panel-heading {
-    position: sticky;
     z-index: 12;
-    top: 0;
     justify-content: flex-start;
     color: #a9b3b0;
     background: linear-gradient(180deg, rgb(17 23 24 / 98%), rgb(12 17 18 / 96%));
@@ -35,9 +36,24 @@
 }
 
 .block-library {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
   background:
     linear-gradient(90deg, rgb(112 224 173 / 2.5%), transparent 44px),
     var(--labo-panel);
+}
+
+.studio-library-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.inspector .panel-heading {
+  position: sticky;
+  top: 0;
 }
 
 .block-group {

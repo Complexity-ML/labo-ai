@@ -24,7 +24,10 @@ export function StudioPanelHeading({ children, icon }: { children: ReactNode; ic
 }
 
 export function StudioLibrary({ children, className = '', heading, icon }: { children: ReactNode; className?: string; heading: ReactNode; icon: ReactNode }) {
-  return <aside className={`block-library ${className}`.trim()}><StudioPanelHeading icon={icon}>{heading}</StudioPanelHeading>{children}</aside>
+  return <aside className={`block-library ${className}`.trim()}>
+    <StudioPanelHeading icon={icon}>{heading}</StudioPanelHeading>
+    <div className="studio-library-scroll">{children}</div>
+  </aside>
 }
 
 export function StudioEditor({ children, className = '' }: { children: ReactNode; className?: string }) {
