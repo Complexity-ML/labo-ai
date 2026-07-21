@@ -13,6 +13,7 @@ import type { CustomPyTorchCard } from './custom-card'
 import { StudioEditor, StudioInspector, StudioLibrary, StudioStatusbar, StudioWorkspace } from '../studio/StudioShell'
 import { StudioChoiceMenu } from '../studio/StudioChoiceMenu'
 import { AgentPrompt } from '../studio/AgentPrompt'
+import { AgentActivityPanel, type AgentActivityItem } from '../studio/AgentActivityPanel'
 import { setLibraryDragPreview } from '../studio/libraryDragPreview'
 import { AtomicPlayer, type AtomicPlayerSnapshot } from '../core/atomic-player'
 import { executionLayers } from '../core/execution-plan'
@@ -102,10 +103,13 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
   const [paletteCategory, setPaletteCategory] = useState<ModelAtomCategory | 'all'>('composition')
   const [error, setError] = useState('')
   const [agentBusy, setAgentBusy] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const [activities, setActivities] = useState<AgentActivityItem[]>([])
   const [pendingAgentPlan, setPendingAgentPlan] = useState<PendingCardAgentPlan>()
   const [destination, setDestination] = useState<CustomCardDestination>('new-architecture')
   const [playerSnapshot, setPlayerSnapshot] = useState<AtomicPlayerSnapshot>({ status: 'idle', results: [] })
   const playerRef = useRef<AtomicPlayer | null>(null)
+  const activeActivityIdRef = useRef<string | undefined>(undefined)
 
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId)
   const generated = useMemo(() => {
@@ -192,17 +196,27 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedCard?.requestId])
 
-  const composePrompt = async () => {
-    if (!need.trim() || agentBusy) return
+  const updateActivity = (id: string, patch: Partial<AgentActivityItem>) => {
+    setActivities((current) => current.map((activity) => activity.id === id ? { ...activity, ...patch } : activity))
+  }
+
+  const composePrompt = async (requestedNeed = need) => {
+    const prompt = requestedNeed.trim()
+    if (!prompt || agentBusy) return
+    const activityId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    activeActivityIdRef.current = activityId
+    setActivities((current) => [{ id: activityId, prompt, status: 'running' as const, createdAt: Date.now() }, ...current].slice(0, 20))
+    setActivityOpen(true)
     if (!window.labo?.askLabo) {
       setError('Connect Ask LABO before composing a reusable card. No graph was changed.')
+      updateActivity(activityId, { status: 'failed', error: 'Connect Ask LABO before composing a reusable card.' })
       return
     }
     setAgentBusy(true)
     setError('')
     try {
       const plan = await window.labo.askLabo({
-        request: `Compose a reusable typed card graph for this need: ${need.trim()}`,
+        request: `Compose a reusable typed card graph for this need: ${prompt}`,
         context: { ...createAgentGraphContext(graph), cardBuilderMode: true, responseLocale: language },
       })
       const preview = previewAgentGraphPlan(graph, plan)
@@ -212,8 +226,19 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
       if (errors.length > 0) throw new Error(errors[0])
       const suggestedName = plan.createdBlocks[0]?.label ?? plan.addedBlocks.findLast((block) => block.atomId !== 'hidden-state-input' && !block.atomId.endsWith('-input'))?.reason.split(/[.!?]/)[0]?.slice(0, 52) ?? plan.summary.split(/[.!?]/)[0]?.slice(0, 52) ?? 'Agent composed card'
       setPendingAgentPlan({ composedGraph, plan, preview, suggestedName })
+      updateActivity(activityId, {
+        status: 'review',
+        summary: plan.summary,
+        accepted: preview.acceptedBlocks.length + preview.acceptedCreatedBlocks.length + preview.accepted.length + (plan.movedBlocks?.length ?? 0),
+        rejected: preview.rejectedBlocks.length + preview.rejected.length + preview.rejectedMutations.length + plan.warnings.length,
+        missing: plan.missingBlocks.length,
+        tools: plan.toolTrace?.map((item) => item.tool) ?? [],
+        plan,
+      })
     } catch (reason) {
-      setError(`LABO agent did not change the card. ${reason instanceof Error ? reason.message : String(reason)}`)
+      const message = reason instanceof Error ? reason.message : String(reason)
+      setError(`LABO agent did not change the card. ${message}`)
+      updateActivity(activityId, { status: 'failed', error: message })
     } finally { setAgentBusy(false) }
   }
 
@@ -231,6 +256,24 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
     setName(pendingAgentPlan.suggestedName)
     setSelectedNodeId(pendingAgentPlan.composedGraph.nodes.find((node) => node.kind !== 'input')?.id ?? '')
     setPendingAgentPlan(undefined)
+    if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'applied' })
+    setActivityOpen(true)
+  }
+
+  const discardPendingAgentPlan = () => {
+    if (activeActivityIdRef.current) updateActivity(activeActivityIdRef.current, { status: 'discarded' })
+    setPendingAgentPlan(undefined)
+    setActivityOpen(true)
+  }
+
+  const reviewActivity = (activity: AgentActivityItem) => {
+    if (!activity.plan) return
+    const preview = previewAgentGraphPlan(graph, activity.plan)
+    const composedGraph = layoutArchitectureGraph(preview.graph)
+    const suggestedName = activity.plan.createdBlocks[0]?.label ?? activity.plan.summary.split(/[.!?]/)[0]?.slice(0, 52) ?? 'Agent composed card'
+    activeActivityIdRef.current = activity.id
+    setPendingAgentPlan({ composedGraph, plan: activity.plan, preview, suggestedName })
+    setActivityOpen(false)
   }
 
   useEffect(() => {
@@ -252,11 +295,12 @@ export const CustomCardCreator = forwardRef<CustomCardCreatorHandle, { editMode:
       </StudioEditor>
       <StudioInspector heading="INSPECTOR" hidden={!inspectorOpen} icon={<Cpu size={14} />}><section className="inspector-section"><div className="section-title">Selection</div><div className="selection-card"><span className="selection-icon"><Zap size={15} /></span><div><strong>{selectedNode?.label ?? 'No selection'}</strong><small>{selectedNode?.id ?? '—'}</small></div></div><div className="card-builder-port-summary"><span>EXPOSED PLUGS</span><strong>{cardInputs.length} in · {cardOutputs.length} out</strong></div>{selectedNode ? <div className="card-builder-inspector-fields"><label><span>Card label</span><input aria-label="Selected internal card label" onChange={(event) => setGraph((current) => ({ ...current, nodes: current.nodes.map((node) => node.id === selectedNode.id ? { ...node, label: event.target.value } : node) }))} value={selectedNode.label} /></label>{selectedNode.kind === 'semantic' && selectedNode.atomId && modelAtomRegistry[selectedNode.atomId]?.settings.map((setting) => <label key={setting.id}><span>{setting.id}</span>{setting.type === 'boolean' ? <input checked={Boolean(selectedNode.attributes?.[setting.id])} onChange={(event) => setGraph((current) => updateNodeAttributes(current, selectedNode.id, { [setting.id]: event.target.checked }))} type="checkbox" /> : <input onChange={(event) => setGraph((current) => updateNodeAttributes(current, selectedNode.id, { [setting.id]: setting.type === 'number' ? Number(event.target.value) : event.target.value }))} type={setting.type === 'number' ? 'number' : 'text'} value={String(selectedNode.attributes?.[setting.id] ?? setting.default)} />}</label>)}<button className="card-builder-delete" onClick={() => deleteNode(selectedNode.id)}><Trash2 size={12} />Delete internal card</button></div> : <p className="blank-graph-hint">Choose a card atom from the library.</p>}</section></StudioInspector>
     </StudioWorkspace>
-    <StudioStatusbar className="model-statusbar card-builder-statusbar"><AgentPrompt busy={agentBusy} mode="reusable-card" onChange={setNeed} onSubmit={() => void composePrompt()} value={need} /><span><span className={`status-dot ${validationErrors.length === 0 ? '' : 'invalid'}`} /> Card IR {graph.nodes.length === 0 ? 'blank' : validationErrors.length === 0 ? 'valid' : 'incomplete'}</span><span>{graph.nodes.length} nodes · {graph.edges.length} links</span><span className="status-spacer" /><span>PyTorch 2.7</span><span>LABO Runtime · local</span></StudioStatusbar>
-    {pendingAgentPlan && <div className="ask-labo-backdrop review-open" onPointerDown={(event) => { if (event.target === event.currentTarget) setPendingAgentPlan(undefined) }}>
+    {activityOpen && !pendingAgentPlan && <AgentActivityPanel activities={activities} busy={agentBusy} onClear={() => { setActivities([]); activeActivityIdRef.current = undefined }} onClose={() => setActivityOpen(false)} onRetry={(activity) => { setNeed(activity.prompt); void composePrompt(activity.prompt) }} onReview={reviewActivity} />}
+    <StudioStatusbar className="model-statusbar card-builder-statusbar"><AgentPrompt busy={agentBusy} details={{ active: activityOpen, count: activities.length > 0 ? (activities.some((activity) => activity.status === 'running') ? '…' : activities.length) : undefined, label: 'Open agent activity', onToggle: () => setActivityOpen((current) => !current) }} mode="reusable-card" onChange={setNeed} onSubmit={() => void composePrompt()} value={need} /><span><span className={`status-dot ${validationErrors.length === 0 ? '' : 'invalid'}`} /> Card IR {graph.nodes.length === 0 ? 'blank' : validationErrors.length === 0 ? 'valid' : 'incomplete'}</span><span>{graph.nodes.length} nodes · {graph.edges.length} links</span><span className="status-spacer" /><span>PyTorch 2.7</span><span>LABO Runtime · local</span></StudioStatusbar>
+    {pendingAgentPlan && <div className="ask-labo-backdrop review-open" onPointerDown={(event) => { if (event.target === event.currentTarget) discardPendingAgentPlan() }}>
       <aside aria-label="Ask LABO" aria-modal="true" className="ask-labo-panel has-plan" role="dialog">
-        <header className="ask-labo-header"><span><Sparkles size={15} />{agentPlanReviewText[language].title}</span><button aria-label={agentPlanReviewText[language].close} onClick={() => setPendingAgentPlan(undefined)} type="button"><X size={15} /></button></header>
-        <AgentPlanReview language={language} onApply={applyPendingAgentPlan} onDiscard={() => setPendingAgentPlan(undefined)} plan={pendingAgentPlan.plan} preview={pendingAgentPlan.preview} />
+        <header className="ask-labo-header"><span><Sparkles size={15} />{agentPlanReviewText[language].title}</span><button aria-label={agentPlanReviewText[language].close} onClick={discardPendingAgentPlan} type="button"><X size={15} /></button></header>
+        <AgentPlanReview language={language} onApply={applyPendingAgentPlan} onDiscard={discardPendingAgentPlan} plan={pendingAgentPlan.plan} preview={pendingAgentPlan.preview} />
       </aside>
     </div>}
   </section>

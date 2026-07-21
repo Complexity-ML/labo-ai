@@ -202,6 +202,27 @@ describe('LABO AI card builder', () => {
     expect(askLabo).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({ cardBuilderMode: true }) }))
     expect(within(screen.getByRole('region', { name: 'Create model card' })).getByRole('button', { name: 'Select Expert GELU' })).toBeInTheDocument()
   })
+
+  it('keeps reusable-card agent activity visible across graph and view rerenders', async () => {
+    connectCardAgent('linear-projection', 'Persistent projection')
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reusable card' }))
+    await screen.findByRole('region', { name: 'Create model card' })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom card need' }), { target: { value: 'Create a persistent projection' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compose card graph' }))
+    await applyCardAgentPlan()
+
+    const activity = await screen.findByLabelText('Agent activity')
+    expect(activity).toHaveTextContent('Create a persistent projection')
+    expect(activity).toHaveTextContent('applied')
+    expect(screen.getByRole('button', { name: 'Open agent activity' })).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'PyTorch' }))
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('Create a persistent projection')
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks' }))
+    expect(screen.getByLabelText('Agent activity')).toHaveTextContent('applied')
+  })
   
   it('changes the real atomic palette with the selected family', async () => {
     render(<App />)

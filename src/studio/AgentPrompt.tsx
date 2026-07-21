@@ -60,6 +60,9 @@ export function AgentPrompt({ busy = false, context, details, disabled = false, 
     if (!form) return
     const publishHeight = () => document.documentElement.style.setProperty('--labo-agent-prompt-height', `${form.offsetHeight}px`)
     publishHeight()
+    if (typeof ResizeObserver === 'undefined') {
+      return () => document.documentElement.style.removeProperty('--labo-agent-prompt-height')
+    }
     const observer = new ResizeObserver(publishHeight)
     observer.observe(form)
     return () => {
