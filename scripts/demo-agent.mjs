@@ -117,6 +117,19 @@ async function selectReviewMode(window) {
   await clickButton(window, 'Close LABO AI settings')
 }
 
+async function clearAgentActivity(window) {
+  const activityOpen = await evaluate(window, `document.querySelector('[aria-label="Agent activity"]') !== null`)
+  if (!activityOpen) {
+    await clickButton(window, 'Open agent activity')
+    await waitFor(window, `document.querySelector('[aria-label="Agent activity"]') !== null`)
+  }
+  await clickButton(window, 'Clear')
+  if (await evaluate(window, `document.querySelector('[aria-label="Agent activity"]') !== null`)) {
+    await clickButton(window, 'Close agent activity')
+  }
+  await waitFor(window, `document.querySelector('[aria-label="Agent activity"]') === null`)
+}
+
 async function runDemo() {
 process.stderr.write('[demo] electron ready\n')
 const chatGPT = new CodexAppServer(
@@ -190,8 +203,8 @@ try {
   await setTextarea(window, 'Hello', 85)
   await clickButton(window, 'Propose graph changes')
   await waitFor(window, `document.querySelector('[aria-label="Agent activity"] li[data-status="answered"]') !== null`)
-  await cue(window, '1 · Conversation', 'Hello.', 'The same prompt understands ordinary conversation and graph-building requests.', 5200)
-  await clickButton(window, 'Close agent activity')
+  await cue(window, '1 · Conversation', 'Hello.', 'The same prompt understands ordinary conversation and graph-building requests.', 1400)
+  await clearAgentActivity(window)
 
   process.stderr.write('[demo] submitting graph build request\n')
   await setTextarea(window, buildPrompt, 7)
@@ -205,6 +218,7 @@ try {
 
   await clickButton(window, 'Apply full plan')
   await waitFor(window, `document.querySelector('.agent-plan-review') === null && document.querySelectorAll('.architecture-node').length >= 12`)
+  await clearAgentActivity(window)
   await evaluate(window, `(() => {
     const panel = (label) => [...document.querySelectorAll('.panel-visibility-button')].find((button) => button.textContent.includes(label))
     if (panel('Library')?.getAttribute('aria-pressed') === 'true') panel('Library')?.click()
@@ -225,6 +239,7 @@ try {
 
   await clickButton(window, 'Apply full plan')
   await waitFor(window, `document.querySelector('.agent-plan-review') === null && document.querySelectorAll('.architecture-node').length >= 16`)
+  await clearAgentActivity(window)
   await evaluate(window, `(() => {
     const input = document.querySelector('input[aria-label="Model generation prompt"]')
     if (input) {
@@ -257,6 +272,10 @@ try {
 
   await clickButton(window, 'Open agent activity')
   await cue(window, 'Agent activity', 'Conversation and graph tools in one trace', 'The final history exposes accepted operations, validation and tool usage.', 6500)
+  await clickButton(window, 'Close agent activity')
+  await waitFor(window, `document.querySelector('[aria-label="Agent activity"]') === null`)
+  await clickButton(window, 'Split')
+  await cue(window, 'Final view', 'Typed graph and synchronized PyTorch', 'The demo ends on the complete architecture and its executable source.', 2800)
   await evaluate(window, `document.querySelector('#labo-demo-cue')?.remove()`)
   process.stderr.write('[demo] complete; edit API waiting time down to a short jump cut\n')
   if (keepOpen) await new Promise(() => undefined)
