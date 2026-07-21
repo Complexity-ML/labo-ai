@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { applicationSettingsRecord, readApplicationSettings, saveApplicationSettings } from './application-appearance'
+import { applicationSettingsRecord, readApplicationSettings, readLocalApplicationSettings, saveApplicationSettings } from './application-appearance'
 
 export type LaboLanguage = 'en' | 'fr'
 
@@ -10,6 +10,10 @@ function validLanguage(value: unknown): value is LaboLanguage {
 }
 
 export function readLaboLanguage(): LaboLanguage {
+  const activeLanguage = document.documentElement.dataset.laboLanguage
+  if (validLanguage(activeLanguage)) return activeLanguage
+  const localLanguage = readLocalApplicationSettings().appearance?.language
+  if (validLanguage(localLanguage)) return localLanguage
   return document.documentElement.lang.toLowerCase().startsWith('fr') ? 'fr' : 'en'
 }
 
@@ -32,16 +36,18 @@ export async function saveLaboLanguage(language: LaboLanguage): Promise<void> {
   applyLaboLanguage(language)
   try {
     const { authenticated, settings } = await readApplicationSettings()
-    await saveApplicationSettings({
+    const nextSettings = {
       ...settings,
       appearance: { ...applicationSettingsRecord(settings.appearance), language },
-    }, authenticated)
+    }
+    await saveApplicationSettings(nextSettings, authenticated, { appearance: { language } })
   } catch {
     // A language preference must never prevent the workspace from opening.
   }
 }
 
 export async function initializeLaboLanguage(): Promise<LaboLanguage> {
+  applyLaboLanguage(readLaboLanguage())
   const language = await loadLaboLanguage()
   applyLaboLanguage(language)
   return language

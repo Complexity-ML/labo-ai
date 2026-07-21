@@ -47,16 +47,22 @@ export async function loadDesktopState(userDataDirectory: string, scope: unknown
 
 export function saveDesktopState(userDataDirectory: string, scope: unknown, data: unknown): Promise<{ saved: true }> {
   if (!validScope(scope)) return Promise.reject(new Error('Invalid LABO desktop state scope'))
+  if (scope === 'settings' && (!data || typeof data !== 'object' || Array.isArray(data))) {
+    return Promise.reject(new Error('Invalid LABO desktop settings patch'))
+  }
   const serialized = JSON.stringify(data)
   if (typeof serialized !== 'string') return Promise.reject(new Error('Invalid LABO desktop state payload'))
   if (serialized.length > 10_000_000) return Promise.reject(new Error('LABO desktop state is too large'))
   writeQueue = writeQueue.then(async () => {
     const database = await openDatabase(userDataDirectory)
     try {
+      const conflictUpdate = scope === 'settings'
+        ? 'payload = json_patch(workspace_state.payload, excluded.payload), updated_at = excluded.updated_at'
+        : 'payload = excluded.payload, updated_at = excluded.updated_at'
       database.prepare(`
         INSERT INTO workspace_state(scope, payload, updated_at)
         VALUES (?, ?, ?)
-        ON CONFLICT(scope) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+        ON CONFLICT(scope) DO UPDATE SET ${conflictUpdate}
       `).run(scope, serialized, Date.now())
     } finally {
       database.close()

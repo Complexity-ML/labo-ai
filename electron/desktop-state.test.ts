@@ -28,4 +28,24 @@ describe('desktop SQLite workspace state', () => {
     directory = await mkdtemp(join(tmpdir(), 'labo-ai-state-'))
     await expect(saveDesktopState(directory, 'secret', {})).rejects.toThrow('Invalid LABO desktop state scope')
   })
+
+  it('atomically merges independent settings patches', async () => {
+    directory = await mkdtemp(join(tmpdir(), 'labo-ai-state-'))
+    await saveDesktopState(directory, 'settings', {
+      appearance: { theme: 'labo-dark', language: 'en' },
+      chatGPT: { model: 'gpt-5.6-terra', effort: 'medium' },
+    })
+
+    await Promise.all([
+      saveDesktopState(directory, 'settings', { appearance: { theme: 'complexity-spectrum' } }),
+      saveDesktopState(directory, 'settings', { chatGPT: { effort: 'high' } }),
+      saveDesktopState(directory, 'settings', { desktopUpdateChannel: 'stable' }),
+    ])
+
+    expect(await loadDesktopState(directory, 'settings')).toEqual({
+      appearance: { theme: 'complexity-spectrum', language: 'en' },
+      chatGPT: { model: 'gpt-5.6-terra', effort: 'high' },
+      desktopUpdateChannel: 'stable',
+    })
+  })
 })

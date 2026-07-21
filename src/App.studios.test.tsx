@@ -73,7 +73,6 @@ describe('LABO AI studios', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use LABO Dark theme' }))
 
     await waitFor(() => expect(saveDesktopState).toHaveBeenCalledWith('settings', {
-      desktopUpdateChannel: 'main',
       appearance: { theme: 'labo-dark' },
     }))
   })
@@ -95,7 +94,7 @@ describe('LABO AI studios', () => {
     fireEvent.click(screen.getByRole('button', { name: 'EnglishInterface and plans in English' }))
 
     await waitFor(() => expect(saveDesktopState).toHaveBeenCalledWith('settings', {
-      appearance: { theme: 'labo-dark', language: 'en' },
+      appearance: { language: 'en' },
     }))
     expect(document.documentElement).toHaveAttribute('lang', 'en')
     delete window.labo

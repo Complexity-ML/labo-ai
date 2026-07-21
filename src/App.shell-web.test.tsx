@@ -68,7 +68,7 @@ describe('LABO AI shell web', () => {
     expect(screen.queryByRole('dialog', { name: 'Search cards' })).not.toBeInTheDocument()
   })
   
-  it('keeps an authenticated web workspace on the user-scoped server without browser storage', async () => {
+  it('keeps workspace data on the account and a local fallback for visual preferences', async () => {
     const saveWebWorkspace = vi.fn(async () => ({ saved: true as const, updatedAt: Date.now() }))
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
     window.labo = {
@@ -88,12 +88,12 @@ describe('LABO AI shell web', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
   
     await waitFor(() => expect(saveWebWorkspace).toHaveBeenCalled(), { timeout: 2_000 })
-    expect(setItem).not.toHaveBeenCalled()
+    expect(setItem).toHaveBeenCalledWith('labo.web.preferences.v1', expect.stringContaining('labo-dark'))
     delete window.labo
     setItem.mockRestore()
   })
   
-  it('keeps a guest web workspace ephemeral', async () => {
+  it('keeps a guest workspace ephemeral but preserves its visual preference locally', async () => {
     const saveWebWorkspace = vi.fn(async () => ({ saved: true as const, updatedAt: Date.now() }))
     window.labo = {
       platform: 'web',
@@ -104,6 +104,9 @@ describe('LABO AI shell web', () => {
   
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Open LABO settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Application' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use Complexity Spectrum theme' }))
+    await waitFor(() => expect(window.localStorage.getItem('labo.web.preferences.v1')).toContain('complexity-spectrum'))
     fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create and open a blank workspace' }))
     await new Promise((resolve) => setTimeout(resolve, 850))

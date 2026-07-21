@@ -9,8 +9,7 @@ use std::{
     process::Command,
     sync::atomic::{AtomicBool, Ordering},
     thread,
-    time::Duration,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tempfile::TempDir;
@@ -969,6 +968,26 @@ fn restore_setup_after_handoff_failure(app: &AppHandle) {
 
 #[cfg(target_os = "windows")]
 fn stop_running_application() -> Result<(), String> {
+    let destination = app_destination()?;
+    let destination_literal = powershell_literal(&destination);
+    let script = format!(
+        "$root = '{destination_literal}'.TrimEnd('\\'); \
+         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | \
+           Where-Object {{ $_.ExecutablePath -and ($_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) }} | \
+           ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+    );
+    let _ = background_command("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .output();
     let _ = background_command("taskkill")
         .args(["/IM", "LABO AI.exe", "/T", "/F"])
         .output();
@@ -996,18 +1015,56 @@ fn stop_running_application() -> Result<(), String> {
     Ok(())
 }
 
+fn retryable_filesystem_error(error: &io::Error) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        return matches!(error.raw_os_error(), Some(5 | 32 | 33))
+            || error.kind() == io::ErrorKind::PermissionDenied;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = error;
+        false
+    }
+}
+
+fn retry_filesystem_operation(mut operation: impl FnMut() -> io::Result<()>) -> io::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        match operation() {
+            Ok(()) => return Ok(()),
+            Err(error) if retryable_filesystem_error(&error) && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(250));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn remove_application_directory(path: &Path) -> io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    retry_filesystem_operation(|| fs::remove_dir_all(path))
+}
+
+fn rename_application_directory(source: &Path, destination: &Path) -> io::Result<()> {
+    retry_filesystem_operation(|| fs::rename(source, destination))
+}
+
 fn activate_application(next: &Path, destination: &Path, previous: &Path) -> Result<(), String> {
     if previous.exists() {
-        fs::remove_dir_all(previous).map_err(|error| error.to_string())?;
+        remove_application_directory(previous)
+            .map_err(|error| format!("Unable to remove the previous rollback copy: {error}"))?;
     }
     let had_previous = destination.exists();
     if had_previous {
-        fs::rename(destination, previous)
+        rename_application_directory(destination, previous)
             .map_err(|error| format!("Unable to preserve the previous LABO AI build: {error}"))?;
     }
-    if let Err(error) = fs::rename(next, destination) {
+    if let Err(error) = rename_application_directory(next, destination) {
         if had_previous && previous.exists() {
-            let _ = fs::rename(previous, destination);
+            let _ = rename_application_directory(previous, destination);
         }
         return Err(format!(
             "Unable to activate the new LABO AI build; the previous build was restored: {error}"
@@ -1285,7 +1342,9 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{atom_revision, release_is_newer, version_parts};
+    use super::{activate_application, atom_revision, release_is_newer, version_parts};
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn reads_the_head_commit_from_the_public_github_atom_feed() {
@@ -1302,5 +1361,29 @@ mod tests {
         assert!(release_is_newer("v999.0.0"));
         assert!(!release_is_newer(env!("CARGO_PKG_VERSION")));
         assert!(!release_is_newer("v0.0.1"));
+    }
+
+    #[test]
+    fn activates_a_build_and_keeps_one_rollback_copy() {
+        let root = tempdir().unwrap();
+        let destination = root.path().join("LABO AI");
+        let next = root.path().join("LABO AI.next");
+        let previous = root.path().join("LABO AI.previous");
+        fs::create_dir_all(&destination).unwrap();
+        fs::create_dir_all(&next).unwrap();
+        fs::write(destination.join("version.txt"), "old").unwrap();
+        fs::write(next.join("version.txt"), "new").unwrap();
+
+        activate_application(&next, &destination, &previous).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("version.txt")).unwrap(),
+            "new"
+        );
+        assert_eq!(
+            fs::read_to_string(previous.join("version.txt")).unwrap(),
+            "old"
+        );
+        assert!(!next.exists());
     }
 }

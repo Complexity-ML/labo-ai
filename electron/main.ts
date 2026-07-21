@@ -34,9 +34,7 @@ async function desktopUpdateChannelPreference() {
 }
 
 async function saveDesktopUpdateChannelPreference(channel: 'stable' | 'main') {
-  const current = await loadDesktopState(app.getPath('userData'), 'settings')
-  const settings = current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : {}
-  await saveDesktopState(app.getPath('userData'), 'settings', { ...settings, desktopUpdateChannel: channel })
+  await saveDesktopState(app.getPath('userData'), 'settings', { desktopUpdateChannel: channel })
 }
 
 async function configuredChatGPTStatus() {
@@ -97,9 +95,7 @@ app.whenReady().then(() => {
     const model = status.models?.find((candidate) => candidate.id === payload?.model)
     if (!model) throw new Error('Choose a model available to this ChatGPT account')
     const effort = typeof payload?.effort === 'string' && model.efforts.includes(payload.effort) ? payload.effort : model.defaultEffort ?? model.efforts[0]
-    const current = await loadDesktopState(app.getPath('userData'), 'settings')
-    const settings = current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : {}
-    await saveDesktopState(app.getPath('userData'), 'settings', { ...settings, chatGPT: { model: model.id, effort } })
+    await saveDesktopState(app.getPath('userData'), 'settings', { chatGPT: { model: model.id, effort } })
     return configuredChatGPTStatus()
   })
   ipcMain.handle(windowStateChannel, (event) => ({ fullScreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
@@ -112,7 +108,7 @@ app.whenReady().then(() => {
     const previousCache = parseDesktopUpdateCache(settings.desktopUpdateCache)
     const freshStatus = await getDesktopUpdateStatus(app.getPath('userData'), app.getVersion(), channel)
     const nextCache = cacheDesktopUpdateStatus(previousCache, freshStatus)
-    await saveDesktopState(app.getPath('userData'), 'settings', { ...settings, desktopUpdateChannel: channel, desktopUpdateCache: nextCache })
+    await saveDesktopState(app.getPath('userData'), 'settings', { desktopUpdateChannel: channel, desktopUpdateCache: nextCache })
     return restoreDesktopUpdateStatus(freshStatus, nextCache)
   })
   ipcMain.handle(launchDesktopUpdateChannel, async (_event, payload: { channel?: unknown } | undefined) => {
